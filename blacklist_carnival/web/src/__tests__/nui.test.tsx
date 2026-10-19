@@ -1,0 +1,221 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fixture from './fixture.json';
+
+// Mock the Lua bridge: every api() call is answered from this table.
+const responses: Record<string, any> = {};
+const calls: { endpoint: string; payload: any }[] = [];
+vi.mock('../nui', async () => {
+  const actual: any = await vi.importActual('../nui');
+  return {
+    ...actual,
+    isNui: false,
+    api: vi.fn(async (endpoint: string, payload: any) => {
+      calls.push({ endpoint, payload });
+      const r = responses[endpoint];
+      if (typeof r === 'function') return r(payload);
+      return r ?? { ok: false, error: 'not_mocked' };
+    }),
+    closeView: vi.fn(),
+    releaseFocus: vi.fn(),
+    effect: vi.fn(),
+    setWaypoint: vi.fn(),
+    captureCoords: vi.fn(async () => ({ x: 1, y: 2, z: 3, w: 90 })),
+  };
+});
+vi.mock('../audio', () => ({ playSound: vi.fn(), stopSound: vi.fn(), stopAll: vi.fn() }));
+
+import App from '../App';
+import { installBridge } from '../bridge';
+installBridge();
+import { getState, setState } from '../store';
+import { formatDuration, signed, colourHex } from '../format';
+
+const settings: any = {
+  ...(fixture as any).defaults,
+  groups: { colours: (fixture as any).defaults.groups.colours },
+};
+
+function lua(action: string, data: any) {
+  act(() => {
+    window.dispatchEvent(new MessageEvent('message', { data: { action, data } }));
+  });
+}
+
+beforeEach(() => {
+  calls.length = 0;
+  for (const k of Object.keys(responses)) delete responses[k];
+  setState({ views: {}, minimised: {}, hudVisible: false, shooting: { active: false }, horror: { active: false } });
+  lua('push', {
+    channel: 'bootstrap',
+    data: {
+      serverTime: Math.floor(Date.now() / 1000),
+      settings,
+      event: { active: true, id: 1, name: 'Test Night', state: 'running', stateLabel: 'Running', round: 2, totalRounds: 6, roundEndsAt: Math.floor(Date.now() / 1000) + 300, participantCount: 12, maxParticipants: 120 },
+      participant: { registered: true, id: 5, name: 'Ada Lovelace', colour: 'red', status: 'active', total: 42, rank: 3, ticket: { serial: 'CTD-ABCDE-FGHIJ', status: 'active' }, completed: ['shooting'], current: { attraction: 'wheel', status: 'active', sessionId: 9 }, next: 'fortune', breakdown: { shooting: 30 } },
+      permissions: ['panel.admin', 'panel.staff', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.wheel', 'attractions.operate.horror', 'horror.control', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history'],
+      role: 'owner',
+    },
+  });
+});
+afterEach(() => cleanup());
+
+describe('format helpers', () => {
+  it('formats durations and deltas', () => {
+    expect(formatDuration(65)).toBe('1:05');
+    expect(formatDuration(3725)).toBe('1:02:05');
+    expect(signed(5)).toBe('+5');
+    expect(signed(-3)).toBe('-3');
+    expect(colourHex(settings, 'red')).toBe('#b3122a');
+  });
+});
+
+describe('player screens', () => {
+  it('shows the HUD with score, round and current attraction', () => {
+    render(<App />);
+    lua('hud', { visible: true });
+    expect(screen.getByText('42')).toBeTruthy();
+    expect(screen.getByText(/Round 2\/6/)).toBeTruthy();
+    expect(screen.getByText('The Wheel of Misfortune')).toBeTruthy();
+  });
+
+  it('opens and closes the ticket card with Escape (focus released)', () => {
+    render(<App />);
+    lua('open', { view: 'ticket', data: { action: 'issued', colour: 'red', serial: 'CTD-ABCDE-FGHIJ', holder: 'Ada Lovelace', eventName: 'Test Night' } });
+    expect(screen.getByText('ADMIT ONE')).toBeTruthy();
+    expect(screen.getByText('Serial CTD-ABCDE-FGHIJ')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(getState().views.ticket).toBeUndefined();
+  });
+
+  it('shows a void ticket clearly', () => {
+    render(<App />);
+    lua('open', { view: 'ticket', data: { status: 'void', colour: 'blue', serial: 'CTD-OLD', holder: 'X' } });
+    expect(screen.getByText(/VOID/)).toBeTruthy();
+  });
+
+  it('wheel: spins through the server and shows the server outcome', async () => {
+    responses['wheel.spin'] = { ok: true, data: { index: 2, outcome: { id: 'jackpot', label: 'Jackpot of Souls', type: 'large_points' }, points: 40, spinsUsed: 1, maxSpins: 2, animationMs: 10, cooldownSeconds: 0 } };
+    render(<App />);
+    const outcomes = settings.attractions.wheel.outcomes.map((o: any) => ({ id: o.id, label: o.label, type: o.type, colour: o.colour }));
+    lua('open', { view: 'wheel', data: { outcomes, spinsUsed: 0, maxSpins: 2, animationMs: 10, cooldownRemaining: 0, label: 'The Wheel of Misfortune' } });
+    fireEvent.click(screen.getByText('Spin the wheel'));
+    await waitFor(() => expect(screen.getAllByText('Jackpot of Souls').length).toBeGreaterThan(1));
+    expect(calls.some((c) => c.endpoint === 'wheel.spin')).toBe(true);
+    expect(screen.getByText(/\+40 points/)).toBeTruthy();
+  });
+
+  it('wheel: shows server errors instead of a result', async () => {
+    responses['wheel.spin'] = { ok: false, error: 'no_spins', message: 'You have used all of your spins.' };
+    render(<App />);
+    lua('open', { view: 'wheel', data: { outcomes: [{ id: 'a', label: 'A', type: 'nothing', colour: '#000000' }, { id: 'b', label: 'B', type: 'bonus', colour: '#111111' }], spinsUsed: 0, maxSpins: 2, animationMs: 10 } });
+    fireEvent.click(screen.getByText('Spin the wheel'));
+    await waitFor(() => expect(screen.getByText('You have used all of your spins.')).toBeTruthy());
+  });
+
+  it('fortune: answers a multiple-choice question', async () => {
+    responses['fortune.answer'] = { ok: true, data: { correct: true, points: 10, text: 'Yes...', finished: true, farewell: 'Go now.' } };
+    render(<App />);
+    lua('open', { view: 'fortune', data: { visitId: 3, greeting: 'Sit, child.', question: { id: 'q_cards', kind: 'choice', prompt: 'Which card?', choices: ['A', 'B', 'C'], index: 1, total: 1, timeout: 60 } } });
+    fireEvent.click(screen.getByText('B'));
+    await waitFor(() => expect(screen.getByText('Correct.')).toBeTruthy());
+    expect(calls.find((c) => c.endpoint === 'fortune.answer')!.payload).toMatchObject({ visitId: 3, questionId: 'q_cards', choice: 2 });
+  });
+
+  it('deception: requires exactly the liar count before accusing', async () => {
+    responses['deception.submit'] = { ok: true, data: { submissionNumber: 1, remaining: 1 } };
+    render(<App />);
+    const m = settings.attractions.deception.mysteries[0];
+    lua('open', { view: 'deception', data: { active: true, roundId: 7, status: 'questioning', maxSubmissions: 2, submissionsUsed: 0, clues: [], mystery: { title: m.title, description: m.description, liarCount: 3, performers: m.performers.map((p: any) => ({ id: p.id, name: p.name, profile: p.profile })) } } });
+    const accuse = screen.getByText('Accuse').closest('button')!;
+    expect(accuse.disabled).toBe(true);
+    for (const name of ['Bruno the Strongman', 'Lady Ash', 'The Great Valentino']) fireEvent.click(screen.getByText(name));
+    expect(accuse.disabled).toBe(false);
+    fireEvent.click(accuse);
+    await waitFor(() => expect(screen.getByText(/Accusation #1 recorded/)).toBeTruthy());
+  });
+
+  it('theatre card, horror HUD and shooting HUD render as non-blocking overlays', () => {
+    render(<App />);
+    lua('open', { view: 'theatre', data: { action: 'card', status: 'displayed', performer: true, role: 'Lion Tamer', scenario: { title: 'The Reluctant Lion Tamer', description: 'x', difficulty: 'medium' }, performers: [{ name: 'Ada', role: 'Lion Tamer' }] } });
+    expect(screen.getByText(/Your role/)).toBeTruthy();
+    lua('horror', { active: true, status: 'running', endsAt: Math.floor(Date.now() / 1000) + 50, collected: 2, points: 15, runnerStatus: 'inside' });
+    expect(screen.getByText('Tokens 2')).toBeTruthy();
+    lua('shooting', { active: true, endsAt: Math.floor(Date.now() / 1000) + 30, hits: 3, shots: 5, total: 25 });
+    expect(screen.getByText('Hits 3')).toBeTruthy();
+    lua('horror', { active: false });
+    expect(screen.queryByText('Tokens 2')).toBeNull();
+  });
+
+  it('leaderboard shows live pushes', () => {
+    render(<App />);
+    lua('open', { view: 'leaderboard', data: { active: true, eventName: 'Test Night', entries: [{ rank: 1, name: 'Ada', total: 99 }], you: { rank: 1, total: 99 } } });
+    expect(screen.getByText('Ada')).toBeTruthy();
+    lua('push', { channel: 'leaderboard', data: { active: true, eventName: 'Test Night', entries: [{ rank: 1, name: 'Grace', total: 120 }] } });
+    expect(screen.getByText('Grace')).toBeTruthy();
+  });
+});
+
+describe('staff & admin panels', () => {
+  it('admin config editor renders every section from the real schema and blocks invalid saves', async () => {
+    let saved: any = null;
+    responses['config.get'] = { ok: true, data: { scope: 'global', data: settings, schema: (fixture as any).schema, versions: { global: { version: 4 }, source: 'global' }, hasEventOverride: false, activeEventId: 1, canEdit: true, canSeeSecrets: true, sounds: (fixture as any).sounds, liveLocked: true } };
+    responses['config.save'] = (p: any) => { saved = p; return { ok: true, data: { saved: false, analysis: { valid: false, errors: [{ path: 'attractions.wheel.maxSpins', message: 'must be at most 50' }], warnings: [], changes: [] } } }; };
+    render(<App />);
+    lua('open', { view: 'admin', data: {} });
+    for (const section of ['General', 'Registration & tickets', 'Rotation', 'Scoring', 'Prizes & results', 'Shooting Gallery', 'Wheel of Misfortune', 'Fortune Teller', "Puppet Master's Theatre", 'Hall of Deception', 'House of Horrors']) {
+      fireEvent.click(screen.getAllByText(section)[0]);
+      await waitFor(() => expect(document.querySelector('.config-page')).toBeTruthy());
+    }
+    // Wheel page: change max spins to an invalid value and save
+    fireEvent.click(screen.getAllByText('Wheel of Misfortune')[0]);
+    const label = await screen.findByText('Spins per participant');
+    const input = label.parentElement!.querySelector('input')!;
+    fireEvent.change(input, { target: { value: '999' } });
+    fireEvent.click(screen.getByText(/Save global configuration/));
+    await waitFor(() => expect(screen.getByText('must be at most 50')).toBeTruthy());
+    expect(saved.data.attractions.wheel.maxSpins).toBe(999);
+    // locked fields are disabled while the event runs
+    fireEvent.click(screen.getAllByText('Rotation')[0]);
+    await waitFor(() => expect(screen.getByText('Rotation matrix')).toBeTruthy());
+    const matrixSelect = document.querySelector('.config-page table select') as HTMLSelectElement;
+    expect(matrixSelect.disabled).toBe(true);
+  });
+
+  it('admin coordinate tool fills vec4 fields from the player position', async () => {
+    responses['config.get'] = { ok: true, data: { scope: 'global', data: settings, schema: (fixture as any).schema, versions: { global: { version: 4 }, source: 'global' }, hasEventOverride: false, activeEventId: 1, canEdit: true, canSeeSecrets: true, sounds: (fixture as any).sounds, liveLocked: false } };
+    render(<App />);
+    lua('open', { view: 'admin', data: {} });
+    fireEvent.click(screen.getAllByText('Registration & tickets')[0]);
+    await screen.findByText('Entrance booth location');
+    fireEvent.click(screen.getAllByText('Use my position')[0]);
+    await waitFor(() => {
+      const inputs = screen.getByText('Entrance booth location').parentElement!.querySelectorAll('input');
+      expect((inputs[0] as HTMLInputElement).value).toBe('1');
+      expect((inputs[3] as HTMLInputElement).value).toBe('90');
+    });
+  });
+
+  it('staff panel shows only consoles the user may operate and renders loading/error states', async () => {
+    responses['rotation.state'] = { ok: false, error: 'database_error', message: 'The change could not be saved.' };
+    responses['groups.overview'] = { ok: true, data: { groups: [], unassigned: 0, total: 0 } };
+    responses['attractions.overview'] = { ok: true, data: [] };
+    setState({ permissions: new Set(['panel.staff', 'attractions.operate.wheel', 'participants.view']) });
+    render(<App />);
+    lua('open', { view: 'staff', data: {} });
+    expect(screen.getByText('Event Staff')).toBeTruthy();
+    expect(screen.getAllByText('Wheel of Misfortune').length).toBeGreaterThan(0);
+    expect(screen.queryByText('House of Horrors')).toBeNull();
+    await waitFor(() => expect(screen.getByText('The change could not be saved.')).toBeTruthy());
+    expect(screen.getByText('Retry')).toBeTruthy();
+  });
+
+  it('permission loss while open closes nothing in the NUI but hides gated navigation', () => {
+    render(<App />);
+    lua('open', { view: 'admin', data: {} });
+    expect(screen.getAllByText('Monitoring centre').length).toBeGreaterThan(0);
+    lua('push', { channel: 'perms', data: { role: 'observer', permissions: ['panel.admin'] } });
+    expect(screen.queryByText('Monitoring centre')).toBeNull();
+  });
+});

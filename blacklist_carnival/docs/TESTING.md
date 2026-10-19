@@ -1,0 +1,67 @@
+# Testing checklist and results
+
+## Automated results (this repository, run with `tests/run_all.sh`)
+
+Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 (jsdom). Date of run: 2026-10-19.
+
+| Suite | Result |
+|---|---|
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **468 checks, 0 failures** |
+| Server integration (real server scripts, real database) | **51 tests, 51 passed** |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 14 tests passed** |
+| `sql/schema.sql` imported twice into an empty MariaDB database | **36 tables, no errors (idempotent)** |
+
+### Integration tests (server_spec.lua)
+
+Database & bootstrap: clean install + migrations recorded · migrations idempotent · config v1 seeded and valid · no clown content.
+Permissions: allowlist/ACE/scoped roles · horror allowlist · unauthorised calls rejected · rate limits without bans.
+Configuration: invalid config rejected with field errors · secret redaction + restore · save → new version → preview → rollback (audited) · reward items validated against inventory.
+Lifecycle & registration: invalid transitions rejected · registration blocked when ticket items missing · booth distance enforced · 12 players balanced 2 per colour with physical tickets + metadata · duplicate registration rejected · capacity on transfer · ticket replacement voids old serial · forged ticket logged and rejected · transfer reissues ticket (audited) · remove/reinstate · reconnect recovery with a new source id · start → six unique sessions matching the matrix + settings snapshot.
+Wheel: wrong group refused · max spins · total equals ledger · 10 000-draw distribution within ±2.5 % of weights · special prize approval by operator, idempotent delivery · inventory-full failure then retry · tickets refused as rewards.
+Fortune: no answer leak · resume same pending question · correct/incorrect marking · no re-answering · visit limit · staff award capped and idempotent.
+Shooting: valid bullseye hit · too fast · miss · wrong weapon · away from stand · special not active · non-participant · server timer ends heat · one award per shooter per heat · cannot shoot twice.
+Theatre: wrong-group cast refused · display/start/pause/resume/end · preview clamps to scenario max · commit once, second commit no-op.
+Deception: no answer key/briefs/statements in public state or pushes · selection count enforced · submission limit · clue once · closed after end · preview scoring (partial credit, perfect bonus, tie-break, judge bonus, penalties) · commit once · solution revealed.
+Horror: only allowlisted controllers start · too far · valid collect · replayed collect refused · invalid token · stale run · non-runner · warnings at configured thresholds · escape bonus once · expiry ends run once and completes the group.
+Rotation: timer completes automated attractions and holds staff-judged ones (overtime) · operators cannot complete other attractions · between rounds → auto round 2 matching the matrix · pause freezes / resume restores exactly · extend/skip/delay audited, delay auto-releases.
+Scoring: reason required · bounds · idempotent adjustment · negative totals clamped · reversal · ledger verification consistent · no player scoring path.
+Recovery: restart → event paused, scores recovered, reward mid-delivery → `unknown` (retry refused until reconciled), horror run interrupted not restarted, resume works.
+Completion: six rounds, each colour visits each attraction exactly once · final results frozen + prize rewards · correction creates results v2 · completed results unchanged after config change · no scoring after completion · new event leaves history intact · CSV export (audited, permission-gated).
+Staff & audit: grants bounded by rank, scoped, revocation immediate · audit covers key actions and is never updated/deleted by code · DB failure reported and recovered · monitoring queryable with filters.
+
+### NUI tests (web/src/__tests__/nui.test.tsx)
+
+HUD · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin config editor renders all sections from the real Lua schema, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · staff panel shows only permitted consoles + error/retry state · permission loss hides gated navigation.
+
+## Manual in-game test plan (not yet executed — requires a FiveM server)
+
+Run these on a staging server before the first live event. IDs are referenced from SECURITY.md.
+
+**Install**
+- M-INS-1 Start order as in INSTALLATION.md; console shows `resource_ready`; `/carnivalitems` → all registered.
+- M-INS-2 `/carnivaladmin` → *Items & health*: database healthy, dependencies running.
+
+**Lifecycle**
+- M-LC-1 Create event, open registration, register two characters on two clients; tickets appear with correct image, label and description; *use* the ticket → ticket card shows *Valid ticket*.
+- M-LC-2 Drop a ticket on the ground / give it to another player; at an attraction the other player is refused (ticket_missing), and the monitoring log shows `invalid_ticket_presented` (`belongs_to_another_participant`).
+- M-LC-3 `/carnivalstart`; HUD shows round 1 and countdown; waypoint set to the attraction.
+- M-LC-4 Restart the resource mid-round: event comes back paused, HUD and interactions rebuild, `/carnivalresume` continues the timer.
+
+**Attractions**
+- M-AT-1 Shooting: stand at the stand, join, operator starts heat; targets appear, hits register with sound/feedback, special target appears; results card at the end; try shooting from 10 m away → hits rejected in the console.
+- M-AT-2 Wheel: spin animation lands on the segment shown in the result; trick outcome plays the effect; special prize waits for approval.
+- M-AT-3 Fortune: riddle typed answer accepted case-insensitively; staff present/reveal/award.
+- M-AT-4 Theatre: performer and audience cards visible without blocking movement; timer; commit results.
+- M-AT-5 Deception: performer receives brief notification; investigators submit; reveal shows liars.
+- M-AT-6 Horror: ambient audio plays, tokens visible within proximity distance, collection via ox_target, warnings at 120/60/30/10/5 s with sounds, scares shake/flash, exit zone grants bonus, run end stops ambient.
+
+**NUI**
+- M-NUI-1 Every panel opens/closes; Escape closes; the cursor is never left captured; `/carnivalclose` always recovers.
+- M-NUI-2 Minimise staff/admin panels, walk, reopen.
+- M-NUI-3 Remove a staff role while the panel is open → panel closes / navigation shrinks within 30 s.
+- M-NUI-4 `stop blacklist_carnival` while a panel is open → focus released, peds/props/blips removed.
+
+**Inventory**
+- M-INV-1 Full inventory at registration → ticket pending; make space; booth *Replace or collect my ticket* delivers it.
+- M-INV-2 Prize box opens into a configured item; trick and treat tokens apply effects and are consumed.
+- M-INV-3 Restart ox_inventory during an event; ticket validation keeps working after it is back.
