@@ -14,11 +14,12 @@ The server logic was executed for real (integration tests run the actual server 
   * `ox_inventory` `Search(src, 'slots', item)` returns slot tables with `metadata`; `RemoveItem` matches partial metadata.
   * `oxmysql` returns `TINYINT(1)` as booleans (handled either way) and `MySQL.transaction.await` returns `false` on rollback.
 * **Discord webhooks** — code path not exercised against Discord.
-* **Default coordinates/models** — placeholders around the Del Perro pier; GTA prop names for targets/tokens (`prop_range_target_0x`, `prop_ld_case_01`, `prop_money_bag_01`, `prop_ld_gold_chest`) fall back to markers/zones if a model is invalid. Capture real positions with the coordinate tool before an event.
+* **Default coordinates/models** — placeholders around the Del Perro pier; GTA prop names for horror tokens (`prop_ld_case_01`, `prop_money_bag_01`, `prop_ld_gold_chest`) fall back to markers/zones if a model is invalid. Capture real positions with the coordinate tool before an event.
 
 ## Design limitations
 
-* **Shooting Gallery hit detection.** The server cannot observe where a bullet hits a client-side prop, so clients report potential hits. The server validates heat membership, stand position, selected weapon, target radius, per-target reset, special-target window, minimum interval, plausibility and a hit cap; rejected hits are logged and shown to staff. A modified client standing at the stand with the right weapon could still report fabricated plausible hits up to those caps. Shots fired (for accuracy) are client-reported and only bound by ammo when weapons are provided.
+* **Shooting Gallery (NUI aim game).** The server generates every target's spawn time, lane and kind, and accepts a hit only if that target was on screen at that moment by the server clock (±latency allowance), had not been hit, and the click rate is plausible. The bullseye ring is judged by the client (worth a small bonus). A modified client could still auto-click every target perfectly — like any aimbot for a 2D game — but cannot exceed the schedule; rejected shots are logged and visible to staff.
+* **Theatre audience vote.** Self-service shows are judged by the group's vote; groups can collude. Use staff mode if you want a judge.
 * **Token positions** are sent to runners so props can be rendered; a cheating client could reveal them. Collection still requires being physically within range inside the boundary.
 * **One active event at a time.** Earlier events remain fully queryable; parallel live events are not supported.
 * **Item registration** cannot be automated (ox_inventory has no runtime registration): items must be pasted into `ox_inventory/data/items.lua`.

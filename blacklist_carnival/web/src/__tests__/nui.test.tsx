@@ -136,14 +136,12 @@ describe('player screens', () => {
     await waitFor(() => expect(screen.getByText(/Accusation #1 recorded/)).toBeTruthy());
   });
 
-  it('theatre card, horror HUD and shooting HUD render as non-blocking overlays', () => {
+  it('theatre card and horror HUD render as non-blocking overlays', () => {
     render(<App />);
     lua('open', { view: 'theatre', data: { action: 'card', status: 'displayed', performer: true, role: 'Lion Tamer', scenario: { title: 'The Reluctant Lion Tamer', description: 'x', difficulty: 'medium' }, performers: [{ name: 'Ada', role: 'Lion Tamer' }] } });
     expect(screen.getByText(/Your role/)).toBeTruthy();
     lua('horror', { active: true, status: 'running', endsAt: Math.floor(Date.now() / 1000) + 50, collected: 2, points: 15, runnerStatus: 'inside' });
     expect(screen.getByText('Tokens 2')).toBeTruthy();
-    lua('shooting', { active: true, endsAt: Math.floor(Date.now() / 1000) + 30, hits: 3, shots: 5, total: 25 });
-    expect(screen.getByText('Hits 3')).toBeTruthy();
     lua('horror', { active: false });
     expect(screen.queryByText('Tokens 2')).toBeNull();
   });
@@ -237,5 +235,60 @@ describe('preview mode', () => {
     fireEvent.click(screen.getByText('C'));
     await waitFor(() => expect(screen.getByText('Correct.')).toBeTruthy());
     expect(calls.length).toBe(0);
+  });
+});
+
+describe('shooting gallery aim game', () => {
+  const plan = [
+    { id: 1, t: 0, life: 5000, kind: 'normal', lane: 1, dir: 1 },
+    { id: 2, t: 0, life: 5000, kind: 'decoy', lane: 2, dir: -1 },
+  ];
+
+  it('clicking a target reports the shot to the server and shows the server score', async () => {
+    responses['shooting.shot'] = (p: any) => ({ ok: true, data: { hit: true, targetId: p.targetId, kind: 'normal', points: 5, total: 5, shots: 1, hits: 1 } });
+    render(<App />);
+    lua('open', { view: 'shootingGame', data: { gameId: 77, duration: 30000, lanes: 3, countdownMs: 3000, elapsedMs: 100, plan, total: 0, hits: 0, shots: 0, hitIds: [] } });
+    const targets = document.querySelectorAll('.sg-target');
+    expect(targets.length).toBe(2);
+    expect(document.querySelector('.sg-decoy')).toBeTruthy();
+    fireEvent.mouseDown(document.querySelector('.sg-normal')!);
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shooting.shot')!.payload).toMatchObject({ gameId: 77, targetId: 1 }));
+    await waitFor(() => expect(screen.getByText('+5')).toBeTruthy());
+  });
+
+  it('clicking empty space reports a miss (no target id)', async () => {
+    responses['shooting.shot'] = { ok: true, data: { hit: false, total: 0, shots: 1, hits: 0 } };
+    render(<App />);
+    lua('open', { view: 'shootingGame', data: { gameId: 78, duration: 30000, lanes: 3, countdownMs: 3000, elapsedMs: 100, plan, total: 0, hits: 0, shots: 0 } });
+    fireEvent.mouseDown(document.querySelector('.sg-area')!);
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shooting.shot')!.payload.targetId).toBeUndefined());
+  });
+
+  it('shows the countdown before targets appear and the final result from the server', async () => {
+    responses['shooting.finish'] = { ok: true, data: { gameId: 79, points: 42, hits: 8, shots: 10, accuracy: 80, accuracyBonus: 16 } };
+    render(<App />);
+    lua('open', { view: 'shootingGame', data: { gameId: 79, duration: 1000, lanes: 3, countdownMs: 3000, elapsedMs: 5000, plan, total: 26 } });
+    await waitFor(() => expect(screen.getByText('42 points')).toBeTruthy(), { timeout: 3000 });
+  });
+
+  it('preview mode plays locally', () => {
+    render(<App />);
+    lua('open', { view: 'shootingGame', data: { preview: true, duration: 30000, lanes: 3, lifetime: 2800, countdownMs: 3000 } });
+    expect(screen.getByText(/PREVIEW/)).toBeTruthy();
+    fireEvent.mouseDown(document.querySelector('.sg-area')!);
+    expect(calls.length).toBe(0);
+  });
+});
+
+describe('theatre audience vote', () => {
+  it('lists the other performers and sends the vote', async () => {
+    responses['theatre.vote'] = { ok: true, data: { voted: true } };
+    render(<App />);
+    lua('open', { view: 'theatreVote', data: { performanceId: 5, title: 'Lion Tamer', self: 10, endsAt: Math.floor(Date.now() / 1000) + 20,
+      candidates: [{ participantId: 10, name: 'Me', role: 'A' }, { participantId: 11, name: 'Grace', role: 'B' }] } });
+    expect(screen.queryByText('Me')).toBeNull();
+    fireEvent.click(screen.getByText('Grace'));
+    await waitFor(() => expect(screen.getByText(/Vote cast/)).toBeTruthy());
+    expect(calls.find((c) => c.endpoint === 'theatre.vote')!.payload).toMatchObject({ performanceId: 5, participantId: 11 });
   });
 });

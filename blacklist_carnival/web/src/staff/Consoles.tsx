@@ -18,59 +18,37 @@ function SessionLine({ session }: { session: any }) {
 export function ShootingConsole() {
   const st = useApi<any>('shooting.staff.state', {}, [], ['shooting', 'rotation']);
   const { busy, run } = useAction();
-  const [picked, setPicked] = useState<number[]>([]);
   return (
     <Async state={st}>
       {(d) => (
         <div className="console">
           <SessionLine session={d.session} />
+          <div className="small muted">Self-service: players target the gallery ped and play the aim game themselves. This page is for monitoring.</div>
           <div className="console-grid">
-            <Card title={`Heat ${d.heat ? `#${d.heat.id}` : ''}`} actions={d.heat ? <StatusPill status={d.heat.status} /> : null}>
-              {d.heat && (d.heat.status === 'running' || d.heat.status === 'paused') ? (
-                <>
-                  <div className="big-timer">{d.heat.status === 'paused' ? <Countdown remaining={d.heat.remaining} /> : <Countdown endsAt={d.heat.endsAt} />}</div>
-                  <Table compact head={['Shooter', 'Hits', 'Shots', 'Bull', 'Special', 'Points', 'Rejected']}>
-                    {d.heat.shooters.map((s: any) => <tr key={s.id}><td>{s.name}{s.online ? '' : ' (offline)'}</td><td>{s.hits}</td><td>{s.shots}</td><td>{s.bullseyes}</td><td>{s.specials}</td><td className="num">{s.points}</td><td>{s.rejected}</td></tr>)}
-                  </Table>
-                  <div className="btn-row">
-                    {d.heat.status === 'running' ? <Button busy={busy} onClick={() => run('shooting.pause', {}, 'Heat paused').then(st.reload)}>Pause</Button>
-                      : <Button busy={busy} onClick={() => run('shooting.resume', {}, 'Heat resumed').then(st.reload)}>Resume</Button>}
-                    <Button variant="gold" busy={busy} onClick={async () => { if (await confirmAction({ title: 'Finish the heat now and award points?' })) { await run('shooting.finish', {}, 'Heat finished'); st.reload(); } }}>Finish & score</Button>
-                    <Button variant="danger" busy={busy} onClick={async () => { const r = await confirmAction({ title: 'Reset the heat? No points are awarded.', danger: true, reason: 'required' }); if (r) { await run('shooting.reset', { reason: r.reason }, 'Heat reset'); st.reload(); } }}>Reset</Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="muted">Select up to {d.maxPlayers} shooters, or start with the first in the queue.</p>
-                  <div className="btn-row">
-                    <Button variant="primary" busy={busy} disabled={!d.session} onClick={async () => {
-                      const r = await run('shooting.startHeat', { participantIds: picked }, 'Heat started');
-                      if (r.ok) setPicked([]);
-                      st.reload();
-                    }}>{picked.length ? `Start heat with ${picked.length}` : 'Start heat from queue'}</Button>
-                  </div>
-                </>
+            <Card title={`Playing now (${d.live.length})`}>
+              {d.live.length === 0 ? <Empty text="Nobody is shooting right now." /> : (
+                <Table compact head={['Player', 'Score', 'Hits/Shots', 'Rejected', 'Time left']}>
+                  {d.live.map((g: any) => <tr key={g.id}><td>{g.name}</td><td className="num">{g.points}</td><td>{g.hits}/{g.shots}</td><td>{g.rejected}</td><td>{g.remaining}s</td></tr>)}
+                </Table>
               )}
             </Card>
-            <Card title={`Queue (${d.queue.length})`}>
-              {d.queue.length === 0 ? <Empty text="Nobody is waiting." /> : <ol className="plain">{d.queue.map((q: any) => <li key={q.id}>{q.name}</li>)}</ol>}
-            </Card>
-            <Card title="Group members">
+            <Card title="Group">
               {d.members.length === 0 ? <Empty text="No group here." /> : (
-                <Table compact head={['', 'Name', 'Shot', 'Points']}>
+                <Table compact head={['Name', 'Played', 'Points', '']}>
                   {d.members.map((m: any) => (
-                    <tr key={m.id}>
-                      <td><input type="checkbox" disabled={m.shot || !m.online} checked={picked.includes(m.id)} onChange={(e) => setPicked((p) => e.target.checked ? [...p, m.id].slice(0, d.maxPlayers) : p.filter((x) => x !== m.id))} /></td>
-                      <td>{m.name}{m.online ? '' : ' (offline)'}</td><td>{m.shot ? '✔' : ''}</td><td className="num">{m.points}</td>
-                    </tr>
+                    <tr key={m.id}><td>{m.name}{m.online ? '' : ' (offline)'}</td><td>{m.played}/{d.playsPerVisit}</td><td className="num">{m.points}</td>
+                      <td>{m.played > 0 ? <Button small busy={busy} onClick={async () => {
+                        const r = await confirmAction({ title: `Give ${m.name} another go?`, message: 'Their earlier score stays; they may play again this visit.', reason: 'required' });
+                        if (r) { await run('shooting.allowReplay', { participantId: m.id, reason: r.reason }, 'Replay allowed'); st.reload(); }
+                      }}>Allow replay</Button> : null}</td></tr>
                   ))}
                 </Table>
               )}
             </Card>
-            <Card title="Recent results">
+            <Card title="Recent results" className="span-2">
               {d.recent.length === 0 ? <Empty text="No results yet." /> : (
-                <Table compact head={['Name', 'Hits/Shots', 'Bull', 'Acc+', 'Miss−', 'Points']}>
-                  {d.recent.map((r: any) => <tr key={r.id}><td>{r.display_name}</td><td>{r.hits}/{r.shots}</td><td>{r.bullseyes}</td><td>{r.accuracy_bonus}</td><td>{r.miss_penalty}</td><td className="num">{r.points}</td></tr>)}
+                <Table compact head={['Name', 'Hits/Shots', 'Bull', 'Golden', 'Acc+', 'Rejected', 'Points']}>
+                  {d.recent.map((r: any) => <tr key={r.id}><td>{r.display_name}</td><td>{r.hits}/{r.shots}</td><td>{r.bullseyes}</td><td>{r.specials}</td><td>{r.accuracy_bonus}</td><td>{r.rejected_hits}</td><td className="num">{r.points}</td></tr>)}
                 </Table>
               )}
             </Card>

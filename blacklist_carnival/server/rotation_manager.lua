@@ -111,6 +111,19 @@ function Rotation.participantView(p)
     }
 end
 
+-- True once the current round's timer has expired (held sessions finish their
+-- work and then complete themselves).
+function Rotation.inOvertime()
+    return round ~= nil and round.state == 'active' and Carnival.Db.bool(round.overtime)
+end
+
+-- Complete a held session after its attraction finished during overtime.
+function Rotation.completeIfOvertime(sessionId, note)
+    if not Rotation.inOvertime() then return end
+    local s = Rotation.sessionById(sessionId)
+    if s and s.status == SS.ACTIVE then Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, note) end
+end
+
 function Rotation.publicState()
     local e = Carnival.Events.active
     if not round then return { round = 0, totalRounds = Rotation.totalRounds() } end
@@ -149,7 +162,7 @@ function Rotation.staffState()
         if s then
             current[#current + 1] = {
                 colour = c, sessionId = s.id, attraction = s.attraction_id, status = s.status,
-                staffJudged = C.STAFF_JUDGED[s.attraction_id] == true, delayedUntil = s.delayed_until,
+                staffJudged = Carnival.Attractions.isStaffJudged(s.attraction_id), delayedUntil = s.delayed_until,
                 online = #Carnival.Participants.members(c, true), members = #Carnival.Participants.members(c, false),
                 readiness = Carnival.Attractions.readiness(s.attraction_id),
             }
@@ -529,7 +542,7 @@ Carnival.onTick('rotation', function(now)
             for _, s in pairs(sessions) do
                 if s.status == SS.ACTIVE then
                     local decision = 'hold'
-                    if not C.STAFF_JUDGED[s.attraction_id] and cfg().rotation.autoCompleteOnTimer then
+                    if not Carnival.Attractions.isStaffJudged(s.attraction_id) and cfg().rotation.autoCompleteOnTimer then
                         decision = Carnival.Attractions.timerExpired(s)
                     end
                     if decision == 'complete' then

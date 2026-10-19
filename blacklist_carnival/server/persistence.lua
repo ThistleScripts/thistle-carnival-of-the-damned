@@ -16,6 +16,7 @@ Db.errorCount = 0
 Db.MIGRATIONS = {
     { version = 1, name = 'initial', file = 'sql/migrations/001_initial.sql' },
     { version = 2, name = 'seed_attractions', file = 'sql/migrations/002_seed_attractions.sql' },
+    { version = 3, name = 'theatre_timer_columns', file = 'sql/migrations/003_theatre_timer_columns.sql' },
 }
 
 local function shorten(sql)
@@ -224,6 +225,10 @@ function Db.migrate()
         else
             for i, stmt in ipairs(Db.splitStatements(text)) do
                 local sok, serr = pcall(MySQL.query.await, stmt)
+                -- schema.sql may already have applied an ALTER; that counts as done
+                if not sok and (tostring(serr):find('Duplicate column', 1, true) or tostring(serr):find('Duplicate key name', 1, true)) then
+                    sok = true
+                end
                 if not sok then
                     return false, ('migration %d statement %d failed: %s'):format(m.version, i, tostring(serr))
                 end

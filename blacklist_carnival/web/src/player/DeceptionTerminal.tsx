@@ -55,6 +55,7 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
               <Icon name="deception" size={22} />
               <strong>{p.name}</strong>
               <span>{p.profile}</span>
+              {(p.statements ?? []).length ? <ul className="testimony">{p.statements.map((st: string, i: number) => <li key={i}>“{st}”</li>)}</ul> : null}
               {liars.has(p.id) ? <span className="pill pill-bad">LIAR</span> : null}
             </button>
           ))}

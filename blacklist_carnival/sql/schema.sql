@@ -1,9 +1,9 @@
--- Carnival of the Damned - full schema (concatenation of sql/migrations/*.sql).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-003).
 -- Optional: the resource applies migrations automatically on start. Importing this
--- file manually is safe (IF NOT EXISTS / INSERT IGNORE); the resource will still
--- record the migrations as applied on first start.
+-- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
+-- start the resource records the migrations as applied (003's columns are already
+-- present here, which the migration runner accepts).
 
--- ===== sql/migrations/001_initial.sql =====
 -- Carnival of the Damned - migration 001: initial schema
 -- All timestamps are UTC unix epoch seconds (BIGINT).
 -- Statements are idempotent (IF NOT EXISTS) so the migration may be re-run safely.
@@ -376,6 +376,8 @@ CREATE TABLE IF NOT EXISTS carnival_theatre_performances (
     judging_note TEXT NULL,
     created_at BIGINT UNSIGNED NOT NULL,
     started_at BIGINT UNSIGNED NULL,
+    ends_at BIGINT UNSIGNED NULL,
+    paused_remaining INT NULL,
     ended_at BIGINT UNSIGNED NULL,
     committed_at BIGINT UNSIGNED NULL,
     KEY idx_theatre_event (event_id, created_at),
@@ -633,7 +635,6 @@ CREATE TABLE IF NOT EXISTS carnival_monitor_log (
     KEY idx_monitor_actor (actor)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ===== sql/migrations/002_seed_attractions.sql =====
 -- Carnival of the Damned - migration 002: attraction registry seed
 -- INSERT IGNORE keeps this idempotent.
 
@@ -644,4 +645,3 @@ INSERT IGNORE INTO carnival_attractions (id, label, staff_judged, created_at) VA
     ('puppets', 'The Puppet Master''s Theatre', 1, UNIX_TIMESTAMP()),
     ('deception', 'The Hall of Deception', 1, UNIX_TIMESTAMP()),
     ('horror', 'The House of Horrors', 0, UNIX_TIMESTAMP());
-

@@ -9,6 +9,9 @@ local Api = Carnival.Api
 local ID = 'puppets'
 
 local current = nil   -- active performance (not committed / cancelled)
+local lobby = nil     -- self-service: { sessionId, at, cast = { pid... } }
+local voting = nil    -- self-service: { perfId, endsAt, ballots = { [voterPid] = candidatePid } }
+local commitLines
 
 local function cfg() return Carnival.Config.get().attractions.puppets end
 
@@ -105,6 +108,24 @@ local function requireSession(ctx)
     return s
 end
 
+local function insertPerformance(session, scenario, performers, duration, isCustom, actor)
+    local e = Carnival.Events.active
+    local id = Carnival.Db.insertRow('carnival_theatre_performances', {
+        event_id = e.id, session_id = session.id, scenario_id = scenario.id, scenario_snapshot = json.encode(scenario),
+        is_custom = isCustom and 1 or 0, status = 'draft', duration_seconds = duration,
+        operator_license = actor.license, operator_name = actor.name, created_at = os.time(),
+    })
+    if not id then return nil end
+    for _, x in ipairs(performers) do
+        Carnival.Db.insertRow('carnival_theatre_performers', { performance_id = id, participant_id = x.participantId, role_name = x.role })
+    end
+    current = loadPerformance(Carnival.Db.single('SELECT * FROM carnival_theatre_performances WHERE id = ?', { id }))
+    Carnival.Audit.record(actor, 'theatre_performance_created', { targetType = 'performance', targetId = id,
+        details = { scenario = scenario.id, custom = isCustom, performers = #performers, duration = duration } })
+    Carnival.Push.invalidate('theatre')
+    return current
+end
+
 local function create(ctx, payload)
     local session, code, msg = requireSession(ctx)
     if not session then return nil, code, msg end
@@ -149,21 +170,9 @@ local function create(ctx, payload)
     end
     local duration = V.int(payload.duration or scenario.timeLimit or c.defaultDurationSeconds, 15, 1800) or c.defaultDurationSeconds
 
-    local e = Carnival.Events.active
-    local id = Carnival.Db.insertRow('carnival_theatre_performances', {
-        event_id = e.id, session_id = session.id, scenario_id = scenario.id, scenario_snapshot = json.encode(scenario),
-        is_custom = isCustom and 1 or 0, status = 'draft', duration_seconds = duration,
-        operator_license = ctx.actor.license, operator_name = ctx.actor.name, created_at = os.time(),
-    })
-    if not id then return nil, 'database_error' end
-    for _, x in ipairs(performers) do
-        Carnival.Db.insertRow('carnival_theatre_performers', { performance_id = id, participant_id = x.participantId, role_name = x.role })
-    end
-    current = loadPerformance(Carnival.Db.single('SELECT * FROM carnival_theatre_performances WHERE id = ?', { id }))
-    Carnival.Audit.record(ctx.actor, 'theatre_performance_created', { targetType = 'performance', targetId = id,
-        details = { scenario = scenario.id, custom = isCustom, performers = #performers, duration = duration } })
-    Carnival.Push.invalidate('theatre')
-    return publicPerformance(current)
+    local perf = insertPerformance(session, scenario, performers, duration, isCustom, ctx.actor)
+    if not perf then return nil, 'database_error' end
+    return publicPerformance(perf)
 end
 
 local function requireCurrent(statuses)
@@ -278,9 +287,19 @@ local function commit(ctx, payload)
         local lines, warnings = buildAwards(perf, payload)
         if not lines then return nil, 'invalid', warnings end
         local note = V.text(payload.note or '', 1000, true) or ''
+        local results = commitLines(perf, lines, note, ctx.actor)
+        if not results then return { alreadyCommitted = true } end
+        return { results = results, warnings = warnings }
+    end)
+end
+
+-- Write awards for an ended performance exactly once. Returns results or nil
+-- when it was already committed.
+commitLines = function(perf, lines, note, actor)
+    do
         -- mark committed first so a concurrent/retried commit cannot re-enter
         local n = Carnival.Db.update("UPDATE carnival_theatre_performances SET status = 'committed', committed_at = ?, judging_note = ? WHERE id = ? AND status = 'ended'", { os.time(), note, perf.id })
-        if not n or n < 1 then return { alreadyCommitted = true } end
+        if not n or n < 1 then return nil end
         perf.status = 'committed'
         local session = Carnival.Rotation.sessionById(perf.session_id)
         local results = {}
@@ -290,7 +309,7 @@ local function commit(ctx, payload)
                 local ok, tx = Carnival.Scoring.award({
                     participantId = l.participantId, delta = l.points, key = ('theatre:%d:%d'):format(perf.id, l.participantId),
                     txType = 'award', source = l.winner and 'theatre_winner' or 'theatre_award', reason = ('%s — %s'):format(perf.scenario.title, note ~= '' and note or 'judged'),
-                    attractionId = ID, sessionId = perf.session_id, roundNumber = session and session.round_number or nil, actor = ctx.actor,
+                    attractionId = ID, sessionId = perf.session_id, roundNumber = session and session.round_number or nil, actor = actor,
                     publicReason = l.winner and 'Theatre winner!' or 'Theatre performance',
                 })
                 if ok then applied = tx.delta end
@@ -299,7 +318,7 @@ local function commit(ctx, payload)
                 local ok, tx = Carnival.Scoring.award({
                     participantId = l.participantId, delta = l.bonus, key = ('theatre:%d:%d:bonus'):format(perf.id, l.participantId),
                     txType = 'participation', source = 'theatre_participation', reason = perf.scenario.title .. ' participation',
-                    attractionId = ID, sessionId = perf.session_id, roundNumber = session and session.round_number or nil, actor = ctx.actor,
+                    attractionId = ID, sessionId = perf.session_id, roundNumber = session and session.round_number or nil, actor = actor,
                     publicReason = 'Took the stage',
                 })
                 if ok then bonusApplied = tx.delta end
@@ -308,16 +327,16 @@ local function commit(ctx, payload)
                 { l.winner and 1 or 0, applied, bonusApplied, perf.id, l.participantId })
             results[#results + 1] = { participantId = l.participantId, name = l.name, points = applied, bonus = bonusApplied, winner = l.winner }
         end
-        Carnival.Audit.record(ctx.actor, 'theatre_results_committed', { targetType = 'performance', targetId = perf.id, reason = note,
+        Carnival.Audit.record(actor, 'theatre_results_committed', { targetType = 'performance', targetId = perf.id, reason = note,
             details = { results = results } })
         for _, r in ipairs(results) do
             local src = Carnival.Participants.sourceOf(r.participantId)
-            if src and r.winner then Carnival.Push.notify(src, 'Bravo!', 'The Puppet Master chose you as a winner.', 'success', 'treat_sparkle') end
+            if src and r.winner then Carnival.Push.notify(src, 'Bravo!', perf.selfRun and 'The audience chose you as the star of the show!' or 'The Puppet Master chose you as a winner.', 'success', 'treat_sparkle') end
         end
-        current = nil
+        if current == perf then current = nil end
         Carnival.Push.invalidate('theatre')
-        return { results = results, warnings = warnings }
-    end)
+        return results
+    end
 end
 
 local function cancel(ctx, payload)
@@ -350,12 +369,182 @@ local function randomScenario(payload)
 end
 
 ---------------------------------------------------------------------------
+-- Self-service shows: lobby -> random scenario -> performance -> audience vote
+---------------------------------------------------------------------------
+local function selfMode() return cfg().mode == 'self' or cfg().mode == 'both' end
+
+local function pickScenario(n)
+    local fits, fallback = {}, nil
+    for _, sc in ipairs(cfg().scenarios) do
+        if n >= sc.minPlayers and n <= sc.maxPlayers then fits[#fits + 1] = sc end
+        if sc.minPlayers <= n and (not fallback or sc.maxPlayers > fallback.maxPlayers) then fallback = sc end
+    end
+    if #fits > 0 then return fits[math.random(#fits)] end
+    return fallback or cfg().scenarios[1]
+end
+
+local function groupSources(sessionId)
+    local session = Carnival.Rotation.sessionById(sessionId)
+    local out = {}
+    if session then
+        for _, p in ipairs(Carnival.Participants.members(session.colour, true)) do out[#out + 1] = { pid = p.id, src = Carnival.Participants.sourceOf(p.id) } end
+    end
+    return out
+end
+
+local function alreadyPerformed(sessionId, pid)
+    return (Carnival.Db.scalar([[SELECT COUNT(*) FROM carnival_theatre_performers tp JOIN carnival_theatre_performances p ON p.id = tp.performance_id
+        WHERE p.session_id = ? AND tp.participant_id = ? AND p.status = 'committed']], { sessionId, pid }) or 0) > 0
+end
+
+local function startSelfShow(l)
+    local session = Carnival.Rotation.sessionById(l.sessionId)
+    if not session or session.status ~= C.SESSION_STATUS.ACTIVE then return end
+    local cast = {}
+    for _, pid in ipairs(l.cast) do
+        if Carnival.Participants.sourceOf(pid) then cast[#cast + 1] = pid end
+    end
+    if #cast == 0 then return end
+    local scenario = U.deepCopy(pickScenario(#cast))
+    while #cast > scenario.maxPlayers do table.remove(cast) end
+    local performers = {}
+    for i, pid in ipairs(cast) do performers[i] = { participantId = pid, role = scenario.roles[i] or 'Performer' } end
+    local perf = insertPerformance(session, scenario, performers, scenario.timeLimit or cfg().defaultDurationSeconds, false, Carnival.Identity.SYSTEM)
+    if not perf then return end
+    perf.selfRun = true
+    local now = os.time()
+    persist(perf, { status = 'running', started_at = now, ends_at = now + perf.duration_seconds })
+    pushCards(perf)
+    Carnival.Monitor.log('info', 'attraction', 'theatre_self_show_started', { attractionId = ID, details = { performanceId = perf.id, cast = #cast, scenario = scenario.id } })
+end
+
+local function finishSelfShow(perf, winners, note)
+    local c = cfg()
+    local maxP = math.min(perf.scenario.maxPoints or c.maxPointsPerAward, c.maxPointsPerAward)
+    local solo = #perf.performers == 1
+    local lines = {}
+    for _, x in ipairs(perf.performers) do
+        local p = Carnival.Participants.get(x.participantId)
+        local won = winners[x.participantId] == true
+        local points = solo and math.min(c.soloPoints, maxP) or (won and maxP or (perf.scenario.minPoints or 0))
+        lines[#lines + 1] = { participantId = x.participantId, name = p and p.display_name or '?', points = points, winner = won or solo, bonus = c.participationBonus }
+    end
+    commitLines(perf, lines, note, Carnival.Identity.SYSTEM)
+    local sessionId = perf.session_id
+    CreateThread(function() Carnival.Rotation.completeIfOvertime(sessionId, 'Show finished after the round timer') end)
+end
+
+local function openVote(perf)
+    if #perf.performers <= 1 then
+        finishSelfShow(perf, {}, 'Solo performance')
+        return
+    end
+    local c = cfg()
+    voting = { perfId = perf.id, endsAt = os.time() + c.voteSeconds, ballots = {} }
+    local candidates = U.map(perf.performers, function(x)
+        local p = Carnival.Participants.get(x.participantId)
+        return { participantId = x.participantId, name = p and p.display_name or '?', role = x.role }
+    end)
+    for _, g in ipairs(groupSources(perf.session_id)) do
+        Carnival.Push.send(g.src, 'theatre', { action = 'vote', performanceId = perf.id, title = perf.scenario.title, candidates = candidates,
+            endsAt = voting.endsAt, serverTime = os.time(), self = g.pid })
+    end
+end
+
+local function closeVote()
+    local perf = current
+    local v = voting
+    voting = nil
+    if not perf or not v or perf.id ~= v.perfId then return end
+    local tally, best = {}, 0
+    for _, cand in pairs(v.ballots) do
+        tally[cand] = (tally[cand] or 0) + 1
+        if tally[cand] > best then best = tally[cand] end
+    end
+    local winners, names = {}, {}
+    for pid, n in pairs(tally) do
+        if n == best and best > 0 then
+            winners[pid] = true
+            local p = Carnival.Participants.get(pid)
+            names[#names + 1] = p and p.display_name or '?'
+        end
+    end
+    finishSelfShow(perf, winners, ('Audience vote (%d ballots)'):format(U.count(v.ballots)))
+    for _, g in ipairs(groupSources(perf.session_id)) do
+        Carnival.Push.send(g.src, 'theatre', { action = 'vote_closed', winners = names })
+    end
+end
+
+Api.register('theatre.play', {
+    rate = 'action',
+    handler = function(ctx)
+        if not selfMode() then return nil, 'staff_only', 'Wait for the Puppet Master to call you on stage.' end
+        local p, session, msg = Carnival.Attractions.eligibility(ctx.source, ID)
+        if not p then return nil, session, msg end
+        if current and current.session_id == session.id then
+            return nil, 'busy', 'A show is already on stage. Watch, then vote for the best performer!'
+        end
+        if alreadyPerformed(session.id, p.id) then return nil, 'done', 'You have already performed. Stay and vote for the next show!' end
+        if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'paused', 'The carnival is paused.' end
+        if lobby and lobby.sessionId == session.id then
+            for _, pid in ipairs(lobby.cast) do if pid == p.id then return { startsIn = lobby.at - os.time(), cast = #lobby.cast } end end
+            lobby.cast[#lobby.cast + 1] = p.id
+            return { startsIn = math.max(0, lobby.at - os.time()), cast = #lobby.cast }
+        end
+        lobby = { sessionId = session.id, at = os.time() + cfg().lobbySeconds, cast = { p.id } }
+        for _, g in ipairs(groupSources(session.id)) do
+            Carnival.Push.notify(g.src, "The Puppet Master's Theatre", ('%s is taking the stage! Target the theatre within %ds to join the cast.'):format(p.display_name, cfg().lobbySeconds), 'inform', 'carnival_chime')
+        end
+        return { startsIn = cfg().lobbySeconds, cast = 1 }
+    end,
+})
+
+Api.register('theatre.vote', {
+    rate = 'action',
+    handler = function(ctx, payload)
+        local v = voting
+        if not v or not current or V.id(payload.performanceId) ~= v.perfId then return nil, 'closed', 'Voting has closed.' end
+        local p = Carnival.Participants.getBySource(ctx.source)
+        local session = Carnival.Rotation.sessionById(current.session_id)
+        if not p or not session or p.colour ~= session.colour or p.status ~= 'active' then return nil, 'forbidden', 'Only the audience at the theatre can vote.' end
+        local cand = V.id(payload.participantId)
+        local valid = false
+        for _, x in ipairs(current.performers) do if x.participantId == cand then valid = true end end
+        if not valid then return nil, 'invalid', 'Choose one of the performers.' end
+        if cand == p.id then return nil, 'invalid', 'You cannot vote for yourself.' end
+        if v.ballots[p.id] then return nil, 'duplicate', 'You have already voted.' end
+        v.ballots[p.id] = cand
+        -- close early once every online audience member has voted
+        local all = true
+        for _, g in ipairs(groupSources(current.session_id)) do
+            if not v.ballots[g.pid] then all = false end
+        end
+        if all then CreateThread(closeVote) end
+        return { voted = true }
+    end,
+})
+
+---------------------------------------------------------------------------
 -- Lifecycle
 ---------------------------------------------------------------------------
 Carnival.Attractions.register({
     id = ID,
     isBusy = function() return current ~= nil and (current.status == 'running' or current.status == 'paused') end,
+    onTimerExpired = function(session)
+        -- let a self-service show (and its vote) finish; it completes the visit afterwards
+        if lobby and lobby.sessionId == session.id then lobby = nil end
+        if current and current.selfRun and current.session_id == session.id and current.status ~= 'committed' then return 'hold' end
+        return 'complete'
+    end,
     onSessionEnd = function(session)
+        if lobby and lobby.sessionId == session.id then lobby = nil end
+        if current and current.session_id == session.id and current.selfRun then
+            voting = nil
+            if current.status ~= 'ended' then persist(current, { status = 'ended', ended_at = os.time() }) end
+            closeCards(current, 'The theatre is closing.')
+            finishSelfShow(current, {}, 'Session ended before the vote finished')
+            return
+        end
         if current and current.session_id == session.id and current.status ~= 'ended' then
             persist(current, { status = 'cancelled', ended_at = os.time(), judging_note = 'Session ended before judging' })
             closeCards(current, 'The theatre is closing.')
@@ -369,6 +558,7 @@ Carnival.Attractions.register({
         end
     end,
     onEventEnd = function()
+        lobby, voting = nil, nil
         if current and current.status ~= 'ended' then
             persist(current, { status = 'cancelled', ended_at = os.time(), judging_note = 'Event ended' })
             current = nil
@@ -384,18 +574,31 @@ Carnival.Attractions.register({
                 Carnival.Monitor.log('warning', 'recovery', 'theatre_performance_interrupted', { attractionId = ID, details = { performanceId = row.id } })
             end
             current = loadPerformance(row)
+            current.selfRun = row.operator_license == 'system'
         end
     end,
     staffSummary = function() return current and { performance = current.status, title = current.scenario.title } or nil end,
 })
 
 Carnival.onTick('theatre', function(now)
+    if Carnival.Events.state() ~= C.STATES.RUNNING then return end
+    if lobby and now >= lobby.at then
+        local l = lobby
+        lobby = nil
+        if not current then startSelfShow(l) end
+    end
     if current and current.status == 'running' and current.ends_at and now >= current.ends_at then
         persist(current, { status = 'ended', ended_at = now })
-        closeCards(current, 'Time! The Puppet Master is judging...')
+        closeCards(current, current.selfRun and 'Curtain! Vote for the best performer.' or 'Time! The Puppet Master is judging...')
         Carnival.Monitor.log('info', 'countdown', 'theatre_time_up', { attractionId = ID, details = { performanceId = current.id } })
         Carnival.Push.invalidate('theatre')
     end
+    -- self-run show that has ended (also after a restart) moves to the audience vote once
+    if current and current.selfRun and current.status == 'ended' and not current.voteOpened then
+        current.voteOpened = true
+        openVote(current)
+    end
+    if voting and now >= voting.endsAt then closeVote() end
 end)
 
 ---------------------------------------------------------------------------

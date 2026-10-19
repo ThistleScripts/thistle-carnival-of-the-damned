@@ -46,7 +46,7 @@ SCREENS.deception = function()
             description = 'Six performers were backstage. Three of them are lying. Pick the liars.',
             rules = 'Question each performer in character.', liarCount = 3,
             performers = {
-                { id = 'a', name = 'Bruno the Strongman', profile = 'Lifts anvils, cries at sad songs.' },
+                { id = 'a', name = 'Bruno the Strongman', profile = 'Lifts anvils, cries at sad songs.', statements = { 'I was lifting the anvil in the weights tent all evening.' } },
                 { id = 'b', name = 'Madame Twist', profile = 'Contortionist. Speaks only in whispers.' },
                 { id = 'c', name = 'Lady Ash', profile = 'The fire-eater. Never seen without her veil.' },
                 { id = 'd', name = 'Old Zelda', profile = 'Fortune teller.' },
@@ -72,10 +72,19 @@ SCREENS.horror = function(s)
     SetTimeout(20000, function() Carnival.nui('horror', { active = false }) end)
 end
 
-SCREENS.shooting = function()
-    Carnival.nui('shooting', { active = true, endsAt = now() + 30, serverTime = now(), hits = 4, shots = 6, total = 35, special = true })
-    SetTimeout(3000, function() Carnival.nui('shooting', { active = true, hit = { points = 15, bullseye = true }, total = 50, hits = 5 }) end)
-    SetTimeout(20000, function() Carnival.nui('shooting', { active = false }) end)
+SCREENS.shooting = function(s)
+    local a = s.attractions.shooting
+    Carnival.openView('shootingGame', {
+        preview = true, label = a.label, duration = (a.durationSeconds or 45) * 1000, lanes = a.lanes or 3,
+        lifetime = a.targetLifetimeMs or 2800, countdownMs = 3000,
+    })
+end
+
+SCREENS.vote = function()
+    Carnival.openView('theatreVote', {
+        preview = true, title = 'PREVIEW: The Reluctant Lion Tamer', endsAt = now() + 30, self = 0,
+        candidates = { { participantId = 1, name = 'Ada', role = 'Lion Tamer' }, { participantId = 2, name = 'Grace', role = 'Unionised Lion' } },
+    })
 end
 
 SCREENS.ticket = function()
@@ -93,7 +102,7 @@ function Preview.open(screen)
     local s = Carnival.Client.settings
     local fn = SCREENS[screen]
     if not s or not fn then
-        return lib.notify({ title = 'Carnival preview', description = 'Screens: wheel, fortune, deception, puppets, horror, shooting, ticket, leaderboard, hub', type = 'inform' })
+        return lib.notify({ title = 'Carnival preview', description = 'Screens: wheel, fortune, deception, puppets, vote, horror, shooting, ticket, leaderboard, hub', type = 'inform' })
     end
     fn(s)
     lib.notify({ title = 'Preview mode', description = 'Demo data only - nothing is sent to the server and no points are awarded.', type = 'inform' })
@@ -104,5 +113,5 @@ RegisterCommand('carnivalpreview', function(_, args)
 end, false)
 
 TriggerEvent('chat:addSuggestion', '/carnivalpreview', 'Preview a carnival game screen (staff)', {
-    { name = 'screen', help = 'wheel | fortune | deception | puppets | horror | shooting | ticket | leaderboard | hub' },
+    { name = 'screen', help = 'wheel | fortune | deception | puppets | vote | horror | shooting | ticket | leaderboard | hub' },
 })

@@ -125,10 +125,6 @@ function Cfg.referencedItems(tree)
     end
     for i, it in ipairs(tree.rewards.allowedItems or {}) do add(it, ('rewards.allowedItems.%d'):format(i)) end
     for i, it in ipairs(tree.rewards.prizeBox or {}) do add(it.item, ('rewards.prizeBox.%d.item'):format(i)) end
-    if a.shooting.provideWeapon then
-        add(a.shooting.weaponItem, 'attractions.shooting.weaponItem')
-        add(a.shooting.ammoItem, 'attractions.shooting.ammoItem')
-    end
     if a.horror.physicalTokens then
         for _, t in ipairs(C.TOKEN_TYPES) do add(C.TOKEN_ITEMS[t], 'attractions.horror.physicalTokens') end
     end
@@ -331,12 +327,9 @@ function Cfg.publicSettings()
         }
     end
     local sh = e.attractions.shooting
-    attractions.shooting.stand = sh.stand
-    attractions.shooting.maxDistanceFromStand = sh.maxDistanceFromStand
     attractions.shooting.durationSeconds = sh.durationSeconds
-    attractions.shooting.targets = U.map(sh.targets, function(t)
-        return { id = t.id, coords = t.coords, heading = t.heading, model = t.model, kind = t.kind, radius = t.radius, points = t.points }
-    end)
+    attractions.shooting.lanes = sh.lanes
+    attractions.shooting.targetLifetimeMs = sh.targetLifetimeMs
     local wh = e.attractions.wheel
     attractions.wheel.maxSpins = wh.maxSpins
     attractions.wheel.cooldownSeconds = wh.cooldownSeconds

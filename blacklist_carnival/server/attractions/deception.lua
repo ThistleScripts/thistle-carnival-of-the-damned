@@ -9,7 +9,9 @@ local Api = Carnival.Api
 local ID = 'deception'
 local OP = 'attractions.operate.deception'
 
-local current = nil  -- { row fields..., mystery, key = set, assignments = { [profileId] = { license, name } }, clues = { [clueId] = true } }
+local current = nil  -- { row fields..., mystery, key = set, assignments = { [profileId] = { license, name } } }
+local setupRound, commitRound
+local selfMode, finishSelf, everyoneSubmitted
 
 local function cfg() return Carnival.Config.get().attractions.deception end
 
@@ -21,7 +23,8 @@ end
 local function publicMystery(m)
     return {
         id = m.id, title = m.title, description = m.description, rules = m.rules, liarCount = m.liarCount,
-        performers = U.map(m.performers, function(p) return { id = p.id, name = p.name, profile = p.profile } end),
+        -- testimony is what each performer says aloud; whether they lie stays secret
+        performers = U.map(m.performers, function(p) return { id = p.id, name = p.name, profile = p.profile, statements = p.statements } end),
     }
 end
 
@@ -196,6 +199,17 @@ Api.register('deception.submit', {
             if not id then return nil, 'duplicate', 'That submission was already recorded.' end
             Carnival.Monitor.log('info', 'attraction', 'deception_submission', { participantId = p.id, attractionId = ID, details = { roundId = current.id, number = used + 1 } })
             Carnival.Push.invalidate('deception')
+            if selfMode() and everyoneSubmitted() then
+                local sessionId = current.session_id
+                CreateThread(function()
+                    Wait(5000)
+                    if current and current.session_id == sessionId and current.status == 'questioning' then
+                        finishSelf('Every investigator has accused')
+                        local s = Carnival.Rotation.sessionById(sessionId)
+                        if s and s.status == C.SESSION_STATUS.ACTIVE then Carnival.Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, 'Mystery solved') end
+                    end
+                end)
+            end
             return { submissionNumber = used + 1, remaining = cfg().maxSubmissions - used - 1 }
         end)
     end,
@@ -264,6 +278,22 @@ local function myBrief(ctx)
     return { assigned = out, mystery = { title = current.mystery.title, rules = current.mystery.rules }, status = current.status }
 end
 
+setupRound = function(session, m, actor, custom)
+    local key = {}
+    for _, p in ipairs(m.performers) do if p.isLiar then key[#key + 1] = p.id end end
+    local e = Carnival.Events.active
+    local id = Carnival.Db.insertRow('carnival_deception_rounds', {
+        event_id = e.id, session_id = session.id, mystery_id = m.id, mystery_snapshot = json.encode(m),
+        answer_key = json.encode(key), performer_assignments = '{}', status = 'setup',
+        operator_license = actor.license, created_at = os.time(),
+    })
+    if not id then return nil end
+    current = loadRound(Carnival.Db.single('SELECT * FROM carnival_deception_rounds WHERE id = ?', { id }))
+    Carnival.Audit.record(actor, 'deception_round_setup', { targetType = 'deception_round', targetId = id, details = { mystery = m.id, custom = custom } })
+    Carnival.Push.invalidate('deception')
+    return current
+end
+
 local function setup(ctx, payload)
     local session, code, msg = staffSession(ctx)
     if not session then return nil, code or 'no_session', msg or 'No group is at the hall right now.' end
@@ -284,18 +314,7 @@ local function setup(ctx, payload)
         if not found then return nil, 'invalid', 'Choose a mystery.' end
         m = U.deepCopy(found)
     end
-    local key = {}
-    for _, p in ipairs(m.performers) do if p.isLiar then key[#key + 1] = p.id end end
-    local e = Carnival.Events.active
-    local id = Carnival.Db.insertRow('carnival_deception_rounds', {
-        event_id = e.id, session_id = session.id, mystery_id = m.id, mystery_snapshot = json.encode(m),
-        answer_key = json.encode(key), performer_assignments = '{}', status = 'setup',
-        operator_license = ctx.actor.license, created_at = os.time(),
-    })
-    if not id then return nil, 'database_error' end
-    current = loadRound(Carnival.Db.single('SELECT * FROM carnival_deception_rounds WHERE id = ?', { id }))
-    Carnival.Audit.record(ctx.actor, 'deception_round_setup', { targetType = 'deception_round', targetId = id, details = { mystery = m.id, custom = payload.custom ~= nil } })
-    Carnival.Push.invalidate('deception')
+    if not setupRound(session, m, ctx.actor, payload.custom ~= nil) then return nil, 'database_error' end
     return staffState(ctx)
 end
 
@@ -417,12 +436,21 @@ local function commit(ctx, payload)
         if current.status == 'committed' then return { alreadyCommitted = true } end
         if current.status ~= 'closed' and current.status ~= 'revealed' then return nil, 'invalid', 'End questioning first.' end
         local note = payload.note and V.text(payload.note, 1000, true) or ''
+        local lines = commitRound(parseAdjustments(payload), note, ctx.actor)
+        if not lines then return { alreadyCommitted = true } end
+        return { lines = lines }
+    end)
+end
+
+-- Score the current round exactly once (closed or revealed). Returns lines or nil.
+commitRound = function(adjustments, note, actor)
+    do
         local n = Carnival.Db.update("UPDATE carnival_deception_rounds SET status = 'committed', committed_at = ?, judging_note = ? WHERE id = ? AND status IN ('closed', 'revealed')",
             { os.time(), note, current.id })
-        if not n or n < 1 then return { alreadyCommitted = true } end
+        if not n or n < 1 then return nil end
         local wasRevealed = current.status == 'revealed'
         current.status = 'committed'
-        local lines = computeResults(parseAdjustments(payload))
+        local lines = computeResults(adjustments)
         local session = Carnival.Rotation.sessionById(current.session_id)
         for _, l in ipairs(lines) do
             if l.auto ~= 0 then
@@ -430,7 +458,7 @@ local function commit(ctx, payload)
                     participantId = l.participantId, delta = l.auto, key = ('deception:%d:%d:auto'):format(current.id, l.participantId),
                     txType = l.auto > 0 and 'award' or 'penalty', source = 'deception_answer',
                     reason = ('%s: %d correct, %d wrong'):format(current.mystery.title, l.correct, l.incorrect),
-                    attractionId = ID, sessionId = current.session_id, roundNumber = session and session.round_number or nil, actor = ctx.actor,
+                    attractionId = ID, sessionId = current.session_id, roundNumber = session and session.round_number or nil, actor = actor,
                     publicReason = ('%d liar(s) unmasked'):format(l.correct),
                 })
             end
@@ -438,14 +466,14 @@ local function commit(ctx, payload)
                 Carnival.Scoring.award({
                     participantId = l.participantId, delta = l.judge, key = ('deception:%d:%d:judge'):format(current.id, l.participantId),
                     txType = 'bonus', source = 'deception_reasoning', reason = l.note or 'Reasoning judged by staff',
-                    attractionId = ID, sessionId = current.session_id, roundNumber = session and session.round_number or nil, actor = ctx.actor,
+                    attractionId = ID, sessionId = current.session_id, roundNumber = session and session.round_number or nil, actor = actor,
                     publicReason = 'Sharp reasoning',
                 })
             end
             Carnival.Db.update('UPDATE carnival_deception_submissions SET correct_count = ?, incorrect_count = ?, auto_points = ?, judge_points = ?, judge_note = ?, judged_by = ? WHERE id = ?',
-                { l.correct, l.incorrect, l.auto, l.judge, l.note, ctx.actor.license, l.submissionId })
+                { l.correct, l.incorrect, l.auto, l.judge, l.note, actor.license, l.submissionId })
         end
-        Carnival.Audit.record(ctx.actor, 'deception_results_committed', { targetType = 'deception_round', targetId = current.id, reason = note,
+        Carnival.Audit.record(actor, 'deception_results_committed', { targetType = 'deception_round', targetId = current.id, reason = note,
             details = { lines = #lines } })
         if not wasRevealed then
             current.status = 'revealed'
@@ -453,8 +481,58 @@ local function commit(ctx, payload)
             current.status = 'committed'
         end
         Carnival.Push.invalidate('deception')
-        return { lines = lines }
+        return lines
+    end
+end
+
+---------------------------------------------------------------------------
+-- Self-service: start on arrival, timed clues, automatic marking
+---------------------------------------------------------------------------
+selfMode = function() return cfg().mode == 'self' end
+
+local function startQuestioning()
+    local now = os.time()
+    persist({ status = 'questioning', questioning_started_at = now, questioning_ends_at = now + cfg().durationSeconds })
+    pushGroup('open')
+end
+
+-- Close, mark, reveal and complete the group's visit (self-service only).
+finishSelf = function(reason)
+    if not current or current.status == 'committed' then return end
+    if current.status == 'questioning' or current.status == 'setup' then
+        persist({ status = 'closed', questioning_ended_at = os.time() })
+    end
+    Carnival.withLock('deception:commit', function()
+        if current and current.status ~= 'committed' then commitRound({}, reason, Carnival.Identity.SYSTEM) end
     end)
+    Carnival.Monitor.log('info', 'attraction', 'deception_self_finished', { attractionId = ID, details = { reason = reason } })
+end
+
+local function releaseDueClues(now)
+    if not current or current.status ~= 'questioning' or not current.questioning_started_at then return end
+    local interval = cfg().clueIntervalSeconds
+    local due = math.floor((now - current.questioning_started_at) / interval)
+    local released = U.toSet(U.map(releasedClues(current.id), function(c) return c.clue_id end))
+    local n = U.count(released)
+    for _, clue in ipairs(current.mystery.clues or {}) do
+        if n >= due then break end
+        if not released[clue.id] then
+            Carnival.Db.insertRow('carnival_deception_clues', { round_id = current.id, clue_id = clue.id, clue_text = clue.text, released_by = 'system', released_at = now })
+            n = n + 1
+            pushGroup('clue')
+        end
+    end
+end
+
+everyoneSubmitted = function()
+    local session = current and Carnival.Rotation.sessionById(current.session_id)
+    if not session then return false end
+    local members = Carnival.Participants.members(session.colour, true)
+    if #members == 0 then return false end
+    for _, p in ipairs(members) do
+        if submissionCount(current.id, p.id) == 0 then return false end
+    end
+    return true
 end
 
 ---------------------------------------------------------------------------
@@ -466,8 +544,20 @@ Carnival.Attractions.register({
     onSessionStart = function(session)
         -- The previous group's committed round is no longer current.
         if current and current.status == 'committed' then current = nil end
+        if selfMode() and not current then
+            local m = mysteryById(cfg().defaultMystery) or cfg().mysteries[1]
+            if m and setupRound(session, U.deepCopy(m), Carnival.Identity.SYSTEM, false) then startQuestioning() end
+        end
+    end,
+    onTimerExpired = function()
+        if selfMode() and current and current.status ~= 'committed' then finishSelf('Round timer expired') end
+        return 'complete'
     end,
     onSessionEnd = function(session)
+        if selfMode() and current and current.session_id == session.id and current.status ~= 'committed' then
+            finishSelf('Group moved on')
+            return
+        end
         if current and current.session_id == session.id then
             if current.status == 'questioning' then persist({ status = 'closed', questioning_ended_at = os.time() }) end
             pushGroup('closed')
@@ -501,8 +591,16 @@ Carnival.Attractions.register({
 })
 
 Carnival.onTick('deception', function(now)
-    if current and current.status == 'questioning' and current.questioning_ends_at and now >= current.questioning_ends_at
-        and Carnival.Events.state() ~= C.STATES.PAUSED then
+    if Carnival.Events.state() == C.STATES.PAUSED then return end
+    if selfMode() then releaseDueClues(now) end
+    if current and current.status == 'questioning' and current.questioning_ends_at and now >= current.questioning_ends_at then
+        if selfMode() then
+            local sessionId = current.session_id
+            finishSelf('Questioning time is up')
+            local s = Carnival.Rotation.sessionById(sessionId)
+            if s and s.status == C.SESSION_STATUS.ACTIVE then Carnival.Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, 'Mystery solved (time up)') end
+            return
+        end
         persist({ status = 'closed', questioning_ended_at = now })
         pushGroup('closed')
         Carnival.Monitor.log('info', 'countdown', 'deception_questioning_closed', { attractionId = ID })

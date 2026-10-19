@@ -1,5 +1,7 @@
 # Event staff operating manual
 
+**Players run every attraction themselves** by targeting the attraction ped: the gallery game, wheel and fortune teller are instant; the theatre, Hall of Deception and House of Horrors start themselves when a player (or the arriving group) triggers them. Staff are ambient actors: perform, scare, lead fortune readings, and use the panel to monitor and fix problems. An attraction set to *staff* mode in the configurator uses the staff-run flow described below.
+
 Open the staff panel with `/carnivalstaff`. You only see the tools your role allows. **Minimise** lets you move around without closing it; **Report problem** sends a report to the monitoring log (and Discord, if configured).
 
 ## Before doors open
@@ -21,7 +23,7 @@ Open the staff panel with `/carnivalstaff`. You only see the tools your role all
 ## Attraction consoles
 
 ### Shooting Gallery
-Players join the queue at the stand (target interaction). Tick shooters or use *Start heat from queue*. During the heat you see hits/shots/bullseyes/specials live and any rejected hits. *Finish & score* awards points; *Reset* discards the heat (no points; reason required). A player shoots once per visit.
+Self-service: players target the gallery ped and play the aim game (one game per visit by default). The console shows who is playing, their live score, rejected shots, and results. *Allow replay* gives someone another go (reason required, audited).
 
 ### Wheel of Misfortune
 Players spin by themselves. Special prizes that need approval appear under *Awaiting approval* — approve (delivers immediately) or reject (reason). You can see every spin and each member's remaining spins.

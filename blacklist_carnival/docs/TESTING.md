@@ -6,9 +6,9 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 
 | Suite | Result |
 |---|---|
-| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **468 checks, 0 failures** |
-| Server integration (real server scripts, real database) | **51 tests, 51 passed** |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 14 tests passed** |
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **843 checks, 0 failures** (now also: every column the server writes exists in the schema) |
+| Server integration (real server scripts, real database) | **55 tests, 55 passed** (incl. a self-service event where no staff touch the attractions) |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 21 tests passed** |
 | `sql/schema.sql` imported twice into an empty MariaDB database | **36 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)

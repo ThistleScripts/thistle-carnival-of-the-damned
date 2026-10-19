@@ -156,34 +156,21 @@ S.root = { type = 'group', fields = {
 
     f('attractions', { type = 'group', label = 'Attractions', fields = {
         f('shooting', { type = 'group', label = C.ATTRACTION_LABELS.shooting, fields = baseAttraction({
-            f('autoStart', { type = 'bool', label = 'Start heats automatically when the queue is full' }),
-            f('durationSeconds', { type = 'int', label = 'Heat duration (s)', min = 10, max = 900 }),
-            f('stand', { type = 'vec4', label = 'Firing stand position', restart = true }),
-            f('maxDistanceFromStand', { type = 'number', label = 'Max distance from stand while shooting (m)', min = 0.5, max = 30, step = 0.5 }),
-            f('weapons', { type = 'list', label = 'Allowed weapons (GTA weapon names)', max = 10, item = { type = 'string', max = 48 } }),
-            f('provideWeapon', { type = 'bool', label = 'Provide a weapon for the heat' }),
-            f('weaponItem', { type = 'item', label = 'Provided weapon item', allowEmpty = true }),
-            f('ammoItem', { type = 'item', label = 'Provided ammo item', allowEmpty = true }),
-            f('ammoCount', { type = 'int', label = 'Ammo provided', min = 1, max = 500 }),
-            f('targetRespawnMs', { type = 'int', label = 'Target reset time (ms)', min = 250, max = 30000 }),
-            f('minHitIntervalMs', { type = 'int', label = 'Minimum time between accepted hits (ms)', min = 50, max = 5000 }),
-            f('bullseyeRadius', { type = 'number', label = 'Bullseye radius (m)', min = 0.02, max = 1, step = 0.01 }),
-            f('bullseyeBonus', { type = 'int', label = 'Bullseye bonus', min = 0, max = 1000 }),
-            f('specialBonus', { type = 'int', label = 'Special target bonus', min = 0, max = 1000 }),
-            f('specialIntervalSeconds', { type = 'int', label = 'Special target appears every (s)', min = 3, max = 300 }),
-            f('specialWindowSeconds', { type = 'int', label = 'Special target visible for (s)', min = 1, max = 60 }),
+            f('durationSeconds', { type = 'int', label = 'Game length (s)', min = 15, max = 300 }),
+            f('playsPerVisit', { type = 'int', label = 'Games per participant per visit', min = 1, max = 10 }),
+            f('targetCount', { type = 'int', label = 'Targets per game', min = 5, max = 200 }),
+            f('lanes', { type = 'int', label = 'Lanes', min = 1, max = 5 }),
+            f('targetLifetimeMs', { type = 'int', label = 'Time a target takes to cross (ms)', min = 600, max = 15000 }),
+            f('targetPoints', { type = 'int', label = 'Points per target', min = 0, max = 1000 }),
+            f('bullseyeBonus', { type = 'int', label = 'Bullseye bonus (centre ring)', min = 0, max = 1000 }),
+            f('specialChance', { type = 'int', label = 'Golden target chance (%)', min = 0, max = 100 }),
+            f('specialPoints', { type = 'int', label = 'Golden target points', min = 0, max = 1000 }),
+            f('decoyChance', { type = 'int', label = 'Spirit lantern (do not shoot) chance (%)', min = 0, max = 100 }),
+            f('decoyPenalty', { type = 'int', label = 'Penalty for shooting a lantern', min = 0, max = 1000 }),
             f('accuracyScoring', { type = 'bool', label = 'Accuracy bonus' }),
             f('accuracyBonusMax', { type = 'int', label = 'Accuracy bonus at 100%', min = 0, max = 1000 }),
             f('missPenalty', { type = 'int', label = 'Penalty per missed shot', min = 0, max = 100 }),
-            f('targets', { type = 'list', label = 'Targets', max = 40, itemLabel = 'id', restart = true, item = { type = 'group', fields = {
-                f('id', { type = 'string', label = 'ID', max = 32 }),
-                f('coords', { type = 'vec3', label = 'Position' }),
-                f('heading', { type = 'number', label = 'Heading', min = 0, max = 360, step = 1 }),
-                f('model', { type = 'model', label = 'Prop model', max = 64 }),
-                f('kind', { type = 'select', label = 'Type', options = { 'normal', 'special' } }),
-                f('points', { type = 'int', label = 'Points', min = 0, max = 1000 }),
-                f('radius', { type = 'number', label = 'Hit radius (m)', min = 0.05, max = 3, step = 0.05 }),
-            } } }),
+            f('minClickIntervalMs', { type = 'int', label = 'Minimum time between shots (ms)', min = 30, max = 2000 }),
         }) }),
 
         f('wheel', { type = 'group', label = C.ATTRACTION_LABELS.wheel, fields = baseAttraction({
@@ -233,6 +220,11 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('puppets', { type = 'group', label = C.ATTRACTION_LABELS.puppets, fields = baseAttraction({
+            f('mode', { type = 'select', label = 'Mode', options = { 'self', 'staff', 'both' },
+                help = 'self: players start shows at the ped and the audience votes. staff: a Puppet Master runs and judges every show.' }),
+            f('lobbySeconds', { type = 'int', label = 'Self-service: time for groupmates to join the cast (s)', min = 0, max = 120 }),
+            f('voteSeconds', { type = 'int', label = 'Self-service: audience voting time (s)', min = 10, max = 300 }),
+            f('soloPoints', { type = 'int', label = 'Self-service: points for a solo performance', min = 0, max = 10000 }),
             f('defaultDurationSeconds', { type = 'int', label = 'Default performance length (s)', min = 15, max = 1800 }),
             f('participationBonus', { type = 'int', label = 'Participation bonus', min = 0, max = 1000 }),
             f('maxPointsPerAward', { type = 'int', label = 'Maximum award per performer', min = 1, max = 10000 }),
@@ -252,6 +244,9 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('deception', { type = 'group', label = C.ATTRACTION_LABELS.deception, fields = baseAttraction({
+            f('mode', { type = 'select', label = 'Mode', options = { 'self', 'staff' },
+                help = 'self: the mystery starts when the group arrives, clues unlock over time and answers are marked automatically. staff: an operator runs it.' }),
+            f('clueIntervalSeconds', { type = 'int', label = 'Self-service: unlock a clue every (s)', min = 15, max = 3600 }),
             f('durationSeconds', { type = 'int', label = 'Questioning time (s)', min = 60, max = 7200 }),
             f('maxSubmissions', { type = 'int', label = 'Answer submissions per participant', min = 1, max = 10 }),
             f('defaultMystery', { type = 'string', label = 'Default mystery ID', max = 32 }),
@@ -272,7 +267,7 @@ S.root = { type = 'group', fields = {
                     f('id', { type = 'string', label = 'ID', max = 32 }),
                     f('name', { type = 'string', label = 'Name', max = 64 }),
                     f('profile', { type = 'text', label = 'Public profile', max = 600 }),
-                    f('statements', { type = 'list', label = 'Statements to maintain', max = 10, item = { type = 'text', max = 300 }, secret = true, secretPerm = 'deception.secrets' }),
+                    f('statements', { type = 'list', label = 'Testimony (shown to investigators; liars lie here)', max = 10, item = { type = 'text', max = 300 } }),
                     f('isLiar', { type = 'bool', label = 'Is a liar', secret = true, secretPerm = 'deception.secrets' }),
                     f('brief', { type = 'text', label = 'Private performer brief', max = 1500, secret = true, secretPerm = 'deception.secrets' }),
                 } } }),
@@ -284,6 +279,9 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('horror', { type = 'group', label = C.ATTRACTION_LABELS.horror, fields = baseAttraction({
+            f('mode', { type = 'select', label = 'Mode', options = { 'self', 'staff' },
+                help = 'self: players start a run at the entrance ped. staff: an allowlisted controller starts runs.' }),
+            f('lobbySeconds', { type = 'int', label = 'Self-service: gather time before the doors open (s)', min = 0, max = 120 }),
             f('entry', { type = 'vec4', label = 'Maze entry', restart = true }),
             f('exit', { type = 'vec4', label = 'Maze exit', restart = true }),
             f('exitRadius', { type = 'number', label = 'Exit radius (m)', min = 0.5, max = 15, step = 0.5 }),

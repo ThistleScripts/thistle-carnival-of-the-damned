@@ -43,6 +43,9 @@ function handlePush(channel: string, data: any) {
       }
       break;
     }
+    case 'shooting':
+      setState({ shooting: { ...data, receivedAt: Date.now() } });
+      break;
     case 'invalidate':
       if (Array.isArray(data)) invalidate(data);
       break;

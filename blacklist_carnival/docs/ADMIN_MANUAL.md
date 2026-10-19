@@ -48,7 +48,8 @@ Recovery tools (Events page, active event): reload state from the database, forc
 
 ### Attraction settings at a glance
 
-* **Shooting Gallery** — firing stand, allowed weapons, optional provided weapon/ammo (removed after the heat), heat duration, player limit, targets (position, model, kind, points, hit radius), bullseye radius/bonus, special target cadence/bonus, accuracy bonus, miss penalty, max score.
+* **Shooting Gallery** — aim game length, games per visit, simultaneous players (player limit), targets per game, lanes, crossing speed, points, bullseye bonus, golden target chance/points, spirit lantern chance/penalty, accuracy bonus, miss penalty, minimum time between shots, max score.
+* **Self-service vs staff modes** — Theatre, Hall of Deception and House of Horrors have a *Mode* setting. *self* (default) runs without staff; *staff* uses the operator consoles. Theatre self mode: lobby time, vote time, solo points. Deception self mode: clue unlock interval. Horror self mode: gather time before the doors open.
 * **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, staff approval), spins per participant, cooldown, animation length, first-spin bonus, auto-complete.
 * **Fortune Teller** — mode (automated / staff / both), questions per visit, visits, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes, roleplay award cap.
 * **Puppet Master's Theatre** — scenario library (category, difficulty, performer counts, time limit, points range, suggested roles), default length, participation bonus, max award.

@@ -119,10 +119,8 @@ end
 local ATTRACTION_OPTIONS = {
     shooting = function()
         return {
-            { name = 'carnival_shoot_join', icon = 'fa-solid fa-crosshairs', label = 'Join the firing line',
-                onSelect = function() Carnival.Shooting.join() end },
-            { name = 'carnival_shoot_leave', icon = 'fa-solid fa-person-walking-arrow-right', label = 'Leave the queue',
-                onSelect = function() Carnival.api('shooting.leave', {}) end },
+            { name = 'carnival_shoot_play', icon = 'fa-solid fa-crosshairs', label = 'Play the Shooting Gallery',
+                onSelect = function() Carnival.Shooting.play() end },
         }
     end,
     wheel = function()
@@ -134,18 +132,16 @@ local ATTRACTION_OPTIONS = {
             onSelect = function() Carnival.Fortune.begin() end } }
     end,
     puppets = function()
-        return { { name = 'carnival_theatre', icon = 'fa-solid fa-masks-theater', label = 'Take a seat at the theatre',
-            onSelect = function()
-                lib.notify({ title = 'The Puppet Master\'s Theatre', description = 'Wait to be called on stage. Your scenario card will appear when the Puppet Master chooses you.', type = 'inform' })
-            end } }
+        return { { name = 'carnival_theatre', icon = 'fa-solid fa-masks-theater', label = 'Take the stage',
+            onSelect = function() Carnival.Theatre.play() end } }
     end,
     deception = function()
         return { { name = 'carnival_deception', icon = 'fa-solid fa-user-secret', label = 'Use the accusation terminal',
             onSelect = function() Carnival.Deception.open() end } }
     end,
     horror = function()
-        return { { name = 'carnival_horror', icon = 'fa-solid fa-skull', label = 'The House of Horrors',
-            onSelect = function() Carnival.Horror.info() end } }
+        return { { name = 'carnival_horror', icon = 'fa-solid fa-skull', label = 'Enter the House of Horrors',
+            onSelect = function() Carnival.Horror.enter() end } }
     end,
 }
 

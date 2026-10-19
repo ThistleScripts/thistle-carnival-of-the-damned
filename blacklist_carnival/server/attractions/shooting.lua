@@ -1,375 +1,283 @@
--- Attraction: The Shooting Gallery.
+-- Attraction: The Shooting Gallery (self-service mouse-aim mini-game).
 --
--- GTA/FiveM gives the server no authoritative record of where a bullet landed on
--- a client-side prop, so clients REPORT potential hits (target id + impact point)
--- and the server decides whether to accept them:
---   * heat running, shooter registered in the heat, event running
---   * shooter standing at the firing stand (server-side ped position)
---   * an allowed weapon is selected (server-side GetSelectedPedWeapon)
---   * impact point within the configured target radius (bullseye radius for bonus)
---   * target is up for that shooter (per-target reset timer), special targets
---     only while the server has them active
---   * minimum time between accepted hits, hit count bounded by ammo
--- Points are accumulated server-side and awarded once per shooter per heat.
--- Remaining limitation: a modified client could fabricate plausible impact
--- coordinates while standing at the stand holding the right weapon; the caps
--- above bound the damage and every hit is logged for review.
+-- A player targets the gallery ped and the NUI opens a shooting game: targets
+-- slide across lanes and the player aims with the mouse and clicks to shoot.
+--
+-- The server owns the game:
+--   * it generates the target schedule (spawn time, lane, direction, kind) and
+--     sends it to the client to render
+--   * every click is reported; a hit only counts if that target exists, was on
+--     screen at that moment by the SERVER clock (with a latency allowance), has
+--     not been hit before, and the click rate is plausible
+--   * points, accuracy and the final award are calculated on the server and the
+--     award is written once per game
+-- Remaining limitation: a modified client could auto-click targets perfectly
+-- (an aimbot for a 2D game); scores are still bounded by the schedule and caps.
 
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
 local Api = Carnival.Api
 local ID = 'shooting'
 local OP = 'attractions.operate.shooting'
 
-local heat = nil
-local queue = {}   -- ordered list of participant ids waiting at the stand
+local COUNTDOWN_MS = 3000      -- "3, 2, 1" before targets appear
+local LATENCY_MS = 1500        -- allowance for a click reaching the server late
+local EARLY_MS = 250           -- allowance for clocks drifting the other way
+
+local games = {}   -- [participantId] = game
 
 local function cfg() return Carnival.Config.get().attractions.shooting end
-
-local function targetById(id)
-    for _, t in ipairs(cfg().targets) do if t.id == id then return t end end
-    return nil
-end
-
 local function nowMs() return GetGameTimer() end
 
-local function heatSources()
-    local out = {}
-    if not heat then return out end
-    for pid in pairs(heat.shooters) do
-        local s = Carnival.Participants.sourceOf(pid)
-        if s then out[#out + 1] = s end
+local function gamesPlayed(sessionId, pid)
+    return Carnival.Db.scalar('SELECT COUNT(*) FROM carnival_shooting_results WHERE session_id = ? AND participant_id = ?', { sessionId, pid }) or 0
+end
+
+local function liveCount()
+    local n = 0
+    for _, g in pairs(games) do if not g.finished then n = n + 1 end end
+    return n
+end
+
+-- Elapsed game time by the server clock (negative during the countdown).
+local function elapsed(g)
+    local now = g.pausedAtMs or nowMs()
+    return now - g.startMs - COUNTDOWN_MS
+end
+
+local function buildPlan(c)
+    local duration = c.durationSeconds * 1000
+    local plan, byId = {}, {}
+    local span = math.max(1, duration - c.targetLifetimeMs)
+    for i = 1, c.targetCount do
+        local roll = math.random(100)
+        local kind = 'normal'
+        if roll <= c.specialChance then
+            kind = 'special'
+        elseif roll <= c.specialChance + c.decoyChance then
+            kind = 'decoy'
+        end
+        local life = kind == 'special' and math.floor(c.targetLifetimeMs * 0.65) or c.targetLifetimeMs
+        local base = math.floor((i - 1) * span / c.targetCount)
+        local jitter = math.random(0, math.max(1, math.floor(span / c.targetCount)))
+        local t = {
+            id = i, t = math.max(0, math.min(base + jitter, duration - life)), life = life, kind = kind,
+            lane = math.random(c.lanes), dir = math.random(2) == 1 and 1 or -1,
+        }
+        plan[#plan + 1] = t
+        byId[i] = t
     end
-    return out
+    return plan, byId
 end
 
-local function push(data)
-    for _, s in ipairs(heatSources()) do Carnival.Push.send(s, 'shooting', data) end
-end
-
-local function alreadyShot(sessionId, pid)
-    return (Carnival.Db.scalar('SELECT COUNT(*) FROM carnival_shooting_results WHERE session_id = ? AND participant_id = ?', { sessionId, pid }) or 0) > 0
-end
-
-local function removeFromQueue(pid)
-    for i = #queue, 1, -1 do if queue[i] == pid then table.remove(queue, i) end end
-end
-
-local function weaponHashes()
-    local set = {}
-    for _, w in ipairs(cfg().weapons) do set[GetHashKey(w)] = true end
-    return set
-end
-
-local function provideWeapons(pid)
-    local c = cfg()
-    if not c.provideWeapon then return end
-    local s = Carnival.Participants.sourceOf(pid)
-    if not s then return end
-    local ok = Carnival.Inventory.addItem(s, c.weaponItem, 1, { carnivalHeat = heat.id, serial = 'CARNIVAL' })
-    if ok and c.ammoItem ~= '' then Carnival.Inventory.addItem(s, c.ammoItem, c.ammoCount) end
-    heat.shooters[pid].provided = ok
-end
-
-local function reclaimWeapons(pid)
-    local c = cfg()
-    local sh = heat and heat.shooters[pid]
-    if not sh or not sh.provided then return end
-    local s = Carnival.Participants.sourceOf(pid)
-    if not s then return end
-    Carnival.Inventory.removeItem(s, c.weaponItem, 1, { carnivalHeat = heat.id })
-    if c.ammoItem ~= '' then
-        local have = Carnival.Inventory.count(s, c.ammoItem)
-        local take = math.min(have, c.ammoCount)
-        if take > 0 then Carnival.Inventory.removeItem(s, c.ammoItem, take) end
-    end
-    sh.provided = false
-end
-
-local function publicHeat()
-    if not heat then return nil end
-    local shooters = {}
-    for pid, sh in pairs(heat.shooters) do
-        local p = Carnival.Participants.get(pid)
-        shooters[#shooters + 1] = { id = pid, name = p and p.display_name or '?', hits = sh.hits, shots = sh.shots, bullseyes = sh.bullseyes,
-            specials = sh.specials, points = sh.targetPoints, rejected = sh.rejected, online = Carnival.Participants.sourceOf(pid) ~= nil }
-    end
-    table.sort(shooters, function(a, b) return a.points > b.points end)
-    return { id = heat.id, status = heat.status, endsAt = heat.endsAt, remaining = heat.pausedRemaining, shooters = shooters, serverTime = os.time() }
+local function publicGame(g)
+    return {
+        gameId = g.id, duration = g.duration, lanes = g.lanes, countdownMs = COUNTDOWN_MS,
+        elapsedMs = elapsed(g), plan = g.plan, total = g.points, hits = g.hits, shots = g.shots,
+        hitIds = U.keys(g.hit), label = cfg().label,
+    }
 end
 
 ---------------------------------------------------------------------------
--- Heat lifecycle
+-- Finishing a game
 ---------------------------------------------------------------------------
-local function startHeat(actor, pids)
-    local session = Carnival.Rotation.activeSessionFor(ID)
-    if not session then return nil, 'no_session', 'No group is at the Shooting Gallery.' end
-    if heat and (heat.status == 'running' or heat.status == 'paused') then return nil, 'invalid', 'A heat is already running.' end
-    local e = Carnival.Events.active
-    if not e or e.state ~= C.STATES.RUNNING then return nil, 'not_live', 'The event must be running.' end
+local function maybeCompleteSession(sessionId)
+    local session = Carnival.Rotation.sessionById(sessionId)
+    if not session or session.status ~= C.SESSION_STATUS.ACTIVE then return end
+    local members = Carnival.Participants.members(session.colour, true)
+    if #members == 0 then return end
+    for _, p in ipairs(members) do
+        if gamesPlayed(sessionId, p.id) < 1 then return end
+    end
+    for _, g in pairs(games) do if g.sessionId == sessionId and not g.finished then return end end
+    Carnival.Rotation.completeSession(sessionId, Carnival.Identity.SYSTEM, 'Every member of the group has played')
+end
+
+local function finishGame(g, reason)
+    if g.finished then return g.result end
+    g.finished = true
     local c = cfg()
-    if not pids or #pids == 0 then
-        pids = {}
-        for i = 1, math.min(c.maxPlayers, #queue) do pids[i] = queue[i] end
-    end
-    if #pids == 0 then return nil, 'invalid', 'Nobody is waiting at the stand.' end
-    if #pids > c.maxPlayers then return nil, 'invalid', ('At most %d shooters per heat.'):format(c.maxPlayers) end
-    for _, pid in ipairs(pids) do
-        local p = Carnival.Participants.get(pid)
-        if not p or p.status ~= 'active' or p.colour ~= session.colour then return nil, 'invalid', 'Shooters must be members of the group at the gallery.' end
-        if not Carnival.Participants.sourceOf(pid) then return nil, 'invalid', (p.display_name .. ' is offline.') end
-        if alreadyShot(session.id, pid) then return nil, 'invalid', (p.display_name .. ' has already shot this round.') end
-    end
-    local now = os.time()
-    local id = Carnival.Db.insertRow('carnival_shooting_heats', {
-        event_id = e.id, session_id = session.id, status = 'running', duration_seconds = c.durationSeconds,
-        started_by = actor.license, started_at = now,
+    local accuracy = g.shots > 0 and (g.hits / g.shots) or 0
+    local accBonus = (c.accuracyScoring and g.hits > 0) and math.floor(c.accuracyBonusMax * accuracy) or 0
+    local penalty = math.max(0, g.shots - g.hits - g.decoys) * c.missPenalty
+    local total = g.points + accBonus - penalty
+    Carnival.Db.update("UPDATE carnival_shooting_heats SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?", { os.time(), reason, g.id })
+    local rid = Carnival.Db.insertRow('carnival_shooting_results', {
+        event_id = g.eventId, heat_id = g.id, session_id = g.sessionId, participant_id = g.pid,
+        hits = g.hits, shots = g.shots, bullseyes = g.bullseyes, specials = g.specials, target_points = g.points,
+        accuracy_bonus = accBonus, miss_penalty = penalty, points = total, rejected_hits = g.rejected, created_at = os.time(),
     })
-    if not id then return nil, 'database_error' end
-    heat = { id = id, sessionId = session.id, status = 'running', startedAt = now, endsAt = now + c.durationSeconds, shooters = {},
-        special = nil, nextSpecialAt = now + c.specialIntervalSeconds }
-    for _, pid in ipairs(pids) do
-        heat.shooters[pid] = { hits = 0, shots = 0, bullseyes = 0, specials = 0, targetPoints = 0, rejected = 0, lastHitMs = nil, down = {} }
-        removeFromQueue(pid)
-        provideWeapons(pid)
-    end
-    push({ action = 'start', heatId = id, endsAt = heat.endsAt, serverTime = now, duration = c.durationSeconds })
-    Carnival.Monitor.log('info', 'attraction', 'shooting_heat_started', { attractionId = ID, actor = actor, details = { heatId = id, shooters = #pids } })
-    Carnival.Push.invalidate('shooting')
-    return publicHeat()
-end
-
-local function finishHeat(actor, reason)
-    if not heat or (heat.status ~= 'running' and heat.status ~= 'paused') then return nil, 'invalid', 'No heat is running.' end
-    local c = cfg()
-    heat.status = 'ended'
-    Carnival.Db.update("UPDATE carnival_shooting_heats SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?", { os.time(), reason, heat.id })
-    local session = Carnival.Rotation.sessionById(heat.sessionId)
-    local results = {}
-    for pid, sh in pairs(heat.shooters) do
-        local shots = math.max(sh.shots, sh.hits)
-        if c.provideWeapon then shots = math.min(shots, c.ammoCount) end
-        local accuracy = shots > 0 and (sh.hits / shots) or 0
-        local accBonus = (c.accuracyScoring and sh.hits > 0) and math.floor(c.accuracyBonusMax * accuracy) or 0
-        local penalty = math.max(0, shots - sh.hits) * c.missPenalty
-        local total = sh.targetPoints + accBonus - penalty
-        local rid = Carnival.Db.insertRow('carnival_shooting_results', {
-            event_id = Carnival.Events.activeId(), heat_id = heat.id, session_id = heat.sessionId, participant_id = pid,
-            hits = sh.hits, shots = shots, bullseyes = sh.bullseyes, specials = sh.specials, target_points = sh.targetPoints,
-            accuracy_bonus = accBonus, miss_penalty = penalty, points = total, rejected_hits = sh.rejected, created_at = os.time(),
+    local applied = 0
+    if rid and total ~= 0 then
+        local session = Carnival.Rotation.sessionById(g.sessionId)
+        local ok, tx = Carnival.Scoring.award({
+            participantId = g.pid, delta = total, key = ('shooting:%d:%d'):format(g.id, g.pid), txType = total > 0 and 'award' or 'penalty',
+            source = 'shooting_game', reason = ('%d hits / %d shots, %d bullseyes, %d golden, %d lanterns'):format(g.hits, g.shots, g.bullseyes, g.specials, g.decoys),
+            attractionId = ID, sessionId = g.sessionId, roundNumber = session and session.round_number or nil, publicReason = 'Shooting Gallery',
         })
-        local applied = 0
-        if rid and total ~= 0 then
-            local ok, tx = Carnival.Scoring.award({
-                participantId = pid, delta = total, key = ('shooting:%d:%d'):format(heat.id, pid), txType = total > 0 and 'award' or 'penalty',
-                source = 'shooting_heat', reason = ('%d hits / %d shots, %d bullseyes, %d specials'):format(sh.hits, shots, sh.bullseyes, sh.specials),
-                attractionId = ID, sessionId = heat.sessionId, roundNumber = session and session.round_number or nil, publicReason = 'Shooting Gallery',
-            })
-            if ok then applied = tx.delta end
-        end
-        reclaimWeapons(pid)
-        local s = Carnival.Participants.sourceOf(pid)
-        if s then
-            Carnival.Push.send(s, 'shooting', { action = 'result', hits = sh.hits, shots = shots, bullseyes = sh.bullseyes, specials = sh.specials,
-                accuracy = math.floor(accuracy * 100), accuracyBonus = accBonus, penalty = penalty, points = applied })
-        end
-        results[#results + 1] = { participantId = pid, points = applied }
+        if ok then applied = tx.delta end
     end
-    push({ action = 'end', reason = reason })
-    Carnival.Monitor.log('info', 'attraction', 'shooting_heat_finished', { attractionId = ID, actor = actor, result = reason, details = { heatId = heat.id, results = results } })
+    g.result = {
+        gameId = g.id, points = applied, targetPoints = g.points, hits = g.hits, shots = g.shots, bullseyes = g.bullseyes,
+        specials = g.specials, decoys = g.decoys, accuracy = math.floor(accuracy * 100), accuracyBonus = accBonus, penalty = penalty,
+    }
+    Carnival.Monitor.log('info', 'attraction', 'shooting_game_finished', { participantId = g.pid, attractionId = ID, result = reason, details = g.result })
+    if games[g.pid] == g then games[g.pid] = nil end
     Carnival.Push.invalidate('shooting')
-    return { results = results }
-end
-
-local function resetHeat(actor, reason)
-    if not heat then return nil, 'invalid', 'No heat to reset.' end
-    for pid in pairs(heat.shooters) do reclaimWeapons(pid) end
-    Carnival.Db.update("UPDATE carnival_shooting_heats SET status = 'reset', ended_at = ?, end_reason = ? WHERE id = ?", { os.time(), 'reset: ' .. reason, heat.id })
-    push({ action = 'end', reason = 'reset' })
-    Carnival.Audit.record(actor, 'shooting_heat_reset', { targetType = 'shooting_heat', targetId = heat.id, reason = reason })
-    heat = nil
-    Carnival.Push.invalidate('shooting')
-    return true
+    local src = Carnival.Participants.sourceOf(g.pid)
+    if src then Carnival.Push.send(src, 'shooting', { action = 'result', result = g.result }) end
+    CreateThread(function()
+        maybeCompleteSession(g.sessionId)
+        local busy = false
+        for _, other in pairs(games) do if other.sessionId == g.sessionId and not other.finished then busy = true end end
+        if not busy then Carnival.Rotation.completeIfOvertime(g.sessionId, 'Last game finished after the round timer') end
+    end)
+    return g.result
 end
 
 ---------------------------------------------------------------------------
--- Hit validation
+-- Player actions
 ---------------------------------------------------------------------------
-local function reject(src, sh, pid, why, details)
-    if sh then sh.rejected = sh.rejected + 1 end
-    Carnival.Monitor.log(why == 'target_down' and 'debug' or 'warning', why == 'target_down' and 'attraction' or 'security', 'shooting_hit_rejected', {
-        participantId = pid, attractionId = ID, actor = Carnival.Identity.actor(src), result = why, details = details,
-    })
+local function start(src)
+    local p, session, msg = Carnival.Attractions.eligibility(src, ID)
+    if not p then return nil, session, msg end
+    if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'paused', 'The carnival is paused.' end
+    local c = cfg()
+    return Carnival.withLock('shooting:' .. p.id, function()
+        local g = games[p.id]
+        if g and not g.finished then return publicGame(g) end -- resume after closing the screen
+        if gamesPlayed(session.id, p.id) >= c.playsPerVisit then
+            return nil, 'already_shot', 'You have already had your turn at the gallery.'
+        end
+        if liveCount() >= c.maxPlayers then return nil, 'busy', 'Every stall is taken. Try again in a moment.' end
+        local id = Carnival.Db.insertRow('carnival_shooting_heats', {
+            event_id = p.event_id, session_id = session.id, status = 'running', duration_seconds = c.durationSeconds,
+            started_by = Carnival.Identity.license(src), started_at = os.time(),
+        })
+        if not id then return nil, 'database_error', 'The gallery is jammed. Try again.' end
+        local plan, byId = buildPlan(c)
+        g = {
+            id = id, pid = p.id, eventId = p.event_id, sessionId = session.id, startMs = nowMs(), duration = c.durationSeconds * 1000,
+            lanes = c.lanes, plan = plan, byId = byId, hit = {}, shots = 0, hits = 0, bullseyes = 0, specials = 0, decoys = 0,
+            points = 0, rejected = 0, lastShotMs = nil,
+        }
+        games[p.id] = g
+        Carnival.Monitor.log('info', 'attraction', 'shooting_game_started', { participantId = p.id, attractionId = ID, details = { gameId = id, targets = #plan } })
+        Carnival.Push.invalidate('shooting')
+        return publicGame(g)
+    end)
+end
+
+local function reject(g, pid, why)
+    g.rejected = g.rejected + 1
+    local sev = (why == 'already_hit' or why == 'off_screen') and 'debug' or 'warning'
+    Carnival.Monitor.log(sev, sev == 'warning' and 'security' or 'attraction', 'shooting_shot_rejected', { participantId = pid, attractionId = ID, result = why })
     return nil, why
 end
 
-local function hit(src, payload)
-    if not heat or heat.status ~= 'running' or V.id(payload.heatId) ~= heat.id then return nil, 'stale' end
-    if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'paused' end
+local function shot(src, payload)
     local pid = Carnival.Participants.idOfSource(src)
-    local sh = pid and heat.shooters[pid]
-    if not sh then return reject(src, nil, pid, 'not_in_heat') end
+    local g = pid and games[pid]
+    if not g or g.finished or V.id(payload.gameId) ~= g.id then return nil, 'stale', 'That game has ended.' end
+    if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'paused', 'The carnival is paused.' end
     local c = cfg()
-    local t = type(payload.targetId) == 'string' and targetById(payload.targetId)
-    if not t then return reject(src, sh, pid, 'unknown_target') end
-    local impact = V.vec3(payload.impact)
-    if not impact then return reject(src, sh, pid, 'bad_impact') end
-    if type(payload.shots) == 'number' then
-        sh.shots = math.max(sh.shots, math.min(math.floor(payload.shots), 500))
-    end
-
-    local stand = c.stand
-    local near, d = Carnival.Identity.within(src, stand, c.maxDistanceFromStand + 1.0)
-    if not near then return reject(src, sh, pid, 'not_at_stand', { distance = d and U.round(d, 1) }) end
-    local ped = GetPlayerPed(src)
-    local weapon = GetSelectedPedWeapon(ped)
-    if not weaponHashes()[weapon] then return reject(src, sh, pid, 'wrong_weapon') end
-
+    local at = elapsed(g)
+    if at < -EARLY_MS then return reject(g, pid, 'before_start') end
+    if at > g.duration + LATENCY_MS then return nil, 'time_up', 'Time is up.' end
     local ms = nowMs()
-    if sh.lastHitMs and ms - sh.lastHitMs < c.minHitIntervalMs then return reject(src, sh, pid, 'too_fast') end
-    if (sh.down[t.id] or 0) > ms then return reject(src, sh, pid, 'target_down') end
-    if t.kind == 'special' and not (heat.special and heat.special.id == t.id and os.time() <= heat.special['until']) then
-        return reject(src, sh, pid, 'special_not_active')
-    end
-    local dist = U.dist3(impact, t.coords)
-    if dist > t.radius + 0.15 then return reject(src, sh, pid, 'missed_target', { distance = U.round(dist, 2) }) end
-    local shooterPos = Carnival.Identity.pedCoords(src)
-    if shooterPos and U.dist3(shooterPos, impact) > 80 then return reject(src, sh, pid, 'implausible_impact') end
-    local maxHits = c.provideWeapon and c.ammoCount or (c.durationSeconds * 5)
-    if sh.hits >= maxHits then return reject(src, sh, pid, 'hit_cap') end
+    if g.lastShotMs and ms - g.lastShotMs < c.minClickIntervalMs then return reject(g, pid, 'too_fast') end
+    g.lastShotMs = ms
+    if g.shots >= c.targetCount * 4 then return reject(g, pid, 'shot_cap') end
+    g.shots = g.shots + 1
 
-    sh.lastHitMs = ms
-    sh.down[t.id] = ms + c.targetRespawnMs
-    sh.hits = sh.hits + 1
-    local points = t.points
-    local bullseye = dist <= c.bullseyeRadius
-    if bullseye then
-        points = points + c.bullseyeBonus
-        sh.bullseyes = sh.bullseyes + 1
+    local tid = payload.targetId ~= nil and V.int(payload.targetId, 1, c.targetCount) or nil
+    if not tid then return { hit = false, total = g.points, shots = g.shots, hits = g.hits } end -- a miss
+    local t = g.byId[tid]
+    if not t then return reject(g, pid, 'unknown_target') end
+    if g.hit[tid] then return reject(g, pid, 'already_hit') end
+    if at < t.t - EARLY_MS or at > t.t + t.life + LATENCY_MS then return reject(g, pid, 'off_screen') end
+    g.hit[tid] = true
+    local points
+    if t.kind == 'decoy' then
+        points = -c.decoyPenalty
+        g.decoys = g.decoys + 1
+    elseif t.kind == 'special' then
+        points = c.specialPoints
+        g.specials = g.specials + 1
+        g.hits = g.hits + 1
+    else
+        local bull = payload.ring == 'inner'
+        points = c.targetPoints + (bull and c.bullseyeBonus or 0)
+        if bull then g.bullseyes = g.bullseyes + 1 end
+        g.hits = g.hits + 1
     end
-    if t.kind == 'special' then
-        points = points + c.specialBonus
-        sh.specials = sh.specials + 1
-        heat.special = nil
-        push({ action = 'special_end', targetId = t.id })
-    end
-    sh.targetPoints = sh.targetPoints + points
-    Carnival.Push.invalidate('shooting')
-    return { targetId = t.id, points = points, bullseye = bullseye, special = t.kind == 'special', total = sh.targetPoints, hits = sh.hits, downMs = c.targetRespawnMs }
+    g.points = g.points + points
+    return { hit = true, targetId = tid, kind = t.kind, points = points, total = g.points, shots = g.shots, hits = g.hits }
 end
 
 ---------------------------------------------------------------------------
--- Ticker
+-- Ticker & lifecycle
 ---------------------------------------------------------------------------
-Carnival.onTick('shooting', function(now)
-    if not heat or heat.status ~= 'running' or Carnival.Events.state() ~= C.STATES.RUNNING then return end
-    local c = cfg()
-    if heat.special and now > heat.special['until'] then
-        push({ action = 'special_end', targetId = heat.special.id })
-        heat.special = nil
+Carnival.onTick('shooting', function()
+    if Carnival.Events.state() ~= C.STATES.RUNNING then return end
+    for _, g in pairs(games) do
+        if not g.finished and elapsed(g) > g.duration + LATENCY_MS then finishGame(g, 'time') end
     end
-    if not heat.special and now >= heat.nextSpecialAt then
-        local specials = U.filter(c.targets, function(t) return t.kind == 'special' end)
-        if #specials > 0 then
-            local t = specials[math.random(#specials)]
-            heat.special = { id = t.id, ['until'] = now + c.specialWindowSeconds }
-            push({ action = 'special', targetId = t.id, ['until'] = heat.special['until'], serverTime = now })
-        end
-        heat.nextSpecialAt = now + c.specialIntervalSeconds
-    end
-    if now >= heat.endsAt then finishHeat(nil, 'time') end
 end)
 
----------------------------------------------------------------------------
--- Lifecycle
----------------------------------------------------------------------------
+local function finishAll(reason, sessionId)
+    for _, g in pairs(games) do
+        if not g.finished and (not sessionId or g.sessionId == sessionId) then finishGame(g, reason) end
+    end
+end
+
 Carnival.Attractions.register({
     id = ID,
-    isBusy = function() return heat ~= nil and (heat.status == 'running' or heat.status == 'paused') end,
-    onTimerExpired = function()
-        if heat and (heat.status == 'running' or heat.status == 'paused') then return 'hold' end
+    isBusy = function() return liveCount() > 0 end,
+    onTimerExpired = function(session)
+        -- games in progress finish first; the last one completes the visit
+        for _, g in pairs(games) do if g.sessionId == session.id and not g.finished then return 'hold' end end
         return 'complete'
     end,
-    onSessionStart = function() queue = {} if heat and heat.status == 'ended' then heat = nil end end,
-    onSessionEnd = function(session)
-        if heat and heat.sessionId == session.id and (heat.status == 'running' or heat.status == 'paused') then
-            finishHeat(nil, 'session_ended')
-        end
-        queue = {}
-    end,
+    onSessionEnd = function(session) finishAll('session_ended', session.id) end,
     onPause = function()
-        if heat and heat.status == 'running' then
-            heat.status = 'paused'
-            heat.pausedRemaining = math.max(0, heat.endsAt - os.time())
-            push({ action = 'paused', remaining = heat.pausedRemaining })
-        end
+        for _, g in pairs(games) do g.pausedAtMs = nowMs() end
     end,
     onResume = function()
-        if heat and heat.status == 'paused' then
-            heat.status = 'running'
-            heat.endsAt = os.time() + (heat.pausedRemaining or 0)
-            heat.pausedRemaining = nil
-            push({ action = 'start', heatId = heat.id, endsAt = heat.endsAt, serverTime = os.time(), duration = cfg().durationSeconds })
+        for _, g in pairs(games) do
+            if g.pausedAtMs then
+                g.startMs = g.startMs + (nowMs() - g.pausedAtMs)
+                g.pausedAtMs = nil
+            end
+            local src = Carnival.Participants.sourceOf(g.pid)
+            if src then Carnival.Push.send(src, 'shooting', { action = 'sync', elapsedMs = elapsed(g) }) end
         end
     end,
     onEventEnd = function()
-        if heat and (heat.status == 'running' or heat.status == 'paused') then resetHeat(Carnival.Identity.SYSTEM, 'event ended') end
-        heat, queue = nil, {}
-    end,
-    onPlayerDropped = function(src, p)
-        removeFromQueue(p.id)
+        finishAll('event_ended')
+        games = {}
     end,
     recover = function(e)
-        heat, queue = nil, {}
+        games = {}
         local n = Carnival.Db.update("UPDATE carnival_shooting_heats SET status = 'interrupted', ended_at = ?, end_reason = 'server_restart' WHERE event_id = ? AND status = 'running'", { os.time(), e.id })
-        if n and n > 0 then Carnival.Monitor.log('warning', 'recovery', 'shooting_heat_interrupted', { attractionId = ID, details = { heats = n } }) end
+        if n and n > 0 then Carnival.Monitor.log('warning', 'recovery', 'shooting_game_interrupted', { attractionId = ID, details = { games = n } }) end
     end,
-    staffSummary = function()
-        return { queue = #queue, heat = heat and heat.status or nil }
-    end,
+    staffSummary = function() return { playing = liveCount() } end,
 })
 
 ---------------------------------------------------------------------------
 -- API
 ---------------------------------------------------------------------------
-Api.register('shooting.join', {
+Api.register('shooting.start', { rate = 'action', handler = function(ctx) return start(ctx.source) end })
+Api.register('shooting.shot', { rate = 'shooting', handler = function(ctx, payload) return shot(ctx.source, payload) end })
+Api.register('shooting.finish', {
     rate = 'action',
-    handler = function(ctx)
-        local c = cfg()
-        local p, session, msg = Carnival.Attractions.eligibility(ctx.source, ID, { point = c.stand, distance = c.validationDistance })
-        if not p then return nil, session, msg end
-        if alreadyShot(session.id, p.id) then return nil, 'already_shot', 'You have already taken your turn.' end
-        if heat and heat.shooters[p.id] and heat.status ~= 'ended' then return nil, 'invalid', 'You are already shooting.' end
-        for i, q in ipairs(queue) do if q == p.id then return { position = i } end end
-        queue[#queue + 1] = p.id
-        Carnival.Push.invalidate('shooting')
-        if c.autoStart and #queue >= c.maxPlayers and not (heat and (heat.status == 'running' or heat.status == 'paused')) then
-            CreateThread(function() startHeat(Carnival.Identity.SYSTEM, nil) end)
-        end
-        return { position = #queue }
-    end,
-})
-
-Api.register('shooting.leave', {
-    rate = 'action',
-    handler = function(ctx)
-        local pid = Carnival.Participants.idOfSource(ctx.source)
-        if pid then removeFromQueue(pid) Carnival.Push.invalidate('shooting') end
-        return true
-    end,
-})
-
-Api.register('shooting.hit', { rate = 'shooting', handler = function(ctx, payload) return hit(ctx.source, payload) end })
-
-Api.register('shooting.shots', {
-    rate = 'shooting',
     handler = function(ctx, payload)
-        if not heat or V.id(payload.heatId) ~= heat.id then return nil, 'stale' end
         local pid = Carnival.Participants.idOfSource(ctx.source)
-        local sh = pid and heat.shooters[pid]
-        if not sh then return nil, 'not_in_heat' end
-        local n = V.int(payload.shots, 0, 500)
-        if n then sh.shots = math.max(sh.shots, n) end
-        return true
+        local g = pid and games[pid]
+        if not g or V.id(payload.gameId) ~= g.id then return nil, 'stale', 'That game has ended.' end
+        -- the client may only finish once the server clock agrees the time is up
+        if elapsed(g) < g.duration then return nil, 'too_early', 'The game is still running.' end
+        return finishGame(g, 'time')
     end,
 })
 
@@ -377,73 +285,38 @@ Api.register('shooting.staff.state', {
     perm = OP, rate = 'staff',
     handler = function()
         local session = Carnival.Rotation.sessionFor(ID)
-        local q = U.map(queue, function(pid)
-            local p = Carnival.Participants.get(pid)
-            return { id = pid, name = p and p.display_name or '?' }
-        end)
+        local live = {}
+        for _, g in pairs(games) do
+            local p = Carnival.Participants.get(g.pid)
+            live[#live + 1] = { id = g.pid, name = p and p.display_name or '?', points = g.points, hits = g.hits, shots = g.shots,
+                rejected = g.rejected, remaining = math.max(0, math.floor((g.duration - elapsed(g)) / 1000)) }
+        end
         local members = {}
         if session then
             for _, p in ipairs(Carnival.Participants.members(session.colour, false)) do
                 members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
-                    shot = alreadyShot(session.id, p.id), points = Carnival.Scoring.attractionPoints(p.id, ID) }
+                    played = gamesPlayed(session.id, p.id), points = Carnival.Scoring.attractionPoints(p.id, ID) }
             end
         end
         local recent = Carnival.Events.activeId() and (Carnival.Db.query([[SELECT r.*, p.display_name FROM carnival_shooting_results r JOIN carnival_participants p ON p.id = r.participant_id
             WHERE r.event_id = ? ORDER BY r.id DESC LIMIT 30]], { Carnival.Events.activeId() }) or {}) or {}
-        return { session = session, queue = q, members = members, heat = publicHeat(), recent = recent, maxPlayers = cfg().maxPlayers }
+        return { session = session, live = live, members = members, recent = recent, playsPerVisit = cfg().playsPerVisit }
     end,
 })
 
-Api.register('shooting.startHeat', {
+-- Staff can give a player another go (e.g. after a disconnect); audited.
+Api.register('shooting.allowReplay', {
     perm = OP, rate = 'staff',
     handler = function(ctx, payload)
-        local pids
-        if type(payload.participantIds) == 'table' and #payload.participantIds > 0 then
-            pids = {}
-            for _, x in ipairs(payload.participantIds) do
-                local id = V.id(x)
-                if not id then return nil, 'invalid', 'Invalid participant.' end
-                pids[#pids + 1] = id
-            end
-        end
-        return startHeat(ctx.actor, pids)
-    end,
-})
-
-Api.register('shooting.pause', {
-    perm = OP, rate = 'staff',
-    handler = function(ctx)
-        if not heat or heat.status ~= 'running' then return nil, 'invalid', 'No heat is running.' end
-        heat.status = 'paused'
-        heat.pausedRemaining = math.max(0, heat.endsAt - os.time())
-        push({ action = 'paused', remaining = heat.pausedRemaining })
-        Carnival.Monitor.log('info', 'attraction', 'shooting_paused', { attractionId = ID, actor = ctx.actor })
-        Carnival.Push.invalidate('shooting')
-        return publicHeat()
-    end,
-})
-
-Api.register('shooting.resume', {
-    perm = OP, rate = 'staff',
-    handler = function(ctx)
-        if not heat or heat.status ~= 'paused' then return nil, 'invalid', 'The heat is not paused.' end
-        if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'invalid', 'Resume the event first.' end
-        heat.status = 'running'
-        heat.endsAt = os.time() + (heat.pausedRemaining or 0)
-        heat.pausedRemaining = nil
-        push({ action = 'start', heatId = heat.id, endsAt = heat.endsAt, serverTime = os.time(), duration = cfg().durationSeconds })
-        Carnival.Push.invalidate('shooting')
-        return publicHeat()
-    end,
-})
-
-Api.register('shooting.finish', { perm = OP, rate = 'staff', handler = function(ctx) return finishHeat(ctx.actor, 'staff') end })
-
-Api.register('shooting.reset', {
-    perm = OP, rate = 'staff',
-    handler = function(ctx, payload)
+        local pid = V.id(payload.participantId)
+        if not pid then return nil, 'invalid', 'Choose a participant.' end
         local reason, rerr = V.reason(payload.reason, true)
         if not reason then return nil, 'invalid', rerr end
-        return resetHeat(ctx.actor, reason)
+        local session = Carnival.Rotation.sessionFor(ID)
+        if not session then return nil, 'no_session', 'No group is at the gallery.' end
+        local n = Carnival.Db.update('UPDATE carnival_shooting_results SET session_id = NULL WHERE session_id = ? AND participant_id = ?', { session.id, pid })
+        Carnival.Audit.record(ctx.actor, 'shooting_replay_allowed', { targetType = 'participant', targetId = pid, reason = reason, details = { cleared = n } })
+        Carnival.Push.invalidate('shooting')
+        return { cleared = n }
     end,
 })

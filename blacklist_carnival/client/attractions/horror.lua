@@ -12,6 +12,17 @@ function Horror.inRun()
     return run ~= nil and run.status == 'running' and run.runnerStatus == 'inside'
 end
 
+function Horror.enter()
+    local res, code, msg = Carnival.api('horror.enter', {})
+    if not res then
+        return lib.notify({ title = 'House of Horrors', description = msg or code, type = code == 'staff_only' and 'inform' or 'error' })
+    end
+    if res.running then
+        return lib.notify({ title = 'House of Horrors', description = 'Your group is already inside - hurry!', type = 'warning' })
+    end
+    lib.notify({ title = 'House of Horrors', description = ('The doors open in %ds. Stay close to the entrance...'):format(res.startsIn or 0), type = 'warning' })
+end
+
 function Horror.info()
     if run and run.status == 'running' then
         return lib.notify({ title = 'House of Horrors', description = 'Find the tokens and reach the exit before time runs out!', type = 'inform' })

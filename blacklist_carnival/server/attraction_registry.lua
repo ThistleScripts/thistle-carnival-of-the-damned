@@ -50,6 +50,20 @@ local function call(id, fnName, ...)
     return a, b
 end
 
+-- Staff-judged attractions are never completed by the round timer. Theatre and
+-- deception are only staff-judged when configured in staff mode.
+function Attractions.isStaffJudged(id)
+    if not C.STAFF_JUDGED[id] then return false end
+    local a = Carnival.Config.get().attractions[id]
+    return a ~= nil and a.mode == 'staff'
+end
+
+-- Self-service attractions run without staff.
+function Attractions.isSelfService(id)
+    local a = Carnival.Config.get().attractions[id]
+    return a ~= nil and (a.mode == nil or a.mode == 'self' or a.mode == 'both')
+end
+
 function Attractions.sessionStarted(s) call(s.attraction_id, 'onSessionStart', s) end
 function Attractions.sessionEnded(s, status) call(s.attraction_id, 'onSessionEnd', s, status) end
 function Attractions.sessionBusy(s) return call(s.attraction_id, 'isBusy', s) == true end
@@ -115,7 +129,7 @@ function Attractions.overview()
         local summary = call(id, 'staffSummary')
         out[#out + 1] = {
             id = id, label = Carnival.Config.get().attractions[id].label,
-            staffJudged = C.STAFF_JUDGED[id] == true,
+            staffJudged = Attractions.isStaffJudged(id),
             readiness = Attractions.readiness(id),
             session = s and { id = s.id, colour = s.colour, status = s.status, startedAt = s.started_at } or nil,
             summary = summary,

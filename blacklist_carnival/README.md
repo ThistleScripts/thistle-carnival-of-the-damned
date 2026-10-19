@@ -2,16 +2,16 @@
 
 A staff-operated, roleplay-focused carnival event for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
 
-Players register at the ticket booth and receive one of six coloured tickets. Each colour is a travelling group that rotates through six attractions; **scores are individual**. Staff run the attractions from an in-game staff panel; owners/admins configure everything from an in-game configurator — no Lua edits for ordinary event setup.
+Players register at the ticket booth and receive one of six coloured tickets. Each colour is a travelling group that rotates through six attractions; **scores are individual**. Players run every attraction themselves by targeting its ped (staff are optional ambient actors and can monitor or step in from the staff panel); owners/admins configure everything from an in-game configurator — no Lua edits for ordinary event setup.
 
 | Attraction | Type | Highlights |
 |---|---|---|
-| The Shooting Gallery | automated + operator | Heats, server-validated hit reports, bullseyes, timed special targets, accuracy bonus. |
+| The Shooting Gallery | self-service | Mouse-aim NUI game: targets slide across lanes, golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
 | The Wheel of Misfortune | automated | Weighted server-side outcomes, points ±, prizes, trick/treat, staff approval for special prizes. |
 | The Fortune Teller's Curse | automated + staff-led | Riddles and multiple choice marked on the server, fortunes, roleplay awards. |
-| The Puppet Master's Theatre | staff-judged | Scenario library/random/custom, casting with roles, timer, preview → commit once. |
-| The Hall of Deception | staff-judged | Mysteries with secret answer key, performer briefs, clues, structured accusations + judged reasoning. |
-| The House of Horrors | automated + controllers | Server timer with configurable warnings, bronze/silver/gold tokens, escape bonuses, performer scares. |
+| The Puppet Master's Theatre | self-service (or staff) | Players take the stage, get a random scenario and roles, perform on a timer, the audience votes the winner. Staff mode keeps a Puppet Master judge. |
+| The Hall of Deception | self-service (or staff) | Starts when the group arrives; suspects' testimony on the terminal, clues unlock over time, accusations auto-marked. Staff can still act as performers. |
+| The House of Horrors | self-service (or staff) | A player opens the doors, the group gathers, server timer with warnings, bronze/silver/gold tokens, escape bonuses, optional performer scares. |
 
 ## Documentation
 

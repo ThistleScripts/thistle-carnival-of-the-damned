@@ -89,7 +89,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count('SELECT COUNT(*) AS n FROM carnival_schema_migrations'), 2, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 3, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -97,7 +97,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count('SELECT COUNT(*) AS n FROM carnival_schema_migrations'), 2, 'still two migrations')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 3, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -216,6 +216,12 @@ test('apply test configuration (short timers, everyone ready)', function()
     doc.attractions.horror.warnings = { 30, 10 }
     doc.attractions.horror.tokenTypes.gold.quantity = 0
     doc.attractions.fortune.questionsPerVisit = 2
+    -- the first event exercises the staff-run modes; self-service runs later
+    doc.attractions.puppets.mode = 'staff'
+    doc.attractions.deception.mode = 'staff'
+    doc.attractions.horror.mode = 'staff'
+    doc.attractions.shooting.durationSeconds = 20
+    doc.attractions.shooting.targetCount = 10
     local r = okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, note = 'test', confirm = true }))
     eq(r.saved, true)
 end)
@@ -488,45 +494,54 @@ end)
 ---------------------------------------------------------------------------
 section('Attraction: Shooting Gallery')
 ---------------------------------------------------------------------------
-test('hits are validated server-side; points awarded once per heat', function()
+test('aim game: the server owns the schedule, validates every click and scores once', function()
     local sc = colourAt('shooting')
     local shooters = membersOf(sc)
     local cfg = settings().attractions.shooting
-    for _, s in ipairs(shooters) do at(s, cfg.stand) H.players[s].weapon = 'WEAPON_PISTOL' end
-    okRes(H.api(shooters[1], 'shooting.join'))
-    okRes(H.api(shooters[2], 'shooting.join'))
-    errRes(H.api(OBSERVER, 'shooting.startHeat', {}), 'forbidden')
-    local heat = okRes(H.api(MANAGER, 'shooting.startHeat', {}))
-    local t = cfg.targets[3]
-    -- valid hit
-    local h = okRes(H.api(shooters[1], 'shooting.hit', { heatId = heat.id, targetId = t.id, impact = t.coords, shots = 1 }))
-    eq(h.points, t.points + cfg.bullseyeBonus, 'bullseye at centre')
-    -- same target is down
-    errRes(H.api(shooters[1], 'shooting.hit', { heatId = heat.id, targetId = t.id, impact = t.coords, shots = 2 }), 'too_fast')
-    -- far impact misses
-    H.ms = H.ms + 5000
-    errRes(H.api(shooters[1], 'shooting.hit', { heatId = heat.id, targetId = cfg.targets[1].id, impact = { x = t.coords.x + 3, y = t.coords.y, z = t.coords.z }, shots = 3 }), 'missed_target')
-    -- wrong weapon
-    H.players[shooters[2]].weapon = 'WEAPON_RPG'
-    errRes(H.api(shooters[2], 'shooting.hit', { heatId = heat.id, targetId = cfg.targets[1].id, impact = cfg.targets[1].coords }), 'wrong_weapon')
-    H.players[shooters[2]].weapon = 'WEAPON_PISTOL'
-    -- away from the stand
-    at(shooters[2], { x = 0, y = 0, z = 0 })
-    errRes(H.api(shooters[2], 'shooting.hit', { heatId = heat.id, targetId = cfg.targets[1].id, impact = cfg.targets[1].coords }), 'not_at_stand')
-    at(shooters[2], cfg.stand)
-    -- special target is not up
-    local special
-    for _, x in ipairs(cfg.targets) do if x.kind == 'special' then special = x end end
-    errRes(H.api(shooters[2], 'shooting.hit', { heatId = heat.id, targetId = special.id, impact = special.coords }), 'special_not_active')
-    -- non-participant
-    errRes(H.api(OUTSIDER, 'shooting.hit', { heatId = heat.id, targetId = t.id, impact = t.coords }), 'not_in_heat')
-    -- heat ends on the server timer
-    H.advance(cfg.durationSeconds + 1)
-    local res = H.sql('SELECT * FROM carnival_shooting_results WHERE heat_id = ?', { heat.id })
-    eq(#res, 2, 'two results')
-    local pid = Carnival.Participants.idOfSource(shooters[1])
-    eq(count("SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?", { ('shooting:%d:%d'):format(heat.id, pid) }), 1)
-    errRes(H.api(shooters[1], 'shooting.join'), 'already_shot')
+    local s = shooters[1]
+    at(s, cfg.location)
+    errRes(H.api(membersOf(colourAt('wheel'))[1], 'shooting.start'), 'wrong_attraction')
+    local g = okRes(H.api(s, 'shooting.start'))
+    eq(#g.plan, cfg.targetCount, 'schedule sent')
+    truthy(g.elapsedMs < 0, 'countdown first')
+    -- resuming returns the same game
+    eq(okRes(H.api(s, 'shooting.start')).gameId, g.gameId)
+    -- clicking during the countdown is refused
+    errRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = g.plan[1].id }), 'before_start')
+    -- jump to when target 1 is on screen
+    local t1 = g.plan[1]
+    H.ms = H.ms + 3000 + t1.t + 100
+    local hit = okRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = t1.id, ring = 'inner' }))
+    eq(hit.hit, true)
+    local expected = t1.kind == 'decoy' and -cfg.decoyPenalty or t1.kind == 'special' and cfg.specialPoints or cfg.targetPoints + cfg.bullseyeBonus
+    eq(hit.points, expected, 'server-side points')
+    -- the same target again is refused
+    H.ms = H.ms + 200
+    errRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = t1.id }), 'already_hit')
+    -- a target that is not on screen yet is refused
+    local late
+    for _, t in ipairs(g.plan) do if t.t > t1.t + t1.life + 3000 then late = t break end end
+    if late then
+        H.ms = H.ms + 200
+        errRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = late.id }), 'off_screen')
+    end
+    -- clicking too fast is refused
+    H.ms = H.ms + 200
+    okRes(H.api(s, 'shooting.shot', { gameId = g.gameId }))
+    errRes(H.api(s, 'shooting.shot', { gameId = g.gameId }), 'too_fast')
+    -- someone else cannot shoot in this game
+    errRes(H.api(shooters[2], 'shooting.shot', { gameId = g.gameId, targetId = 2 }), 'stale')
+    -- finishing early is refused; the server timer ends the game
+    errRes(H.api(s, 'shooting.finish', { gameId = g.gameId }), 'too_early')
+    H.advance(cfg.durationSeconds + 6)
+    local res = H.sql('SELECT * FROM carnival_shooting_results WHERE heat_id = ?', { g.gameId })
+    eq(#res, 1)
+    local pid = Carnival.Participants.idOfSource(s)
+    eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?', { ('shooting:%d:%d'):format(g.gameId, pid) }), res[1].points ~= 0 and 1 or 0)
+    errRes(H.api(s, 'shooting.start'), 'already_shot')
+    -- staff can allow a replay (audited)
+    okRes(H.api(MANAGER, 'shooting.allowReplay', { participantId = pid, reason = 'Game crashed' }))
+    okRes(H.api(s, 'shooting.start'))
 end)
 
 ---------------------------------------------------------------------------
@@ -575,7 +590,7 @@ test('secret answer key never reaches participants; submissions are limited; sco
     local blob = H.json.encode(pub)
     truthy(not blob:find('isLiar'), 'no isLiar in public state')
     truthy(not blob:find('brief'), 'no briefs in public state')
-    truthy(not blob:find('statements'), 'no statements in public state')
+    truthy(blob:find('statements'), 'testimony is public (whether it is a lie is not)')
     eq(pub.solution, nil)
     for _, p in ipairs(H.pushesFor(inv[1], 'deception')) do
         truthy(not H.json.encode(p):find('isLiar'), 'no secrets pushed')
@@ -838,6 +853,101 @@ test('completed results are frozen: later config changes do not alter them; hist
     local ex = okRes(H.api(ADMIN, 'results.export', { eventId = eventId }))
     truthy(ex.csv:find('^rank,name'), 'csv export')
     errRes(H.api(MANAGER, 'results.export', { eventId = eventId }), 'forbidden')
+end)
+
+---------------------------------------------------------------------------
+section('Self-service attractions (no staff involved)')
+---------------------------------------------------------------------------
+test('second event in self-service mode starts with players registered', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    doc.rotation.roundDurationSeconds = 900
+    doc.attractions.puppets.mode = 'self'
+    doc.attractions.puppets.lobbySeconds = 5
+    doc.attractions.puppets.voteSeconds = 15
+    doc.attractions.deception.mode = 'self'
+    doc.attractions.deception.clueIntervalSeconds = 30
+    doc.attractions.deception.durationSeconds = 900
+    doc.attractions.horror.mode = 'self'
+    doc.attractions.horror.lobbySeconds = 5
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    okRes(H.api(ADMIN, 'events.transition', { to = 'registration_open' }))
+    for _, s in ipairs(PLAYERS) do
+        at(s, settings().registration.entrance)
+        okRes(H.api(s, 'registration.register'), 'register ' .. s)
+    end
+    okRes(H.api(ADMIN, 'events.transition', { to = 'registration_closed' }))
+    okRes(H.api(ADMIN, 'events.transition', { to = 'ready' }))
+    okRes(H.api(ADMIN, 'events.transition', { to = 'running' }))
+    eq(Carnival.Rotation.currentRoundNumber(), 1)
+end)
+
+test('theatre: players take the stage, perform a random scenario and the audience vote awards points', function()
+    local tc = colourAt('puppets')
+    local cast = membersOf(tc)
+    local loc = settings().attractions.puppets.location
+    for _, s in ipairs(cast) do at(s, loc) end
+    local r1 = okRes(H.api(cast[1], 'theatre.play'))
+    eq(r1.cast, 1)
+    local r2 = okRes(H.api(cast[2], 'theatre.play'))
+    eq(r2.cast, 2, 'second player joined the cast')
+    H.pushes = {}
+    H.advance(6)
+    local card
+    for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'card' then card = p end end
+    truthy(card and card.performer and card.role, 'performer card with a role')
+    errRes(H.api(cast[1], 'theatre.play'), 'busy')
+    -- wait for the curtain and the vote
+    local perf = H.sql("SELECT * FROM carnival_theatre_performances WHERE status = 'running' ORDER BY id DESC LIMIT 1")[1]
+    H.pushes = {}
+    H.advance(perf.duration_seconds + 1)
+    local vote
+    for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'vote' then vote = p end end
+    truthy(vote, 'vote opened')
+    local p1, p2 = Carnival.Participants.idOfSource(cast[1]), Carnival.Participants.idOfSource(cast[2])
+    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p1 }), 'invalid')
+    okRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }))
+    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }), 'duplicate')
+    okRes(H.api(cast[2], 'theatre.vote', { performanceId = perf.id, participantId = p1 }))
+    H.advance(1)
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed', 'committed by the audience vote')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_theatre_performers WHERE performance_id = ? AND is_winner = 1', { perf.id }), 2, 'tie: both win')
+    errRes(H.api(cast[1], 'theatre.play'), 'done')
+end)
+
+test('deception: mystery starts on arrival, clues unlock over time, accusations are marked automatically', function()
+    local dc = colourAt('deception')
+    local inv = membersOf(dc)
+    for _, s in ipairs(inv) do at(s, settings().attractions.deception.location) end
+    local pub = okRes(H.api(inv[1], 'deception.public'))
+    eq(pub.active, true)
+    eq(pub.status, 'questioning', 'started without staff')
+    truthy(pub.mystery.performers[1].statements and #pub.mystery.performers[1].statements > 0, 'testimony visible')
+    truthy(not H.json.encode(pub):find('isLiar'), 'answer key hidden')
+    H.advance(31)
+    truthy(#okRes(H.api(inv[1], 'deception.public')).clues >= 1, 'clue unlocked automatically')
+    okRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'knife' } }))
+    okRes(H.api(inv[2], 'deception.submit', { roundId = pub.roundId, selections = { 'contortionist', 'fortune', 'organ' } }))
+    H.advance(6)
+    eq(H.sql('SELECT status FROM carnival_deception_rounds WHERE id = ?', { pub.roundId })[1].status, 'committed', 'scored automatically')
+    eq(Carnival.Rotation.sessionForColour(dc).status, 'completed', 'group moves on')
+    local best = H.sql([[SELECT SUM(delta) AS n FROM carnival_score_transactions WHERE idempotency_key = ?]], { ('deception:%d:%d:auto'):format(pub.roundId, Carnival.Participants.idOfSource(inv[1])) })[1].n
+    truthy(tonumber(best) > 0, 'correct accusations scored')
+end)
+
+test('horror: a player opens the doors, the group gathers and the run starts by itself', function()
+    local hc = colourAt('horror')
+    local runners = membersOf(hc)
+    local h = settings().attractions.horror
+    at(runners[1], h.entry)
+    local e = okRes(H.api(runners[1], 'horror.enter'))
+    eq(e.startsIn, 5)
+    at(runners[2], h.entry)
+    truthy(okRes(H.api(runners[2], 'horror.enter')).startsIn <= 5, 'same lobby')
+    H.advance(6)
+    eq(count("SELECT COUNT(*) AS n FROM carnival_horror_runs WHERE status = 'running'"), 1, 'run started without a controller')
+    eq(okRes(H.api(runners[1], 'horror.enter')).running, true)
+    local st = okRes(H.api(runners[1], 'horror.state'))
+    eq(st.active, true)
 end)
 
 ---------------------------------------------------------------------------
