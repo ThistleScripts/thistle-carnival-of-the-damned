@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the original inventory item images for Carnival of the Damned.
 
-All artwork is drawn procedurally (no third-party art, logos or clowns).
+All artwork is drawn procedurally (no third-party art or logos; owner content rules apply).
 Output: 256x256 transparent PNGs named exactly after the item names, written to
   images/inventory/                              (resource copy)
   ../ox_inventory_additions/web/images/          (copy for ox_inventory/web/images)

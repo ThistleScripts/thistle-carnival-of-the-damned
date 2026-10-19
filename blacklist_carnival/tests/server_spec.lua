@@ -728,7 +728,7 @@ test('skip, delay and extend are audited overrides', function()
     end
 end)
 
-test('wheel spins are limited per event even in a later round', function()
+test('the group at the wheel in round 2 can spin', function()
     -- group at the wheel in round 2 has not spun before
     local s = membersOf(colourAt('wheel'))[1]
     at(s, settings().attractions.wheel.location)
