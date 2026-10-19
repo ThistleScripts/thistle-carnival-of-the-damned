@@ -43,7 +43,13 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
     setError(null);
     setResult(null);
     setSpinning(true);
-    const r = await api('wheel.spin', {});
+    const r = data.preview
+      ? (() => {
+        const index = Math.floor(Math.random() * n) + 1;
+        const o = outcomes[index - 1];
+        return { ok: true, data: { index, outcome: { id: o.id, label: o.label, type: o.type }, points: 0, spinsUsed: used + 1, maxSpins: data.maxSpins, cooldownSeconds: 0 } } as any;
+      })()
+      : await api('wheel.spin', {});
     if (!r.ok || !r.data) {
       setSpinning(false);
       setError(errorText(r));
@@ -80,6 +86,7 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
   return (
     <div className="overlay-center">
       <Backdrop name="wheel" className="panel-frame wheel-frame">
+        {data.preview ? <div className="preview-banner">PREVIEW — demo data, nothing is sent to the server</div> : null}
         <header className="frame-head">
           <div><h2>{data.label ?? 'The Wheel of Misfortune'}</h2><span className="muted">Spins left: {remaining} of {data.maxSpins}</span></div>
           <Button variant="ghost" onClick={onClose} disabled={spinning}>Leave</Button>

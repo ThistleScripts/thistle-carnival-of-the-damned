@@ -365,3 +365,5 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
   .sidebar { width: 190px; }
   .span-2 { grid-column: auto; }
 }
+
+.preview-banner { background: #2c2313; border: 1px dashed var(--gold); color: var(--gold-bright); text-align: center; padding: 4px 8px; border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; letter-spacing: 0.08em; }

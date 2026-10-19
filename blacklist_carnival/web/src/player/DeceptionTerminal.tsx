@@ -22,7 +22,9 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
 
   const submit = async () => {
     setBusy(true);
-    const r = await api('deception.submit', { roundId: data.roundId, selections: selected, explanation });
+    const r = data.preview
+      ? { ok: true, data: { submissionNumber: used + 1, remaining: (data.maxSubmissions ?? 1) - used - 1 } } as any
+      : await api('deception.submit', { roundId: data.roundId, selections: selected, explanation });
     setBusy(false);
     if (r.ok && r.data) {
       setUsed(r.data.submissionNumber);
@@ -36,6 +38,7 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
   return (
     <div className="overlay-center">
       <Backdrop name="deception" className="panel-frame deception-frame">
+        {data.preview ? <div className="preview-banner">PREVIEW — demo data, nothing is sent to the server</div> : null}
         <header className="frame-head">
           <div>
             <h2>{m.title ?? 'The Hall of Deception'}</h2>

@@ -75,6 +75,7 @@ client_scripts {
     'client/attractions/puppets.lua',
     'client/attractions/deception.lua',
     'client/attractions/horror.lua',
+    'client/preview.lua',
 }
 
 ui_page 'web/dist/index.html'

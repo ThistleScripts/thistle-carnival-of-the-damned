@@ -6,6 +6,13 @@ Carnival.Tickets = Tickets
 function Tickets.register()
     local s = Carnival.Client.settings
     local e = Carnival.Client.event
+    local p = Carnival.Client.participant
+    if not (e and e.active) then
+        return lib.notify({ title = 'Ticket booth', description = 'There is no carnival running right now.', type = 'inform' })
+    end
+    if not (p and p.canRegister) then
+        return lib.notify({ title = 'Ticket booth', description = ('Registration is not open (%s).'):format(e.stateLabel or e.state), type = 'inform' })
+    end
     local confirm = lib.alertDialog({
         header = e and e.name or 'Carnival of the Damned',
         content = 'Register for tonight\'s carnival? You will receive a coloured ticket that decides which group you travel with. Keep it safe - you must show it at every attraction.',

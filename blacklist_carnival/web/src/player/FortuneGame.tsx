@@ -53,7 +53,9 @@ export function FortuneGame({ data, onClose }: { data: any; onClose: () => void 
     if (!question) return;
     setBusy(true);
     setError(null);
-    const r = await api('fortune.answer', { visitId: data.visitId, questionId: question.id, ...payload });
+    const r = data.preview
+      ? { ok: true, data: { correct: payload.choice === question.previewCorrect, points: 0, text: '(preview)', finished: true, farewell: data.farewell } } as any
+      : await api('fortune.answer', { visitId: data.visitId, questionId: question.id, ...payload });
     setBusy(false);
     if (!r.ok || !r.data) {
       setError(errorText(r));
@@ -76,6 +78,7 @@ export function FortuneGame({ data, onClose }: { data: any; onClose: () => void 
   return (
     <div className="overlay-center">
       <Backdrop name="fortune" className="panel-frame fortune-frame">
+        {data.preview ? <div className="preview-banner">PREVIEW — demo data, nothing is sent to the server</div> : null}
         <header className="frame-head">
           <div className="fortune-title"><Icon name="fortune" size={28} /><h2>The Fortune Teller's Curse</h2></div>
           <Button variant="ghost" onClick={onClose}>{finished ? 'Leave' : 'Step away'}</Button>

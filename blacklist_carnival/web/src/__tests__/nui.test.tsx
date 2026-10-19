@@ -219,3 +219,23 @@ describe('staff & admin panels', () => {
     expect(screen.queryByText('Monitoring centre')).toBeNull();
   });
 });
+
+describe('preview mode', () => {
+  it('wheel preview spins locally without calling the server', async () => {
+    render(<App />);
+    const outcomes = settings.attractions.wheel.outcomes.map((o: any) => ({ id: o.id, label: o.label, type: o.type, colour: o.colour }));
+    lua('open', { view: 'wheel', data: { preview: true, outcomes, spinsUsed: 0, maxSpins: 2, animationMs: 10, cooldownRemaining: 0 } });
+    expect(screen.getByText(/PREVIEW/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Spin the wheel'));
+    await waitFor(() => expect(document.querySelector('.wheel-result')).toBeTruthy());
+    expect(calls.some((c) => c.endpoint === 'wheel.spin')).toBe(false);
+  });
+
+  it('fortune and deception previews never call the server', async () => {
+    render(<App />);
+    lua('open', { view: 'fortune', data: { preview: true, visitId: 0, greeting: 'Sit.', question: { id: 'preview', kind: 'choice', prompt: 'Q?', choices: ['A', 'B', 'C'], index: 1, total: 1, timeout: 60, previewCorrect: 3 } } });
+    fireEvent.click(screen.getByText('C'));
+    await waitFor(() => expect(screen.getByText('Correct.')).toBeTruthy());
+    expect(calls.length).toBe(0);
+  });
+});

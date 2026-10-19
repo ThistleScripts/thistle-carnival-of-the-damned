@@ -18,4 +18,5 @@ All commands are checked on the server with the same permission as the equivalen
 | `/carnivalcoords` | – | `config.edit` | Copies your position + heading to the clipboard. |
 | `/carnivalwhere` | – | participant | Waypoint to your current attraction. |
 | `/carnivalhud` | – | participant | Toggle the participant HUD. |
+| `/carnivalpreview` | `[screen]` | `panel.staff` or `panel.admin` | Opens a game screen with labelled demo data (no server calls, no points): `wheel`, `fortune`, `deception`, `puppets`, `horror`, `shooting`, `ticket`, `leaderboard`, `hub`. Also on every attraction ped as *Staff: preview game screen*. |
 | `/carnivalclose` | – | anyone | Closes every carnival interface and releases NUI focus (safety valve). |
