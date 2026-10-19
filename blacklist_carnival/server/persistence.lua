@@ -42,10 +42,22 @@ local function onOk()
     Db.lastOkAt = os.time()
 end
 
+local function isDuplicate(err)
+    return tostring(err):find('Duplicate entry', 1, true) ~= nil or tostring(err):find('ER_DUP_ENTRY', 1, true) ~= nil
+end
+Db.isDuplicate = isDuplicate
+
 local function wrap(fnName)
     return function(sql, params)
         local ok, res = pcall(MySQL[fnName].await, sql, params or {})
         if not ok then
+            if isDuplicate(res) then
+                -- A unique constraint did its job (duplicate protection); not a fault.
+                if Carnival.Monitor then
+                    Carnival.Monitor.log('debug', 'duplicate', 'unique_constraint_rejected', { details = { sql = shorten(sql) } })
+                end
+                return nil, 'duplicate'
+            end
             onError(sql, res)
             return nil, res
         end
@@ -133,6 +145,12 @@ end
 function Db.ping()
     local res = Db.scalar('SELECT 1')
     return res ~= nil
+end
+
+-- oxmysql returns TINYINT(1) columns as booleans; values we set in memory are
+-- numbers. Accept both.
+function Db.bool(v)
+    return v == true or v == 1 or v == '1'
 end
 
 function Db.encode(v)

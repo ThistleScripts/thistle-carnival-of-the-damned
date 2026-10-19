@@ -1,0 +1,79 @@
+{
+  "resource": "blacklist_carnival",
+  "imageDirectory": "images/inventory",
+  "oxInventoryImageDirectory": "ox_inventory/web/images",
+  "items": [
+    {
+      "name": "carnival_ticket_red",
+      "image": "carnival_ticket_red.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_ticket_blue",
+      "image": "carnival_ticket_blue.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_ticket_green",
+      "image": "carnival_ticket_green.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_ticket_yellow",
+      "image": "carnival_ticket_yellow.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_ticket_purple",
+      "image": "carnival_ticket_purple.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_ticket_orange",
+      "image": "carnival_ticket_orange.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_token_bronze",
+      "image": "carnival_token_bronze.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_token_silver",
+      "image": "carnival_token_silver.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_token_gold",
+      "image": "carnival_token_gold.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_trick_token",
+      "image": "carnival_trick_token.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_treat_token",
+      "image": "carnival_treat_token.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_prize_box",
+      "image": "carnival_prize_box.png",
+      "size": "256x256",
+      "transparent": true
+    }
+  ]
+}

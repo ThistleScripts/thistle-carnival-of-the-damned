@@ -16,7 +16,6 @@ dependencies {
     'ox_inventory',
 }
 
-ox_lib 'locale'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -86,5 +85,4 @@ files {
     'web/dist/assets/*',
     'web/dist/sounds/*',
     'web/dist/backgrounds/*',
-    'web/dist/images/*',
 }

@@ -1,0 +1,3 @@
+node_modules/
+blacklist_carnival/web/node_modules/
+*.log

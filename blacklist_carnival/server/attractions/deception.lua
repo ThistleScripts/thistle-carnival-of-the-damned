@@ -414,6 +414,7 @@ local function commit(ctx, payload)
             if row and row.status == 'committed' then return { alreadyCommitted = true } end
             return nil, 'invalid', 'That mystery is not awaiting judgement.'
         end
+        if current.status == 'committed' then return { alreadyCommitted = true } end
         if current.status ~= 'closed' and current.status ~= 'revealed' then return nil, 'invalid', 'End questioning first.' end
         local note = payload.note and V.text(payload.note, 1000, true) or ''
         local n = Carnival.Db.update("UPDATE carnival_deception_rounds SET status = 'committed', committed_at = ?, judging_note = ? WHERE id = ? AND status IN ('closed', 'revealed')",

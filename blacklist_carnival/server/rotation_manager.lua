@@ -121,7 +121,7 @@ function Rotation.publicState()
         roundState = round.state,
         roundEndsAt = (not paused and round.state == 'active') and round.ends_at or nil,
         roundRemaining = paused and round.paused_remaining or nil,
-        overtime = round.overtime == 1,
+        overtime = Carnival.Db.bool(round.overtime),
         nextRoundAt = (e and e.state == S.BETWEEN) and round.next_round_at or nil,
     }
 end
@@ -521,7 +521,7 @@ Carnival.onTick('rotation', function(now)
                 if ready.available then activate(s, Carnival.Identity.SYSTEM) pushRotationChanged() end
             end
         end
-        if remaining <= 0 and round.overtime ~= 1 then
+        if remaining <= 0 and not Carnival.Db.bool(round.overtime) then
             round.overtime = 1
             Carnival.Db.update('UPDATE carnival_rounds SET overtime = 1 WHERE id = ?', { round.id })
             Carnival.Monitor.log('info', 'countdown', 'round_timer_expired', { details = { round = round.round_number } })

@@ -109,7 +109,7 @@ function P.ownState(src)
         status = p.status,
         total = p.total_score,
         rank = Carnival.Leaderboard.rankOf(p.id),
-        ticket = ticket and { serial = ticket.serial, virtual = ticket.is_virtual == 1, status = ticket.status } or nil,
+        ticket = ticket and { serial = ticket.serial, virtual = Carnival.Db.bool(ticket.is_virtual), status = ticket.status } or nil,
         canReplaceTicket = Carnival.Config.get().registration.allowSelfReplacement,
         breakdown = Carnival.Scoring.breakdown(p.id),
         completed = rot.completed,

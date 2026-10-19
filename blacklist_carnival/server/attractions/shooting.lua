@@ -128,7 +128,7 @@ local function startHeat(actor, pids)
     heat = { id = id, sessionId = session.id, status = 'running', startedAt = now, endsAt = now + c.durationSeconds, shooters = {},
         special = nil, nextSpecialAt = now + c.specialIntervalSeconds }
     for _, pid in ipairs(pids) do
-        heat.shooters[pid] = { hits = 0, shots = 0, bullseyes = 0, specials = 0, targetPoints = 0, rejected = 0, lastHitMs = 0, down = {} }
+        heat.shooters[pid] = { hits = 0, shots = 0, bullseyes = 0, specials = 0, targetPoints = 0, rejected = 0, lastHitMs = nil, down = {} }
         removeFromQueue(pid)
         provideWeapons(pid)
     end
@@ -225,7 +225,7 @@ local function hit(src, payload)
     if not weaponHashes()[weapon] then return reject(src, sh, pid, 'wrong_weapon') end
 
     local ms = nowMs()
-    if ms - sh.lastHitMs < c.minHitIntervalMs then return reject(src, sh, pid, 'too_fast') end
+    if sh.lastHitMs and ms - sh.lastHitMs < c.minHitIntervalMs then return reject(src, sh, pid, 'too_fast') end
     if (sh.down[t.id] or 0) > ms then return reject(src, sh, pid, 'target_down') end
     if t.kind == 'special' and not (heat.special and heat.special.id == t.id and os.time() <= heat.special['until']) then
         return reject(src, sh, pid, 'special_not_active')

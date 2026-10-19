@@ -78,7 +78,7 @@ end
 local function publicPerformance(perf)
     if not perf then return nil end
     return {
-        id = perf.id, status = perf.status, scenario = perf.scenario, isCustom = perf.is_custom == 1,
+        id = perf.id, status = perf.status, scenario = perf.scenario, isCustom = Carnival.Db.bool(perf.is_custom),
         performers = U.map(perf.performers, function(x)
             local p = Carnival.Participants.get(x.participantId)
             return { participantId = x.participantId, name = p and p.display_name or '?', role = x.role, online = Carnival.Participants.sourceOf(x.participantId) ~= nil }

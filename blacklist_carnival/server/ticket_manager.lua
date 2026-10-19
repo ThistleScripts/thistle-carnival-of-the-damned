@@ -193,7 +193,7 @@ function Tickets.verify(src, p)
     local cfg = Carnival.Config.get()
     local t = current[p.id]
     if not t then return false, 'no_ticket' end
-    if t.is_virtual == 1 or not cfg.registration.requireTicketForAttractions then
+    if Carnival.Db.bool(t.is_virtual) or not cfg.registration.requireTicketForAttractions then
         return true
     end
     if t.status ~= 'active' then return false, 'ticket_pending' end

@@ -407,10 +407,10 @@ end
 -- not see them. List items are matched by their `id` field.
 function V.restoreSecrets(incoming, current, canSee)
     local function walk(node, inc, cur)
-        if inc == nil then return nil end
         if node.secret and not canSee(node.secretPerm or 'config.edit') then
             return U.deepCopy(cur)
         end
+        if inc == nil then return nil end
         if node.type == 'group' and type(inc) == 'table' then
             for _, fld in ipairs(node.fields) do
                 inc[fld.key] = walk(fld, inc[fld.key], type(cur) == 'table' and cur[fld.key] or nil)
@@ -452,8 +452,7 @@ function V.diff(old, new)
             end
             return
         end
-        local ja, jb = json.encode(a), json.encode(b)
-        if ja ~= jb then
+        if not U.deepEqual(a, b) then
             changes[#changes + 1] = {
                 path = path,
                 label = node.label,
