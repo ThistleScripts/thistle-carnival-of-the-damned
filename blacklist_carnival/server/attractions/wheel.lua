@@ -39,7 +39,7 @@ end
 
 local function maybeCompleteSession(session)
     if not session or not cfg().autoCompleteWhenAllSpun then return end
-    local members = Carnival.Participants.members(session.colour, false)
+    local members = Carnival.Rotation.sessionMembers(session, false)
     if #members == 0 then return end
     local max = cfg().maxSpins
     for _, p in ipairs(members) do
@@ -118,6 +118,8 @@ function Wheel.spin(src)
         Carnival.Push.invalidate('wheel')
         CreateThread(function()
             Wait(c.spinAnimationMs + 500)
+            -- walk-up: the visit is over for this player once their spins are used
+            if spinNumber >= c.maxSpins then Carnival.Rotation.memberFinished(session.id, p.id, 'Spun the wheel') end
             maybeCompleteSession(Carnival.Rotation.sessionById(session.id))
         end)
         return {
@@ -175,7 +177,7 @@ Api.register('wheel.staff.state', {
             JOIN carnival_participants p ON p.id = r.participant_id WHERE r.event_id = ? AND r.status = 'awaiting_approval' ORDER BY r.id]], { e.id }) or {}
         local members = {}
         if session then
-            for _, p in ipairs(Carnival.Participants.members(session.colour, false)) do
+            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
                 members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil, spins = spinsUsed(e.id, p.id) }
             end
         end

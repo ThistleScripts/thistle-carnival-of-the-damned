@@ -1,8 +1,8 @@
--- Carnival of the Damned - full schema (equivalent to sql/migrations/001-003).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-004).
 -- Optional: the resource applies migrations automatically on start. Importing this
 -- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
--- start the resource records the migrations as applied (003's columns are already
--- present here, which the migration runner accepts).
+-- start the resource records the migrations as applied (the columns added by 003/004
+-- are already present here, which the migration runner accepts).
 
 -- Carnival of the Damned - migration 001: initial schema
 -- All timestamps are UTC unix epoch seconds (BIGINT).
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS carnival_events (
     name VARCHAR(96) NOT NULL,
     description TEXT NULL,
     state VARCHAR(32) NOT NULL DEFAULT 'configuring',
+    mode VARCHAR(16) NOT NULL DEFAULT 'scheduled',
     resume_state VARCHAR(32) NULL,
     current_round TINYINT UNSIGNED NOT NULL DEFAULT 0,
     template_of INT UNSIGNED NULL,
@@ -186,9 +187,10 @@ CREATE TABLE IF NOT EXISTS carnival_rounds (
 CREATE TABLE IF NOT EXISTS carnival_attraction_sessions (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     event_id INT UNSIGNED NOT NULL,
-    round_id INT UNSIGNED NOT NULL,
-    round_number TINYINT UNSIGNED NOT NULL,
-    colour VARCHAR(16) NOT NULL,
+    kind VARCHAR(16) NOT NULL DEFAULT 'round',
+    round_id INT UNSIGNED NULL,
+    round_number TINYINT UNSIGNED NULL,
+    colour VARCHAR(16) NULL,
     attraction_id VARCHAR(32) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'pending',
     delayed_until BIGINT UNSIGNED NULL,
@@ -202,6 +204,19 @@ CREATE TABLE IF NOT EXISTS carnival_attraction_sessions (
     CONSTRAINT fk_session_event FOREIGN KEY (event_id) REFERENCES carnival_events (id),
     CONSTRAINT fk_session_round FOREIGN KEY (round_id) REFERENCES carnival_rounds (id),
     CONSTRAINT fk_session_attraction FOREIGN KEY (attraction_id) REFERENCES carnival_attractions (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS carnival_session_members (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id INT UNSIGNED NOT NULL,
+    participant_id INT UNSIGNED NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'joined',
+    joined_at BIGINT UNSIGNED NOT NULL,
+    left_at BIGINT UNSIGNED NULL,
+    UNIQUE KEY uq_session_member (session_id, participant_id),
+    KEY idx_session_member_participant (participant_id),
+    CONSTRAINT fk_session_member_session FOREIGN KEY (session_id) REFERENCES carnival_attraction_sessions (id),
+    CONSTRAINT fk_session_member_participant FOREIGN KEY (participant_id) REFERENCES carnival_participants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS carnival_attraction_participation (

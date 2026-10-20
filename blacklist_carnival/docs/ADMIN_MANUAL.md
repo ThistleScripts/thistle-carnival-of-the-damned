@@ -18,6 +18,24 @@ Open the configurator with `/carnivaladmin` (or `/carnival`, which opens the mos
 | Audit trail | Append-only administrative record. |
 | Items & health | Checks every carnival and configured reward item against ox_inventory. |
 
+## Carnival mode: walk-up or scheduled
+
+*General → Carnival mode* decides how the carnival runs.
+
+**Walk-up (default): no staff needed.**
+* When no event is active, the server creates a walk-up event and moves it straight to *running* (the transitions are recorded with the actor `system`). Registration stays open while it runs.
+* A player buys a ticket at the booth and gets a colour. That colour's column of the rotation matrix is their personal order of games; the HUD and `/carnival` show the next one and set a waypoint.
+* The player targets the next game's ped and plays. When they finish, their ticket moves on to the next game. They cannot play out of order (unless *Rotation → Walk-up mode → enforce order* is off), and they cannot repeat a game.
+* Individual games (gallery, wheel, fortune) complete per player. Group games (theatre, Hall of Deception, House of Horrors) gather whoever arrives for that game during the lobby, run, then complete for everyone who took part. Nobody can join a show, maze run or mystery that is already under way.
+* An attraction that is disabled or marked unavailable is passed over; the player plays the next one and comes back to it later.
+* A visit nobody is playing is closed after *idle seconds* without counting as played, so the player can start again.
+* The fortune teller can still be run by staff. In *staff* or *both* mode, a waiting player appears in the fortune console; staff present questions, award roleplay points and press **Finish reading** to complete their visit.
+* Restarts do not pause a walk-up event.
+* To end the night, move the event to *Final results* and then *Completed*. Results are frozen as usual and a fresh carnival opens by itself (players buy a new ticket).
+* To stop the carnival opening again, switch the mode to *scheduled* first. While the walk-up event runs, the rotation matrix and colours may still be edited, because players progress individually.
+
+**Scheduled.** Staff create the event and run it through the lifecycle below in timed rounds; each colour group visits one attraction per round.
+
 ## Event lifecycle
 
 ```

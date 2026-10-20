@@ -1,5 +1,7 @@
 # Event staff operating manual
 
+In **walk-up mode** (the default) there is nothing to start: the carnival opens itself, players buy a ticket and play the games on it in their colour's order. The Overview's rotation panel then lists who is playing where. *Complete* finishes a visit for everyone in it (for example, if a player is stuck). The fortune console lists players waiting for a reading: present questions, award roleplay points, and press **Finish reading** when you are done with them.
+
 **Players run every attraction themselves** by targeting the attraction ped: the gallery game, wheel and fortune teller are instant; the theatre, Hall of Deception and House of Horrors start themselves when a player (or the arriving group) triggers them. Staff are ambient actors: perform, scare, lead fortune readings, and use the panel to monitor and fix problems. An attraction set to *staff* mode in the configurator uses the staff-run flow described below.
 
 Open the staff panel with `/carnivalstaff`. You only see the tools your role allows. **Minimise** lets you move around without closing it; **Report problem** sends a report to the monitoring log (and Discord, if configured).

@@ -131,10 +131,11 @@ export function FortuneConsole() {
           <div className="console-grid">
             <Card title="Group">
               {d.members.length === 0 ? <Empty text="No group here." /> : (
-                <Table compact head={['', 'Name', 'Answered', 'Correct', 'Points']}>
+                <Table compact head={['', 'Name', 'Answered', 'Correct', 'Points', '']}>
                   {d.members.map((m: any) => (
                     <tr key={m.id}><td><input type="radio" name="fortune-target" checked={target === String(m.id)} onChange={() => setTarget(String(m.id))} disabled={!m.online} /></td>
-                      <td>{m.name}{m.inVisit ? ' (reading)' : ''}{m.online ? '' : ' (offline)'}</td><td>{m.answered}</td><td>{m.correct}</td><td className="num">{m.points}</td></tr>
+                      <td>{m.name}{m.inVisit ? ' (reading)' : ''}{m.online ? '' : ' (offline)'}</td><td>{m.answered}</td><td>{m.correct}</td><td className="num">{m.points}</td>
+                      <td>{d.session?.kind === 'walkup' ? <Button small busy={busy} onClick={() => run('fortune.staff.finish', { participantId: m.id }, 'Reading finished').then(st.reload)}>Finish reading</Button> : null}</td></tr>
                   ))}
                 </Table>
               )}

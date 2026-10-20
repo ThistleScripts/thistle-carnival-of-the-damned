@@ -62,7 +62,7 @@ local function pushGroup(action)
     if not current then return end
     local session = Carnival.Rotation.sessionById(current.session_id)
     if not session then return end
-    for _, p in ipairs(Carnival.Participants.members(session.colour, true)) do
+    for _, p in ipairs(Carnival.Rotation.sessionMembers(session, true)) do
         local s = Carnival.Participants.sourceOf(p.id)
         local st = participantState(p.id)
         st.action = action
@@ -253,7 +253,7 @@ local function staffState(ctx)
         return row
     end)
     if session then
-        r.members = U.map(Carnival.Participants.members(session.colour, false), function(p)
+        r.members = U.map(Carnival.Rotation.sessionMembers(session, false), function(p)
             return { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil, used = submissionCount(current.id, p.id) }
         end)
     end
@@ -395,7 +395,7 @@ local function record(ctx, payload)
     local pid = V.id(payload.participantId)
     local p = pid and Carnival.Participants.get(pid)
     local session = Carnival.Rotation.sessionById(current.session_id)
-    if not p or not session or p.colour ~= session.colour or p.status ~= 'active' then return nil, 'invalid', 'Participant is not in this group.' end
+    if not p or not Carnival.Rotation.sessionIncludes(session, p) or p.status ~= 'active' then return nil, 'invalid', 'Participant is not in this group.' end
     local used = submissionCount(current.id, pid)
     if used >= cfg().maxSubmissions then return nil, 'limit', 'That participant has no submissions left.' end
     local valid = U.toSet(U.map(current.mystery.performers, function(x) return x.id end))
@@ -481,6 +481,11 @@ commitRound = function(adjustments, note, actor)
             current.status = 'committed'
         end
         Carnival.Push.invalidate('deception')
+        -- walk-up: the mystery is over, so is the visit for every investigator
+        if Carnival.Rotation.isWalkup() then
+            local sessionId = current.session_id
+            CreateThread(function() Carnival.Rotation.runFinished(sessionId, 'Mystery solved') end)
+        end
         return lines
     end
 end
@@ -527,7 +532,7 @@ end
 everyoneSubmitted = function()
     local session = current and Carnival.Rotation.sessionById(current.session_id)
     if not session then return false end
-    local members = Carnival.Participants.members(session.colour, true)
+    local members = Carnival.Rotation.sessionMembers(session, true)
     if #members == 0 then return false end
     for _, p in ipairs(members) do
         if submissionCount(current.id, p.id) == 0 then return false end
@@ -541,6 +546,11 @@ end
 Carnival.Attractions.register({
     id = ID,
     isBusy = function() return current ~= nil and current.status == 'questioning' end,
+    -- walk-up: investigators may join until accusations close
+    canJoin = function(session)
+        if not current or current.session_id ~= session.id then return true end
+        return current.status == 'questioning' or current.status == 'setup'
+    end,
     onSessionStart = function(session)
         -- The previous group's committed round is no longer current.
         if current and current.status == 'committed' then current = nil end

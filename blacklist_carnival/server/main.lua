@@ -90,6 +90,10 @@ local function startup()
     Carnival.Events.recover()
 
     Carnival.ready = true
+
+    -- 5. Walk-up mode: open the carnival if none is running.
+    Carnival.Events.ensureWalkup()
+
     for _, fn in ipairs(Carnival.readyHandlers) do
         local ok, err = pcall(fn)
         if not ok then Monitor.log('error', 'lifecycle', 'ready_handler_failed', { details = { error = tostring(err) } }) end

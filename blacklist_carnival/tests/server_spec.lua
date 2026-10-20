@@ -33,6 +33,8 @@ local function count(sql, p) return H.sql(sql, p)[1].n end
 local OWNER, ADMIN, MANAGER, OBSERVER, HORROR, WHEELOP, OUTSIDER = 1, 2, 3, 4, 5, 6, 7
 local PLAYERS = {}
 for i = 10, 21 do PLAYERS[#PLAYERS + 1] = i end
+local WALKERS = {}
+for i = 30, 35 do WALKERS[#WALKERS + 1] = i end
 
 local function setupPlayers()
     H.addPlayer(OWNER, { name = 'Owner' })
@@ -43,12 +45,16 @@ local function setupPlayers()
     H.addPlayer(WHEELOP, { name = 'WheelOp', aces = { ['carnival.role.attraction_operator'] = true, ['carnival.attraction.wheel'] = true } })
     H.addPlayer(OUTSIDER, { name = 'Nobody' })
     for _, s in ipairs(PLAYERS) do H.addPlayer(s, { citizenid = 'CIT' .. s }) end
+    for _, s in ipairs(WALKERS) do H.addPlayer(s, { citizenid = 'WALK' .. s }) end
 end
 
 local function configure(cfg)
     cfg.Security.Allowlist[H.players[OWNER].license] = 'owner'
     cfg.Security.HorrorControllers = { H.players[HORROR].license }
     cfg.LogLevel = 'warning'
+    -- The suite runs staff-scheduled events first; walk-up mode (the factory
+    -- default) has its own section near the end.
+    Carnival.Defaults.general.mode = 'scheduled'
     -- The suite fires many requests within one virtual second; rate limiting has its own test.
     for k, v in pairs(cfg.RateLimits) do if type(v) == 'table' then cfg.RateLimits[k] = { 1000, 10 } end end
 end
@@ -89,7 +95,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 3, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 4, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -97,7 +103,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 3, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 4, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -948,6 +954,210 @@ test('horror: a player opens the doors, the group gathers and the run starts by 
     eq(okRes(H.api(runners[1], 'horror.enter')).running, true)
     local st = okRes(H.api(runners[1], 'horror.state'))
     eq(st.active, true)
+end)
+
+---------------------------------------------------------------------------
+section('Walk-up mode (no staff: the carnival opens itself)')
+---------------------------------------------------------------------------
+local walkEvent
+local byFirst = {}   -- first attraction on the ticket -> walker source
+local function pidOf(src) return Carnival.Participants.idOfSource(src) end
+local function nextOf(src) return okRes(H.api(src, 'participant.state')).current end
+local function answerAll(src, v)
+    local q = v.question
+    while q do
+        local payload = { visitId = v.visitId, questionId = q.id }
+        if q.kind == 'choice' then payload.choice = 1 else payload.text = 'no idea' end
+        local a = okRes(H.api(src, 'fortune.answer', payload))
+        q = a.question
+        if a.finished then return a end
+    end
+end
+
+test('switching to walk-up opens a carnival automatically and sells tickets without staff', function()
+    okRes(H.api(ADMIN, 'events.transition', { to = 'cancelled', reason = 'End of the scheduled tests' }))
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    eq(Carnival.Defaults.general.mode, 'scheduled', 'suite override')
+    doc.general.mode = 'walkup'
+    doc.rotation.walkup = { enforceOrder = true, idleSeconds = 300 }
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    H.advance(6)
+    local e = Carnival.Events.active
+    truthy(e, 'event created')
+    eq(e.mode, 'walkup')
+    eq(e.state, 'running', 'opened and running with nobody pressing a button')
+    walkEvent = e.id
+    eq(count("SELECT COUNT(*) AS n FROM carnival_event_transitions WHERE event_id = ? AND actor = 'system'", { walkEvent }), 5, 'all transitions by the system')
+    local pub = okRes(H.api(WALKERS[1], 'event.public'))
+    eq(pub.mode, 'walkup')
+    eq(pub.registrationOpen, true)
+    for _, s in ipairs(WALKERS) do
+        at(s, settings().registration.entrance)
+        local r = okRes(H.api(s, 'registration.register'), 'register ' .. s)
+        truthy(r.colour and r.ticketIssued, 'ticket with a colour')
+        byFirst[Carnival.Rotation.sequenceFor(r.colour)[1]] = s
+    end
+    eq(count('SELECT COUNT(*) AS n FROM carnival_rounds WHERE event_id = ?', { walkEvent }), 0, 'no rounds')
+    for first, s in pairs(byFirst) do
+        local st = okRes(H.api(s, 'participant.state'))
+        eq(st.walkup, true)
+        eq(st.current.attraction, first, 'first game is the first on the ticket')
+    end
+end)
+
+test('a player plays the game on their ticket at its ped; other games wait their turn', function()
+    local s = byFirst.wheel
+    at(s, settings().attractions.shooting.location)
+    local r = H.api(s, 'shooting.start')
+    errRes(r, 'wrong_attraction')
+    truthy(r.message:find('Wheel'), 'tells the player where to go: ' .. tostring(r.message))
+    at(s, settings().attractions.wheel.location)
+    for i = 1, settings().attractions.wheel.maxSpins do
+        okRes(H.api(s, 'wheel.spin'), 'spin ' .. i)
+    end
+    H.advance(math.ceil(settings().attractions.wheel.spinAnimationMs / 1000) + 2)
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'wheel'), 'wheel completed')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_attraction_participation WHERE participant_id = ? AND attraction_id = 'wheel' AND status = 'completed'", { pidOf(s) }), 1)
+    eq(nextOf(s).attraction, Carnival.Rotation.sequenceFor(colourOf(s))[2], 'ticket moves on to the next game')
+    errRes(H.api(s, 'wheel.spin'), 'already_completed')
+    eq(Carnival.Rotation.sessionFor('wheel'), nil, 'the empty visit closed')
+end)
+
+test('shooting gallery: walk up, play the aim game, move on', function()
+    local s = byFirst.shooting
+    at(s, settings().attractions.shooting.location)
+    local g = okRes(H.api(s, 'shooting.start'))
+    truthy(g.gameId and #g.plan > 0, 'game started')
+    H.advance(settings().attractions.shooting.durationSeconds + 6)
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'shooting'), 'completed')
+    eq(nextOf(s).attraction, 'wheel')
+end)
+
+test('fortune teller: an automated reading completes the visit', function()
+    local s = byFirst.fortune
+    at(s, settings().attractions.fortune.location)
+    local v = okRes(H.api(s, 'fortune.begin'))
+    local a = answerAll(s, v)
+    truthy(a and a.finished, 'reading finished')
+    H.advance(1)
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'fortune'), 'completed')
+end)
+
+test('theatre: a lone player performs a solo show and is scored', function()
+    local s = byFirst.puppets
+    at(s, settings().attractions.puppets.location)
+    eq(okRes(H.api(s, 'theatre.play')).cast, 1)
+    H.advance(6)
+    local perf = H.sql("SELECT * FROM carnival_theatre_performances WHERE status = 'running' ORDER BY id DESC LIMIT 1")[1]
+    truthy(perf, 'show started')
+    H.advance(perf.duration_seconds + 2)
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed')
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'puppets'), 'completed')
+    truthy(Carnival.Scoring.attractionPoints(pidOf(s), 'puppets') >= settings().attractions.puppets.soloPoints, 'solo points')
+end)
+
+test('hall of deception: the mystery starts on arrival and an accusation ends the visit', function()
+    local s = byFirst.deception
+    at(s, settings().attractions.deception.location)
+    local pub = okRes(H.api(s, 'deception.public'))
+    eq(pub.status, 'questioning')
+    local sel = {}
+    for i = 1, pub.mystery.liarCount do sel[i] = pub.mystery.performers[i].id end
+    okRes(H.api(s, 'deception.submit', { roundId = pub.roundId, selections = sel }))
+    H.advance(7)
+    eq(H.sql('SELECT status FROM carnival_deception_rounds WHERE id = ?', { pub.roundId })[1].status, 'committed')
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'deception'), 'completed')
+end)
+
+test('house of horrors: a player opens the doors; nobody can barge into a run in progress', function()
+    local s = byFirst.horror
+    local h = settings().attractions.horror
+    at(s, h.entry)
+    eq(okRes(H.api(s, 'horror.enter')).startsIn, h.lobbySeconds)
+    H.advance(h.lobbySeconds + 1)
+    eq(count("SELECT COUNT(*) AS n FROM carnival_horror_runs WHERE status = 'running'"), 1, 'run started by itself')
+    -- with free order, another player could choose horror, but not mid-run
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    doc.rotation.walkup.enforceOrder = false
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    local other = byFirst.wheel
+    at(other, h.entry)
+    errRes(H.api(other, 'horror.enter'), 'busy')
+    H.advance(h.durationSeconds + 2)
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'horror'), 'run over: visit completed')
+    truthy(not Carnival.Rotation.hasCompleted(pidOf(other), 'horror'), 'the other player was not credited')
+    doc.rotation.walkup.enforceOrder = true
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+end)
+
+test('the fortune teller can lead a reading for a waiting player (staff mode)', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    doc.attractions.fortune.mode = 'staff'
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    local s = byFirst.wheel   -- red-free order: wheel, fortune, ...
+    eq(nextOf(s).attraction, 'fortune')
+    at(s, settings().attractions.fortune.location)
+    errRes(H.api(s, 'fortune.begin'), 'staff_only')
+    local st = okRes(H.api(MANAGER, 'fortune.staff.state'))
+    eq(st.members[1].id, pidOf(s), 'waiting player listed for the fortune teller')
+    local q = settings().attractions.fortune.questions[1]
+    local pv = okRes(H.api(MANAGER, 'fortune.staff.present', { participantId = pidOf(s), questionId = q.id }))
+    local payload = { visitId = pv.visitId, questionId = q.id }
+    if q.kind == 'choice' then payload.choice = q.correctIndex else payload.text = q.acceptedAnswers[1] end
+    eq(okRes(H.api(s, 'fortune.answer', payload)).correct, true)
+    truthy(not Carnival.Rotation.hasCompleted(pidOf(s), 'fortune'), 'staff decide when the reading ends')
+    okRes(H.api(MANAGER, 'fortune.staff.award', { participantId = pidOf(s), points = 5, reason = 'lovely roleplay', requestId = 'walk-0000001' }))
+    okRes(H.api(MANAGER, 'fortune.staff.finish', { participantId = pidOf(s) }))
+    truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'fortune'), 'completed by the fortune teller')
+    doc.attractions.fortune.mode = 'both'
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+end)
+
+test('an abandoned visit closes after being idle without counting as played', function()
+    local s = byFirst.horror        -- orange: horror, shooting, wheel, fortune, ...
+    local p = Carnival.Participants.get(pidOf(s))
+    -- play through to the fortune teller, then walk off mid-reading
+    for _, a in ipairs({ 'shooting', 'wheel' }) do
+        if not Carnival.Rotation.hasCompleted(p.id, a) then H.call(Carnival.Rotation.memberFinished, H.call(Carnival.Rotation.joinWalkup, p, a).id, p.id, 'test') end
+    end
+    eq(nextOf(s).attraction, 'fortune')
+    at(s, settings().attractions.deception.location)
+    errRes(H.api(s, 'deception.public'), 'wrong_attraction')
+    at(s, settings().attractions.fortune.location)
+    local v = okRes(H.api(s, 'fortune.begin'))
+    local sess = Carnival.Rotation.sessionFor('fortune')
+    H.advance(settings().rotation.walkup.idleSeconds + 2)
+    eq(H.sql('SELECT status FROM carnival_attraction_sessions WHERE id = ?', { sess.id })[1].status, 'interrupted')
+    truthy(not Carnival.Rotation.hasCompleted(p.id, 'fortune'), 'not credited')
+    eq(nextOf(s).attraction, 'fortune', 'still next on the ticket')
+    -- coming back starts a fresh reading (the abandoned one does not use up the visit)
+    local v2 = okRes(H.api(s, 'fortune.begin'))
+    truthy(v2.visitId ~= v.visitId and not v2.resumed, 'new reading')
+    answerAll(s, v2)
+    H.advance(1)
+    truthy(Carnival.Rotation.hasCompleted(p.id, 'fortune'), 'completed on return')
+end)
+
+test('a restart keeps the walk-up carnival open (not paused) and keeps progress', function()
+    local s = byFirst.deception
+    local done = #Carnival.Rotation.completedFor(pidOf(s))
+    H.start({ configure = configure })
+    eq(Carnival.Events.activeId(), walkEvent)
+    eq(Carnival.Events.state(), 'running', 'not auto-paused')
+    eq(#Carnival.Rotation.completedFor(pidOf(s)), done, 'progress recovered')
+    eq(nextOf(s).attraction, Carnival.Rotation.sequenceFor(colourOf(s))[2])
+end)
+
+test('finalising the night freezes results and a fresh carnival opens by itself', function()
+    okRes(H.api(ADMIN, 'events.transition', { to = 'final_results' }))
+    okRes(H.api(ADMIN, 'events.transition', { to = 'completed' }))
+    H.advance(6)
+    local e = Carnival.Events.active
+    truthy(e and e.id ~= walkEvent, 'new event')
+    eq(e.state, 'running')
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { walkEvent })[1].state, 'completed')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { walkEvent }), 1, 'results frozen')
+    eq(okRes(H.api(WALKERS[1], 'participant.state')).registered, false, 'a new ticket is needed')
 end)
 
 ---------------------------------------------------------------------------

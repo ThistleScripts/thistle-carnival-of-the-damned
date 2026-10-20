@@ -2,7 +2,12 @@
 
 A staff-operated, roleplay-focused carnival event for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
 
-Players register at the ticket booth and receive one of six coloured tickets. Each colour is a travelling group that rotates through six attractions; **scores are individual**. Players run every attraction themselves by targeting its ped (staff are optional ambient actors and can monitor or step in from the staff panel); owners/admins configure everything from an in-game configurator — no Lua edits for ordinary event setup.
+Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped. Staff are optional ambient actors who can monitor or step in from the staff panel; the fortune teller can lead readings. Owners/admins configure everything from an in-game configurator, with no Lua edits for ordinary event setup.
+
+**Two carnival modes** (*General → Carnival mode*):
+
+* **Walk-up** (default): the carnival opens itself and stays open. Nobody has to create, open or start an event. A player buys a ticket, walks to the first game on it and plays, then the next, at their own pace.
+* **Scheduled**: staff create an event and run it in timed rounds, with each colour group moving together.
 
 | Attraction | Type | Highlights |
 |---|---|---|
@@ -27,7 +32,7 @@ Players register at the ticket booth and receive one of six coloured tickets. Ea
 1. Add the items from `../ox_inventory_additions/data/carnival_items.lua` to `ox_inventory/data/items.lua` and copy `../ox_inventory_additions/web/images/*.png` to `ox_inventory/web/images/`.
 2. Put your license in `Config.Security.Allowlist` (config.lua) as `owner`.
 3. `ensure blacklist_carnival` after its dependencies. Tables are created automatically.
-4. In game: `/carnivaladmin` → set locations with **Use my position** → *Events & history* → *Create event* → open registration.
+4. In game: `/carnivaladmin` → set the booth and attraction locations with **Use my position**. In walk-up mode (the default) the carnival is already open: players can buy a ticket and play. For a staff-run night, switch *General → Carnival mode* to *scheduled*, then *Events & history* → *Create event* → open registration.
 
 ## Layout
 

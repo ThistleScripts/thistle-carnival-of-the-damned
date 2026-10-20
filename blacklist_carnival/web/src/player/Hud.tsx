@@ -13,6 +13,7 @@ export function Hud() {
   if (!visible || !p?.registered || !e?.active) return null;
 
   const current = p.current;
+  const walkup = e.mode === 'walkup';
   return (
     <div className={`hud ${horrorActive ? 'hud-dim' : ''}`}>
       <div className="hud-ticket" style={{ borderColor: colourHex(settings, p.colour) }}>
@@ -27,7 +28,8 @@ export function Hud() {
       </div>
       <div className="hud-round">
         {e.state === 'paused' ? <span className="hud-paused">Paused</span> : null}
-        {e.round ? <span>Round {e.round}/{e.totalRounds}</span> : <span>{e.stateLabel}</span>}
+        {walkup ? <span>{e.state === 'running' ? 'Open' : e.stateLabel} · {p.completed?.length ?? 0}/{p.sequence?.length ?? 6} played</span>
+          : e.round ? <span>Round {e.round}/{e.totalRounds}</span> : <span>{e.stateLabel}</span>}
         {e.roundEndsAt ? <Countdown endsAt={e.roundEndsAt} /> : e.roundRemaining != null ? <Countdown remaining={e.roundRemaining} /> : null}
         {e.nextRoundAt ? <span className="hud-next">Next round <Countdown endsAt={e.nextRoundAt} /></span> : null}
       </div>
@@ -37,11 +39,14 @@ export function Hud() {
           <div>
             <div className="hud-now">{attractionLabel(settings, current.attraction)}</div>
             <div className="hud-sub">
-              {current.status === 'active' ? 'Open now' : current.status === 'pending' ? 'Waiting for staff' : current.status}
+              {walkup ? 'Your next game · target the attendant to play'
+                : current.status === 'active' ? 'Open now' : current.status === 'pending' ? 'Waiting for staff' : current.status}
               {p.next ? ` · next: ${attractionLabel(settings, p.next)}` : ''}
             </div>
           </div>
         </div>
+      ) : walkup && p.finished ? (
+        <div className="hud-attraction"><div className="hud-sub">Every attraction played — check the leaderboard!</div></div>
       ) : p.next ? (
         <div className="hud-attraction"><div className="hud-sub">Next: {attractionLabel(settings, p.next)}</div></div>
       ) : null}

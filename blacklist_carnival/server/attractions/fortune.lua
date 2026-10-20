@@ -43,6 +43,11 @@ end
 local function finishVisit(v, pid, status)
     Carnival.Db.update('UPDATE carnival_fortune_visits SET status = ?, finished_at = ? WHERE id = ?', { status or 'finished', os.time(), v.id })
     visits[pid] = nil
+    -- walk-up: a finished automated reading completes this player's visit
+    -- (staff-led readings are finished by the staff member)
+    if (status == nil or status == 'finished') and not v.staff and v.sessionId then
+        CreateThread(function() Carnival.Rotation.memberFinished(v.sessionId, pid, 'Reading finished') end)
+    end
 end
 
 local function startVisit(p, session, questionIds, mode, staffActor, fortune)
@@ -85,9 +90,10 @@ end
 ---------------------------------------------------------------------------
 local function begin(src)
     local c = cfg()
-    if c.mode == 'staff' then return nil, 'staff_only', 'The fortune teller only reads for those the staff bring forward.' end
     local p, session, msg = Carnival.Attractions.eligibility(src, ID)
     if not p then return nil, session, msg end
+    -- (eligibility has put a walk-up player in the queue the staff console shows)
+    if c.mode == 'staff' then return nil, 'staff_only', 'Take a seat. The fortune teller will call you forward.' end
     return Carnival.withLock('fortune:' .. p.id, function()
         local e = Carnival.Events.active
         local v = visits[p.id]
@@ -99,9 +105,10 @@ local function begin(src)
             end
             finishVisit(v, p.id)
         end
-        local used = Carnival.Db.scalar("SELECT COUNT(*) FROM carnival_fortune_visits WHERE event_id = ? AND participant_id = ? AND mode = 'automated'", { e.id, p.id }) or 0
+        -- readings closed before they finished (visit closed, player walked off) do not count
+        local used = Carnival.Db.scalar("SELECT COUNT(*) FROM carnival_fortune_visits WHERE event_id = ? AND participant_id = ? AND mode = 'automated' AND status <> 'closed'", { e.id, p.id }) or 0
         if used >= c.maxVisits then return nil, 'no_visits', 'The fortune teller has nothing more to tell you tonight.' end
-        local lastFinish = Carnival.Db.scalar('SELECT MAX(finished_at) FROM carnival_fortune_visits WHERE event_id = ? AND participant_id = ?', { e.id, p.id })
+        local lastFinish = Carnival.Db.scalar("SELECT MAX(finished_at) FROM carnival_fortune_visits WHERE event_id = ? AND participant_id = ? AND status <> 'closed'", { e.id, p.id })
         if lastFinish and os.time() - lastFinish < c.cooldownSeconds then
             return nil, 'cooldown', 'The cards must rest. Come back shortly.'
         end
@@ -178,7 +185,7 @@ local function answer(src, payload)
         v.askedAt = os.time()
         local applied = 0
         if points ~= 0 then
-            local session = Carnival.Rotation.sessionForColour(p.colour)
+            local session = Carnival.Rotation.participantSession(p, ID)
             local aok, tx = Carnival.Scoring.award({
                 participantId = p.id, delta = points, key = 'fortune:answer:' .. answerId, txType = points > 0 and 'award' or 'penalty',
                 source = correct and 'fortune_correct' or 'fortune_wrong', reason = 'Fortune question ' .. q.id, attractionId = ID,
@@ -211,7 +218,8 @@ Carnival.Attractions.register({
     onSessionEnd = function(session)
         for pid, v in pairs(visits) do
             local p = Carnival.Participants.get(pid)
-            if p and p.colour == session.colour then
+            local mine = v.sessionId == session.id or (session.kind ~= 'walkup' and p ~= nil and p.colour == session.colour)
+            if mine then
                 finishVisit(v, pid, 'closed')
                 local s = Carnival.Participants.sourceOf(pid)
                 if s then Carnival.Push.send(s, 'fortune', { action = 'close' }) end
@@ -258,7 +266,7 @@ Api.register('fortune.staff.state', {
         local session = Carnival.Rotation.sessionFor(ID)
         local members = {}
         if e and session then
-            for _, p in ipairs(Carnival.Participants.members(session.colour, false)) do
+            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
                 local stats = Carnival.Db.single('SELECT COUNT(*) AS answered, COALESCE(SUM(correct), 0) AS correct, COALESCE(SUM(points), 0) AS points FROM carnival_fortune_answers WHERE event_id = ? AND participant_id = ?', { e.id, p.id })
                 members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
                     answered = stats and tonumber(stats.answered) or 0, correct = stats and tonumber(stats.correct) or 0,
@@ -292,7 +300,7 @@ Api.register('fortune.staff.present', {
         return Carnival.withLock('fortune:' .. p.id, function()
             if answeredIds(e.id, p.id)[q.id] then return nil, 'invalid', 'They have already answered that question.' end
             if visits[p.id] then return nil, 'invalid', 'They are already mid-reading.' end
-            local v = startVisit(p, Carnival.Rotation.sessionForColour(p.colour), { q.id }, 'staff', ctx.actor, nil)
+            local v = startVisit(p, Carnival.Rotation.participantSession(p, ID), { q.id }, 'staff', ctx.actor, nil)
             if not v then return nil, 'database_error' end
             Carnival.Push.send(s, 'fortune', { action = 'question', visitId = v.id, staffLed = true, question = publicQuestion(q, 1, 1), greeting = cfg().greeting })
             Carnival.Audit.record(ctx.actor, 'fortune_question_presented', { targetType = 'participant', targetId = p.id, details = { question = q.id } })
@@ -340,19 +348,43 @@ Api.register('fortune.staff.award', {
         if not reason then return nil, 'invalid', rerr end
         local requestId, qerr = V.requestId(payload.requestId)
         if not requestId then return nil, 'invalid', qerr end
-        local session = Carnival.Rotation.sessionForColour(p.colour)
-        if not session or session.attraction_id ~= ID or session.status ~= C.SESSION_STATUS.ACTIVE then
-            return nil, 'invalid', 'That participant\'s group is not at the fortune teller.'
+        local session = Carnival.Rotation.participantSession(p, ID)
+        -- walk-up readers may still be rewarded just after their reading ended
+        local justRead = Carnival.Rotation.isWalkup() and Carnival.Rotation.hasCompleted(p.id, ID)
+        if (not session or session.status ~= C.SESSION_STATUS.ACTIVE) and not justRead then
+            return nil, 'invalid', 'That participant is not at the fortune teller.'
         end
         local ok, tx, msg = Carnival.Scoring.award({
             participantId = p.id, delta = points, key = 'fortune:rp:' .. requestId, txType = 'award', source = 'fortune_roleplay',
-            reason = reason, attractionId = ID, sessionId = session.id, roundNumber = session.round_number, actor = ctx.actor,
-            publicReason = 'The fortune teller is pleased',
+            reason = reason, attractionId = ID, sessionId = session and session.id or nil, roundNumber = session and session.round_number or nil,
+            actor = ctx.actor, publicReason = 'The fortune teller is pleased',
         })
         if not ok then return nil, tx, msg end
         if not tx.duplicate then
             Carnival.Audit.record(ctx.actor, 'fortune_roleplay_award', { targetType = 'participant', targetId = p.id, reason = reason, details = { points = tx.delta } })
         end
         return tx
+    end,
+})
+
+-- Walk-up: the fortune teller ends a staff-led reading, completing the visit.
+Api.register('fortune.staff.finish', {
+    perm = 'attractions.operate.fortune', rate = 'staff',
+    handler = function(ctx, payload)
+        local pid = V.id(payload.participantId)
+        local p = pid and Carnival.Participants.get(pid)
+        if not p then return nil, 'invalid', 'Choose a participant.' end
+        local session = Carnival.Rotation.participantSession(p, ID)
+        if not session or session.kind ~= 'walkup' then return nil, 'invalid', 'That participant is not waiting at the fortune teller.' end
+        return Carnival.withLock('fortune:' .. p.id, function()
+            local v = visits[p.id]
+            if v then finishVisit(v, p.id, 'closed') end
+            Carnival.Rotation.memberFinished(session.id, p.id, 'Reading finished by the fortune teller')
+            local s = Carnival.Participants.sourceOf(p.id)
+            if s then Carnival.Push.send(s, 'fortune', { action = 'close' }) end
+            Carnival.Audit.record(ctx.actor, 'fortune_reading_finished', { targetType = 'participant', targetId = p.id })
+            Carnival.Push.invalidate('fortune')
+            return true
+        end)
     end,
 })

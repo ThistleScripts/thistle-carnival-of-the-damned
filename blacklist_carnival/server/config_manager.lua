@@ -154,6 +154,9 @@ local function liveEventAffected(scope)
     if not state then return false end
     local live = state == C.STATES.RUNNING or state == C.STATES.PAUSED or state == C.STATES.BETWEEN
     if not live then return false end
+    -- walk-up events never close; players progress individually, so the matrix
+    -- and colours may be edited while they are open
+    if Carnival.Events.isWalkup() then return false end
     if scope == 'event' then return true end
     return docs.event == nil -- global changes only affect the event if it has no override
 end
@@ -351,7 +354,7 @@ function Cfg.publicSettings()
         attractions.horror.tokenTypes[t] = { model = h.tokenTypes[t].model, distance = h.tokenTypes[t].distance, points = h.tokenTypes[t].points }
     end
     return {
-        general = { eventName = e.general.eventName, blipLabel = e.general.blipLabel, hudEnabled = e.general.hudEnabled },
+        general = { mode = e.general.mode, eventName = e.general.eventName, blipLabel = e.general.blipLabel, hudEnabled = e.general.hudEnabled },
         registration = {
             entrance = e.registration.entrance, npcModel = e.registration.npcModel,
             interactDistance = e.registration.interactDistance, blip = e.registration.blip,

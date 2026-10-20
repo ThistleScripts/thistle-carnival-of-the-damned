@@ -54,6 +54,8 @@ local vec3Item = { type = 'vec3' }
 
 S.root = { type = 'group', fields = {
     f('general', { type = 'group', label = 'General', fields = {
+        f('mode', { type = 'select', label = 'Carnival mode', options = { 'walkup', 'scheduled' },
+            help = 'walkup: the carnival opens itself and stays open; players buy a ticket and play their games at their own pace, no staff needed. scheduled: staff create the event and run timed rounds.' }),
         f('eventName', { type = 'string', label = 'Default event name', max = 96 }),
         f('description', { type = 'text', label = 'Default description', max = 1000 }),
         f('blipLabel', { type = 'string', label = 'Carnival blip label', max = 64 }),
@@ -102,6 +104,12 @@ S.root = { type = 'group', fields = {
         f('autoFinalise', { type = 'bool', label = 'Move to final results automatically after the last round' }),
         f('warningSeconds', { type = 'list', label = 'Round warnings (seconds remaining)', item = { type = 'int', min = 1, max = 3600 }, max = 10 }),
         f('unavailableBehaviour', { type = 'select', label = 'When an attraction is unavailable', options = { 'hold', 'skip' } }),
+        f('walkup', { type = 'group', label = 'Walk-up mode', fields = {
+            f('enforceOrder', { type = 'bool', label = 'Players must visit attractions in their ticket colour\'s order',
+                help = 'Off: any attraction the player has not completed yet may be played.' }),
+            f('idleSeconds', { type = 'int', label = 'Close an idle attraction visit after (s)', min = 60, max = 7200,
+                help = 'A visit nobody is playing is closed (without completing it) so the next player can start fresh.' }),
+        } }),
     } }),
 
     f('scoring', { type = 'group', label = 'Scoring', fields = {

@@ -95,7 +95,7 @@ local function startRun(actor)
     local e = Carnival.Events.active
     if not e or e.state ~= C.STATES.RUNNING then return nil, 'not_live', 'The event must be running to start a run.' end
     local c = U.deepCopy(cfg())
-    local members = Carnival.Participants.members(session.colour, false)
+    local members = Carnival.Rotation.sessionMembers(session, false)
     if #members == 0 then return nil, 'invalid', 'This group has no active participants.' end
 
     local now = os.time()
@@ -163,7 +163,7 @@ local function endRun(reason, actor)
     Carnival.Monitor.log('info', 'countdown', 'horror_run_ended', { attractionId = ID, actor = actor, result = reason, details = { runId = run.id } })
     if actor then Carnival.Audit.record(actor, 'horror_run_ended', { targetType = 'horror_run', targetId = run.id, reason = reason }) end
     Carnival.Push.invalidate('horror')
-    if run.settings.autoCompleteSession and (reason == 'expired' or reason == 'all_escaped' or reason == 'stopped') then
+    if (run.settings.autoCompleteSession or Carnival.Rotation.isWalkup()) and (reason == 'expired' or reason == 'all_escaped' or reason == 'stopped') then
         local session = Carnival.Rotation.sessionById(run.sessionId)
         if session and session.status == C.SESSION_STATUS.ACTIVE then
             Carnival.Rotation.completeSession(session.id, actor or Carnival.Identity.SYSTEM, 'House of Horrors run ' .. reason)
@@ -386,6 +386,10 @@ end)
 Carnival.Attractions.register({
     id = ID,
     isBusy = function() return run ~= nil and (run.status == 'running' or run.status == 'paused') end,
+    -- walk-up: players may join while the doors are still open (the lobby)
+    canJoin = function(session)
+        return not (run and run.sessionId == session.id and (run.status == 'running' or run.status == 'paused'))
+    end,
     onTimerExpired = function()
         -- An unfinished run keeps its own timer; the group is completed when it ends.
         if run and (run.status == 'running' or run.status == 'paused') then return 'hold' end
@@ -494,9 +498,10 @@ Api.register('horror.enter', {
     rate = 'action',
     handler = function(ctx)
         local c = cfg()
-        if c.mode ~= 'self' then return nil, 'staff_only', 'The keeper opens the doors when ready. Wait at the entrance.' end
         local p, session, msg = Carnival.Attractions.eligibility(ctx.source, ID, { point = c.entry, distance = c.validationDistance })
         if not p then return nil, session, msg end
+        -- (a walk-up player is now on the keeper's list for the next run)
+        if c.mode ~= 'self' then return nil, 'staff_only', 'The keeper opens the doors when ready. Wait at the entrance.' end
         if run and run.sessionId == session.id and (run.status == 'running' or run.status == 'paused') then
             if run.runners[p.id] then Carnival.Push.send(ctx.source, 'horror', stateFor(p.id)) end
             return { running = true, runId = run.id }
@@ -506,7 +511,7 @@ Api.register('horror.enter', {
         if Carnival.Events.state() ~= C.STATES.RUNNING then return nil, 'paused', 'The carnival is paused.' end
         if not lobby or lobby.sessionId ~= session.id then
             lobby = { sessionId = session.id, at = os.time() + c.lobbySeconds }
-            Carnival.Push.group(session.colour, 'notify', {
+            Carnival.Rotation.pushSession(session, 'notify', {
                 title = 'House of Horrors',
                 description = ('%s is opening the doors! The run starts in %ds - gather at the entrance.'):format(p.display_name, c.lobbySeconds),
                 type = 'warning', sound = c.warningSound,

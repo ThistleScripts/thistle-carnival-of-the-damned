@@ -13,6 +13,7 @@ local function v4(x, y, z, w) return { x = x, y = y, z = z, w = w } end
 
 Carnival.Defaults = {
     general = {
+        mode = 'walkup',
         eventName = 'Carnival of the Damned',
         description = 'Six attractions. Six coloured tickets. One survivor at the top of the board.',
         blipLabel = 'Carnival of the Damned',
@@ -63,6 +64,7 @@ Carnival.Defaults = {
         autoFinalise = false,
         warningSeconds = { 120, 60 },
         unavailableBehaviour = 'hold',
+        walkup = { enforceOrder = true, idleSeconds = 600 },
     },
 
     scoring = {

@@ -80,6 +80,18 @@ describe('player screens', () => {
     expect(screen.getByText('The Wheel of Misfortune')).toBeTruthy();
   });
 
+  it('walk-up mode: the HUD shows progress and the next game instead of rounds', () => {
+    render(<App />);
+    lua('push', { channel: 'event', data: { active: true, id: 2, name: 'Open Night', state: 'running', stateLabel: 'Running', mode: 'walkup', round: 0, totalRounds: 6 } });
+    lua('push', { channel: 'participant', data: { registered: true, id: 5, colour: 'red', status: 'active', total: 7, walkup: true,
+      sequence: ['shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror'], completed: ['shooting'], current: { attraction: 'wheel', status: 'active' }, next: 'fortune' } });
+    lua('hud', { visible: true });
+    expect(screen.getByText(/1\/6 played/)).toBeTruthy();
+    expect(screen.queryByText(/Round \d/)).toBeNull();
+    expect(screen.getByText('The Wheel of Misfortune')).toBeTruthy();
+    expect(screen.getByText(/target the attendant to play/)).toBeTruthy();
+  });
+
   it('opens and closes the ticket card with Escape (focus released)', () => {
     render(<App />);
     lua('open', { view: 'ticket', data: { action: 'issued', colour: 'red', serial: 'CTD-ABCDE-FGHIJ', holder: 'Ada Lovelace', eventName: 'Test Night' } });
@@ -207,6 +219,21 @@ describe('staff & admin panels', () => {
     expect(screen.queryByText('House of Horrors')).toBeNull();
     await waitFor(() => expect(screen.getByText('The change could not be saved.')).toBeTruthy());
     expect(screen.getByText('Retry')).toBeTruthy();
+  });
+
+  it('walk-up mode: live operations list who is playing where, with no round controls', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    responses['rotation.state'] = { ok: true, data: { walkup: true, round: 0, totalRounds: 6, walkupSessions: [
+      { sessionId: 4, attraction: 'shooting', busy: true, startedAt: now, players: [{ id: 5, name: 'Ada Lovelace', colour: 'red', online: true }] },
+    ] } };
+    responses['groups.overview'] = { ok: true, data: { groups: [], unassigned: 0, total: 0 } };
+    responses['attractions.overview'] = { ok: true, data: [] };
+    render(<App />);
+    lua('open', { view: 'staff', data: {} });
+    await waitFor(() => expect(screen.getByText(/Walk-up mode: players buy a ticket/)).toBeTruthy());
+    expect(screen.getAllByText(/Ada Lovelace/).length).toBeGreaterThan(0);
+    expect(screen.getByText('in play')).toBeTruthy();
+    expect(screen.queryByText('Force-advance round')).toBeNull();
   });
 
   it('permission loss while open closes nothing in the NUI but hides gated navigation', () => {

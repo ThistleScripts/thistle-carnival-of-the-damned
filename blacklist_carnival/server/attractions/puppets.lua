@@ -33,7 +33,7 @@ local function audienceSources(perf)
     local out = {}
     local session = Carnival.Rotation.sessionById(perf.session_id)
     if session then
-        for _, p in ipairs(Carnival.Participants.members(session.colour, true)) do
+        for _, p in ipairs(Carnival.Rotation.sessionMembers(session, true)) do
             out[#out + 1] = Carnival.Participants.sourceOf(p.id)
         end
     end
@@ -335,6 +335,11 @@ commitLines = function(perf, lines, note, actor)
         end
         if current == perf then current = nil end
         Carnival.Push.invalidate('theatre')
+        -- walk-up: the show is over, so is the visit for everyone who took part
+        if Carnival.Rotation.isWalkup() then
+            local sessionId = perf.session_id
+            CreateThread(function() Carnival.Rotation.runFinished(sessionId, 'Show finished') end)
+        end
         return results
     end
 end
@@ -387,7 +392,7 @@ local function groupSources(sessionId)
     local session = Carnival.Rotation.sessionById(sessionId)
     local out = {}
     if session then
-        for _, p in ipairs(Carnival.Participants.members(session.colour, true)) do out[#out + 1] = { pid = p.id, src = Carnival.Participants.sourceOf(p.id) } end
+        for _, p in ipairs(Carnival.Rotation.sessionMembers(session, true)) do out[#out + 1] = { pid = p.id, src = Carnival.Participants.sourceOf(p.id) } end
     end
     return out
 end
@@ -431,7 +436,7 @@ local function finishSelfShow(perf, winners, note)
     end
     commitLines(perf, lines, note, Carnival.Identity.SYSTEM)
     local sessionId = perf.session_id
-    CreateThread(function() Carnival.Rotation.completeIfOvertime(sessionId, 'Show finished after the round timer') end)
+    CreateThread(function() Carnival.Rotation.runFinished(sessionId, 'Show finished') end)
 end
 
 local function openVote(perf)
@@ -478,9 +483,10 @@ end
 Api.register('theatre.play', {
     rate = 'action',
     handler = function(ctx)
-        if not selfMode() then return nil, 'staff_only', 'Wait for the Puppet Master to call you on stage.' end
         local p, session, msg = Carnival.Attractions.eligibility(ctx.source, ID)
         if not p then return nil, session, msg end
+        -- (a walk-up player is now on the Puppet Master's list)
+        if not selfMode() then return nil, 'staff_only', 'Wait for the Puppet Master to call you on stage.' end
         if current and current.session_id == session.id then
             return nil, 'busy', 'A show is already on stage. Watch, then vote for the best performer!'
         end
@@ -506,7 +512,7 @@ Api.register('theatre.vote', {
         if not v or not current or V.id(payload.performanceId) ~= v.perfId then return nil, 'closed', 'Voting has closed.' end
         local p = Carnival.Participants.getBySource(ctx.source)
         local session = Carnival.Rotation.sessionById(current.session_id)
-        if not p or not session or p.colour ~= session.colour or p.status ~= 'active' then return nil, 'forbidden', 'Only the audience at the theatre can vote.' end
+        if not p or not Carnival.Rotation.sessionIncludes(session, p) or p.status ~= 'active' then return nil, 'forbidden', 'Only the audience at the theatre can vote.' end
         local cand = V.id(payload.participantId)
         local valid = false
         for _, x in ipairs(current.performers) do if x.participantId == cand then valid = true end end
@@ -530,6 +536,10 @@ Api.register('theatre.vote', {
 Carnival.Attractions.register({
     id = ID,
     isBusy = function() return current ~= nil and (current.status == 'running' or current.status == 'paused') end,
+    -- walk-up: players may join the cast until the curtain rises
+    canJoin = function(session)
+        return not (current and current.session_id == session.id and current.status ~= 'committed' and current.status ~= 'cancelled')
+    end,
     onTimerExpired = function(session)
         -- let a self-service show (and its vote) finish; it completes the visit afterwards
         if lobby and lobby.sessionId == session.id then lobby = nil end
@@ -613,7 +623,7 @@ Api.register('theatre.state', {
         local session = Carnival.Rotation.sessionFor(ID)
         local eligible = {}
         if session then
-            for _, p in ipairs(Carnival.Participants.members(session.colour, false)) do
+            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
                 eligible[#eligible + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
                     points = Carnival.Scoring.attractionPoints(p.id, ID) }
             end

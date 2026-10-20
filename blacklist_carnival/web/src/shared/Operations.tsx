@@ -93,7 +93,32 @@ export function RotationPanel() {
 
   return (
     <Async state={state}>
-      {(d) => (
+      {(d) => d.walkup ? (
+        <div className="rotation">
+          <p className="small muted">Walk-up mode: players buy a ticket and play the games on it in their colour's order, at their own pace. There are no rounds to run.</p>
+          <h4>Open attraction visits</h4>
+          {(d.walkupSessions ?? []).length === 0 ? <Empty text="Nobody is playing right now." /> : (
+            <Table head={['Attraction', 'Players', 'Since', 'Actions']}>
+              {d.walkupSessions.map((w: any) => {
+                const canComplete = canOperate || perms.has(`attractions.operate.${w.attraction}`);
+                return (
+                  <tr key={w.sessionId}>
+                    <td><Icon name={w.attraction} size={14} /> {attractionLabel(settings, w.attraction)}{w.busy ? <span className="pill pill-gold">in play</span> : null}</td>
+                    <td>{w.players.length === 0 ? '—' : w.players.map((p: any) => <span key={p.id} className="walkup-player"><ColourChip colour={p.colour} /> {p.name}{p.online ? '' : ' (offline)'}</span>)}</td>
+                    <td>{w.startedAt ? formatClock(w.startedAt) : '—'}</td>
+                    <td className="btn-row">
+                      {canComplete ? <Button small busy={busy} onClick={async () => {
+                        const r = await confirmAction({ title: 'Complete this visit for every player in it?', reason: 'optional' });
+                        if (r) { await run('rotation.completeSession', { sessionId: w.sessionId, reason: r.reason }, 'Visit completed'); state.reload(); }
+                      }}>Complete</Button> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </Table>
+          )}
+        </div>
+      ) : (
         <div className="rotation">
           <div className="btn-row">
             {canOperate && d.roundState === 'active' ? (

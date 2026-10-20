@@ -9,6 +9,8 @@
 --   onPause(), onResume(), onEventEnd(reason), recover(event),
 --   onPlayerLoaded(src, participant), onPlayerDropped(src, participant),
 --   staffSummary() -> table           -- short status for dashboards
+--   canJoin(session, participant) -> bool  -- walk-up: may another player join
+--                                     -- the open visit now (default: not busy)
 -- }
 -- All functions are optional.
 
@@ -67,6 +69,11 @@ end
 function Attractions.sessionStarted(s) call(s.attraction_id, 'onSessionStart', s) end
 function Attractions.sessionEnded(s, status) call(s.attraction_id, 'onSessionEnd', s, status) end
 function Attractions.sessionBusy(s) return call(s.attraction_id, 'isBusy', s) == true end
+function Attractions.canJoin(s, p)
+    local def = defs[s.attraction_id]
+    if def and def.canJoin then return call(s.attraction_id, 'canJoin', s, p) == true end
+    return not Attractions.sessionBusy(s)
+end
 function Attractions.timerExpired(s) return call(s.attraction_id, 'onTimerExpired', s) or 'complete' end
 function Attractions.pauseAll() each('onPause') end
 function Attractions.resumeAll() each('onResume') end
@@ -159,7 +166,14 @@ function Attractions.eligibility(src, attractionId, opts)
     if p.event_id ~= e.id then return nil, 'stale_event', 'Your ticket is for a different event.' end
 
     local session
-    if opts.requireSession ~= false then
+    local joinWalkup = false
+    if opts.requireSession ~= false and e.mode == 'walkup' then
+        -- walk-up: the player's own ticket order decides; they join the open visit
+        -- once the distance and ticket checks below have passed
+        local ok, code, msg = Carnival.Rotation.walkupCheck(p, attractionId)
+        if not ok then return nil, code, msg end
+        joinWalkup = true
+    elseif opts.requireSession ~= false then
         session = p.colour and Carnival.Rotation.sessionForColour(p.colour) or nil
         if not session or session.attraction_id ~= attractionId then
             return nil, 'wrong_attraction', 'Your group is not scheduled here right now.'
@@ -194,6 +208,11 @@ function Attractions.eligibility(src, attractionId, opts)
             if why == 'ticket_pending' then return nil, 'ticket_pending', 'Collect your ticket from the ticket booth first.' end
             return nil, why, 'Show your valid carnival ticket. Lost it? Visit the ticket booth.'
         end
+    end
+    if joinWalkup then
+        local code, msg
+        session, code, msg = Carnival.Rotation.joinWalkup(p, attractionId)
+        if not session then return nil, code, msg end
     end
     return p, session
 end

@@ -2,14 +2,14 @@
 
 ## Automated results (this repository, run with `tests/run_all.sh`)
 
-Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 (jsdom). Date of run: 2026-10-19.
+Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 (jsdom). Date of run: 2026-10-20.
 
 | Suite | Result |
 |---|---|
-| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **843 checks, 0 failures** (now also: every column the server writes exists in the schema) |
-| Server integration (real server scripts, real database) | **55 tests, 55 passed** (incl. a self-service event where no staff touch the attractions) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 21 tests passed** |
-| `sql/schema.sql` imported twice into an empty MariaDB database | **36 tables, no errors (idempotent)** |
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **860 checks, 0 failures** (now also: every column the server writes exists in the schema) |
+| Server integration (real server scripts, real database) | **66 tests, 66 passed** (incl. a self-service event and a walk-up carnival that nobody starts) |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 23 tests passed** |
+| `sql/schema.sql` imported twice into an empty MariaDB database | **37 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
 
@@ -27,11 +27,12 @@ Rotation: timer completes automated attractions and holds staff-judged ones (ove
 Scoring: reason required · bounds · idempotent adjustment · negative totals clamped · reversal · ledger verification consistent · no player scoring path.
 Recovery: restart → event paused, scores recovered, reward mid-delivery → `unknown` (retry refused until reconciled), horror run interrupted not restarted, resume works.
 Completion: six rounds, each colour visits each attraction exactly once · final results frozen + prize rewards · correction creates results v2 · completed results unchanged after config change · no scoring after completion · new event leaves history intact · CSV export (audited, permission-gated).
+Walk-up mode: switching the mode opens a carnival with only system transitions and keeps registration open · no rounds · each colour's first game is the first on its ticket · out-of-order games refused with directions · wheel, gallery, fortune, solo theatre, deception and horror each complete and advance the ticket · no joining a run in progress · fortune teller leads a reading and finishes it · idle visits close without credit · restart keeps it running with progress · finalising freezes results and a fresh carnival opens.
 Staff & audit: grants bounded by rank, scoped, revocation immediate · audit covers key actions and is never updated/deleted by code · DB failure reported and recovered · monitoring queryable with filters.
 
 ### NUI tests (web/src/__tests__/nui.test.tsx)
 
-HUD · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin config editor renders all sections from the real Lua schema, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · staff panel shows only permitted consoles + error/retry state · permission loss hides gated navigation.
+HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin config editor renders all sections from the real Lua schema, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · staff panel shows only permitted consoles + error/retry state · permission loss hides gated navigation · walk-up live operations list who is playing where.
 
 ## Manual in-game test plan (not yet executed — requires a FiveM server)
 

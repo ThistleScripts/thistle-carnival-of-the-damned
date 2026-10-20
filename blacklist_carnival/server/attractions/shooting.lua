@@ -83,7 +83,7 @@ end
 local function maybeCompleteSession(sessionId)
     local session = Carnival.Rotation.sessionById(sessionId)
     if not session or session.status ~= C.SESSION_STATUS.ACTIVE then return end
-    local members = Carnival.Participants.members(session.colour, true)
+    local members = Carnival.Rotation.sessionMembers(session, true)
     if #members == 0 then return end
     for _, p in ipairs(members) do
         if gamesPlayed(sessionId, p.id) < 1 then return end
@@ -126,6 +126,10 @@ local function finishGame(g, reason)
     local src = Carnival.Participants.sourceOf(g.pid)
     if src then Carnival.Push.send(src, 'shooting', { action = 'result', result = g.result }) end
     CreateThread(function()
+        -- walk-up: this player's visit is over once they have had their turns
+        if gamesPlayed(g.sessionId, g.pid) >= c.playsPerVisit then
+            Carnival.Rotation.memberFinished(g.sessionId, g.pid, 'Played the gallery')
+        end
         maybeCompleteSession(g.sessionId)
         local busy = false
         for _, other in pairs(games) do if other.sessionId == g.sessionId and not other.finished then busy = true end end
@@ -233,6 +237,8 @@ end
 Carnival.Attractions.register({
     id = ID,
     isBusy = function() return liveCount() > 0 end,
+    -- walk-up: several players may shoot side by side (start() enforces the stall limit)
+    canJoin = function() return true end,
     onTimerExpired = function(session)
         -- games in progress finish first; the last one completes the visit
         for _, g in pairs(games) do if g.sessionId == session.id and not g.finished then return 'hold' end end
@@ -293,7 +299,7 @@ Api.register('shooting.staff.state', {
         end
         local members = {}
         if session then
-            for _, p in ipairs(Carnival.Participants.members(session.colour, false)) do
+            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
                 members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
                     played = gamesPlayed(session.id, p.id), points = Carnival.Scoring.attractionPoints(p.id, ID) }
             end

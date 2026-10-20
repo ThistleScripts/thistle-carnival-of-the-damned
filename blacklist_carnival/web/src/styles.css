@@ -391,3 +391,4 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
 .sg-result-points { font-size: 56px; font-family: var(--font-display); color: var(--gold-bright); }
 .vote-frame { width: min(800px, 94vw); }
 .testimony { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--text); font-style: italic; }
+.walkup-player { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
