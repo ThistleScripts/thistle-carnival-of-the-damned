@@ -1,5 +1,5 @@
--- Dashboards, monitoring centre, audit viewer, staff management, health and
--- staff-panel utilities. Every endpoint is permission-gated by the API router.
+-- Admin dashboard, monitoring centre, audit viewer, role management and health.
+-- Every endpoint is permission-gated by the API router.
 
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
 local Api = Carnival.Api
@@ -34,7 +34,6 @@ local function dashboard(ctx, full)
         attractions = e and Carnival.Attractions.overview() or nil,
         participants = e and { total = counts.total, online = Carnival.Participants.onlineCount(), unassigned = counts.unassigned } or nil,
         leaderboard = (e and ctx:has('leaderboard.staff')) and U.map({ table.unpack(Carnival.Leaderboard.staffView(), 1, 10) }, function(x) return x end) or nil,
-        dutyAttraction = Carnival.Attractions.dutyOf(ctx.source),
         role = Carnival.Perms.role(ctx.source),
         permissions = Carnival.Perms.list(ctx.source),
     }
@@ -56,11 +55,6 @@ end
 Api.register('admin.dashboard', {
     perm = 'panel.admin', rate = 'admin',
     handler = function(ctx) return dashboard(ctx, true) end,
-})
-
-Api.register('staff.dashboard', {
-    perm = 'panel.staff', rate = 'staff',
-    handler = function(ctx) return dashboard(ctx, false) end,
 })
 
 Api.register('system.health', {
@@ -120,33 +114,6 @@ Api.register('audit.query', {
     end,
 })
 
--- Restricted activity feed for the staff panel: current event only, operational
--- categories only, no security details.
-Api.register('staff.activity', {
-    perm = 'panel.staff', rate = 'staff',
-    handler = function(ctx, payload)
-        local eventId = Carnival.Events.activeId()
-        if not eventId then return { rows = {} } end
-        Carnival.Monitor.flush()
-        local rows = Carnival.Monitor.query({ eventId = eventId, categories = { 'rotation', 'attraction', 'score', 'registration', 'event_state', 'countdown', 'token', 'staff_report', 'reward' }, minSeverity = 'info' }, 1, 40)
-        for _, r in ipairs(rows) do r.actor = nil end
-        return { rows = rows }
-    end,
-})
-
-Api.register('staff.report', {
-    perm = 'panel.staff', rate = 'action',
-    handler = function(ctx, payload)
-        local category = V.oneOf(payload.category, { 'technical', 'player', 'attraction', 'other' }) or 'other'
-        local message, err = V.text(payload.message, 1000)
-        if not message then return nil, 'invalid', 'message ' .. err end
-        local attraction = payload.attractionId and V.attraction(payload.attractionId) or nil
-        Carnival.Monitor.log('warning', 'staff_report', 'problem_reported', { actor = ctx.actor, attractionId = attraction, details = { category = category, message = message } })
-        Carnival.Discord.send('error', 'Staff report: ' .. category, ('%s: %s'):format(ctx.actor.name, message), 0xd8b21c)
-        return true
-    end,
-})
-
 ---------------------------------------------------------------------------
 -- Staff role management
 ---------------------------------------------------------------------------
@@ -164,7 +131,6 @@ Api.register('staff.list', {
         return {
             assignments = Carnival.Perms.listAssignments(), online = online, roles = roles,
             grantable = Carnival.Perms.grantableRoles(ctx.source), allowGrants = Config.Security.AllowDatabaseGrants,
-            attractions = C.ATTRACTIONS,
         }
     end,
 })
@@ -182,10 +148,9 @@ Api.register('staff.grant', {
             return nil, 'invalid', 'Choose an online player or enter a license identifier.'
         end
         local role = type(payload.role) == 'string' and payload.role or ''
-        local attraction = payload.attractionId and payload.attractionId ~= '' and V.attraction(payload.attractionId) or nil
         local reason, rerr = V.reason(payload.reason, true)
         if not reason then return nil, 'invalid', rerr end
-        local ok, res = Carnival.Perms.grant(ctx.source, license, name, role, attraction, payload.eventScoped == true, reason)
+        local ok, res = Carnival.Perms.grant(ctx.source, license, name, role, payload.eventScoped == true, reason)
         if not ok then return nil, res, 'The role could not be granted (' .. tostring(res) .. ').' end
         if target then Carnival.Perms.invalidate(target) end
         return { id = res }
@@ -205,7 +170,3 @@ Api.register('staff.revoke', {
     end,
 })
 
-Api.register('staff.onlineStaff', {
-    perm = 'panel.staff', rate = 'staff',
-    handler = function() return Carnival.Perms.onlineStaff() end,
-})

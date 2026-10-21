@@ -24,6 +24,20 @@ function Cfg.onChange(fn)
     changeHandlers[#changeHandlers + 1] = fn
 end
 
+-- Settings saved by older versions whose value should follow a new default:
+-- the horror tokens used to be placeholder GTA props (or none) before the
+-- carnival coins were bundled.
+local LEGACY_TOKEN_MODELS = { [''] = true, prop_ld_case_01 = true, prop_money_bag_01 = true, prop_ld_gold_chest = true }
+
+local function upgrade(doc)
+    local h = type(doc) == 'table' and type(doc.attractions) == 'table' and doc.attractions.horror
+    if type(h) ~= 'table' or type(h.tokenTypes) ~= 'table' then return doc end
+    for ttype, t in pairs(h.tokenTypes) do
+        if type(t) == 'table' and LEGACY_TOKEN_MODELS[t.model or ''] then t.model = 'carnivalcoin' .. ttype end
+    end
+    return doc
+end
+
 local function loadActive(scope, eventId)
     local row
     if scope == 'global' then
@@ -32,7 +46,7 @@ local function loadActive(scope, eventId)
         row = Carnival.Db.single("SELECT * FROM carnival_config_versions WHERE scope = 'event' AND event_id = ? AND is_active = 1 ORDER BY version DESC LIMIT 1", { eventId })
     end
     if not row then return nil end
-    return Carnival.Db.decode(row.data), { id = row.id, version = row.version, createdAt = row.created_at, createdBy = row.created_by_name }
+    return upgrade(Carnival.Db.decode(row.data)), { id = row.id, version = row.version, createdAt = row.created_at, createdBy = row.created_by_name }
 end
 
 local function buildEffective()

@@ -1,5 +1,5 @@
--- Fortune Teller client: opens the fortune NUI for automated visits and for
--- questions/fortunes presented by staff. Answers are marked by the server.
+-- Fortune Teller client: opens the fortune NUI for a reading. Answers are marked
+-- by the server.
 
 local Fortune = {}
 Carnival.Fortune = Fortune
@@ -13,13 +13,7 @@ function Fortune.begin()
 end
 
 Carnival.onPush('fortune', function(data)
-    if data.action == 'question' then
-        Carnival.openView('fortune', { visitId = data.visitId, question = data.question, greeting = data.greeting, staffLed = true })
-    elseif data.action == 'fortune' then
-        Carnival.openView('fortuneCard', { text = data.text }, { focus = false })
-        Carnival.playSound('carnival_chime', 0.6)
-        SetTimeout(15000, function() Carnival.closeView('fortuneCard') end)
-    elseif data.action == 'close' then
+    if data.action == 'close' then
         Carnival.closeView('fortune')
     end
 end)

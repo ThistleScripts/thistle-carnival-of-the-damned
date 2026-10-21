@@ -87,7 +87,7 @@ end)
 exports('registerExternalResult', function(targetSource, attractionId, points, resultKey, actorSource)
     actorSource = actorSource or 0
     if not C.ATTRACTION_INDEX[attractionId] then return false, 'invalid_attraction' end
-    if denied(actorSource, 'attractions.operate.' .. attractionId) then return false, 'forbidden' end
+    if denied(actorSource, 'scores.adjust') then return false, 'forbidden' end
     local p, session = Carnival.Attractions.eligibility(targetSource, attractionId, { skipDistance = true })
     if not p then return false, session end
     if type(resultKey) ~= 'string' or #resultKey < 4 or #resultKey > 100 then return false, 'bad_key' end

@@ -2,9 +2,8 @@
 --
 -- A round has one session per enabled colour; the matrix decides which attraction
 -- each colour visits. The round timer runs on the server. When it expires,
--- automated attractions may be completed automatically, but staff-judged
--- attractions (theatre, deception) are never completed by the timer — the round
--- goes into overtime until staff finish them.
+-- attractions are completed automatically unless a run is still in progress
+-- (a show, mystery or maze run): the round goes into overtime until it ends.
 --
 -- Walk-up events have no rounds. Each participant works through their colour's
 -- column of the matrix at their own pace. An attraction keeps one open walk-up
@@ -232,7 +231,7 @@ function Rotation.staffState()
         if s then
             current[#current + 1] = {
                 colour = c, sessionId = s.id, attraction = s.attraction_id, status = s.status,
-                staffJudged = Carnival.Attractions.isStaffJudged(s.attraction_id), delayedUntil = s.delayed_until,
+                delayedUntil = s.delayed_until,
                 online = #Carnival.Participants.members(c, true), members = #Carnival.Participants.members(c, false),
                 readiness = Carnival.Attractions.readiness(s.attraction_id),
             }
@@ -825,7 +824,7 @@ Carnival.onTick('rotation', function(now)
             for _, s in pairs(sessions) do
                 if s.status == SS.ACTIVE then
                     local decision = 'hold'
-                    if not Carnival.Attractions.isStaffJudged(s.attraction_id) and cfg().rotation.autoCompleteOnTimer then
+                    if cfg().rotation.autoCompleteOnTimer then
                         decision = Carnival.Attractions.timerExpired(s)
                     end
                     if decision == 'complete' then
@@ -860,7 +859,7 @@ end)
 local Api = Carnival.Api
 
 Api.register('rotation.state', {
-    perm = 'panel.staff', rate = 'staff',
+    perm = 'panel.admin', rate = 'staff',
     handler = function() return Rotation.staffState() end,
 })
 
@@ -913,10 +912,8 @@ Api.register('rotation.activate', {
     end,
 })
 
--- Operators may complete their own attraction's session; managers any session.
 Api.register('rotation.completeSession', {
-    anyPerm = { 'events.operate', 'attractions.operate.shooting', 'attractions.operate.wheel', 'attractions.operate.fortune',
-        'attractions.operate.puppets', 'attractions.operate.deception', 'attractions.operate.horror' },
+    perm = 'events.operate',
     rate = 'staff',
     handler = function(ctx, payload)
         local s, colour
@@ -929,10 +926,6 @@ Api.register('rotation.completeSession', {
             s = sessions[colour]
         end
         if not s then return nil, 'not_found', 'That session is not open.' end
-        if not ctx:has('events.operate') and not ctx:has('attractions.operate.' .. s.attraction_id) then
-            Carnival.Monitor.security(ctx.source, 'permission_denied', { action = 'complete_session', attraction = s.attraction_id }, 'permission')
-            return nil, 'forbidden'
-        end
         local reason = reasonOf(payload, false) or ''
         local ok, code, msg = Rotation.completeSession(s.id, ctx.actor, reason ~= '' and reason or 'Completed by staff')
         if not ok then return nil, code, msg end

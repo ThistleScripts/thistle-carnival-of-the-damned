@@ -1,4 +1,4 @@
--- Staff/admin preview of the player game screens.
+-- Admin preview of the player game screens.
 --
 -- Opens each game screen with clearly labelled demo data so the screens (and
 -- owner-supplied backgrounds) can be checked without running an event. Preview
@@ -9,7 +9,7 @@ local Preview = {}
 Carnival.Preview = Preview
 
 local function allowed()
-    return Carnival.has('panel.staff') or Carnival.has('panel.admin')
+    return Carnival.has('panel.admin')
 end
 
 local function now() return Carnival.serverNow() end
@@ -97,7 +97,7 @@ SCREENS.hub = function() Carnival.openView('player', {}) end
 
 function Preview.open(screen)
     if not allowed() then
-        return lib.notify({ title = 'Carnival', description = 'Previews are for staff.', type = 'error' })
+        return lib.notify({ title = 'Carnival', description = 'Previews are for carnival admins.', type = 'error' })
     end
     local s = Carnival.Client.settings
     local fn = SCREENS[screen]
@@ -112,6 +112,6 @@ RegisterCommand('carnivalpreview', function(_, args)
     Preview.open(args[1])
 end, false)
 
-TriggerEvent('chat:addSuggestion', '/carnivalpreview', 'Preview a carnival game screen (staff)', {
+TriggerEvent('chat:addSuggestion', '/carnivalpreview', 'Preview a carnival game screen (admins)', {
     { name = 'screen', help = 'wheel | fortune | deception | puppets | vote | horror | shooting | ticket | leaderboard | hub' },
 })

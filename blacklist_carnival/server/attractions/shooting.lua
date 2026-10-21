@@ -17,7 +17,6 @@
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
 local Api = Carnival.Api
 local ID = 'shooting'
-local OP = 'attractions.operate.shooting'
 
 local COUNTDOWN_MS = 3000      -- "3, 2, 1" before targets appear
 local LATENCY_MS = 1500        -- allowance for a click reaching the server late
@@ -284,45 +283,5 @@ Api.register('shooting.finish', {
         -- the client may only finish once the server clock agrees the time is up
         if elapsed(g) < g.duration then return nil, 'too_early', 'The game is still running.' end
         return finishGame(g, 'time')
-    end,
-})
-
-Api.register('shooting.staff.state', {
-    perm = OP, rate = 'staff',
-    handler = function()
-        local session = Carnival.Rotation.sessionFor(ID)
-        local live = {}
-        for _, g in pairs(games) do
-            local p = Carnival.Participants.get(g.pid)
-            live[#live + 1] = { id = g.pid, name = p and p.display_name or '?', points = g.points, hits = g.hits, shots = g.shots,
-                rejected = g.rejected, remaining = math.max(0, math.floor((g.duration - elapsed(g)) / 1000)) }
-        end
-        local members = {}
-        if session then
-            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
-                members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
-                    played = gamesPlayed(session.id, p.id), points = Carnival.Scoring.attractionPoints(p.id, ID) }
-            end
-        end
-        local recent = Carnival.Events.activeId() and (Carnival.Db.query([[SELECT r.*, p.display_name FROM carnival_shooting_results r JOIN carnival_participants p ON p.id = r.participant_id
-            WHERE r.event_id = ? ORDER BY r.id DESC LIMIT 30]], { Carnival.Events.activeId() }) or {}) or {}
-        return { session = session, live = live, members = members, recent = recent, playsPerVisit = cfg().playsPerVisit }
-    end,
-})
-
--- Staff can give a player another go (e.g. after a disconnect); audited.
-Api.register('shooting.allowReplay', {
-    perm = OP, rate = 'staff',
-    handler = function(ctx, payload)
-        local pid = V.id(payload.participantId)
-        if not pid then return nil, 'invalid', 'Choose a participant.' end
-        local reason, rerr = V.reason(payload.reason, true)
-        if not reason then return nil, 'invalid', rerr end
-        local session = Carnival.Rotation.sessionFor(ID)
-        if not session then return nil, 'no_session', 'No group is at the gallery.' end
-        local n = Carnival.Db.update('UPDATE carnival_shooting_results SET session_id = NULL WHERE session_id = ? AND participant_id = ?', { session.id, pid })
-        Carnival.Audit.record(ctx.actor, 'shooting_replay_allowed', { targetType = 'participant', targetId = pid, reason = reason, details = { cleared = n } })
-        Carnival.Push.invalidate('shooting')
-        return { cleared = n }
     end,
 })

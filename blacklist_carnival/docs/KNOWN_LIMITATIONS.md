@@ -6,7 +6,7 @@ Honest list of what has **not** been proven in a live FiveM server, and the desi
 
 The server logic was executed for real (integration tests run the actual server scripts against MariaDB), but everything that depends on the GTA client, CEF or the real versions of the dependencies has only been written against their documented APIs:
 
-* **Client Lua** (`client/*`) — compiles and every API endpoint it calls exists on the server (static check), but NPC spawning, ox_target options, blips, prop spawning, `GetPedLastWeaponImpactCoord` hit detection, screen effects and NUI focus handling have not been run in game.
+* **Client Lua** (`client/*`) — compiles and every API endpoint it calls exists on the server (static check), but NPC spawning, ox_target options, blips, prop spawning (including the floating coins), screen effects and NUI focus handling have not been run in game.
 * **NUI in CEF** — rendered and exercised in jsdom tests (open/close, Escape, forms, validation errors, permission-gated navigation), not inside FiveM's CEF. Audio playback of the `.ogg` files is untested in CEF.
 * **Dependency API assumptions** to confirm on your versions:
   * `qbx_core` triggers `QBCore:Server:PlayerLoaded` / `QBCore:Server:OnPlayerUnload` and `QBCore:Client:OnPlayerLoaded`; the client also announces itself on resource start (`LocalPlayer.state.isLoggedIn`), so binding still works if an event name differs.
@@ -15,20 +15,20 @@ The server logic was executed for real (integration tests run the actual server 
   * `oxmysql` returns `TINYINT(1)` as booleans (handled either way) and `MySQL.transaction.await` returns `false` on rollback.
 * **Discord webhooks** — code path not exercised against Discord.
 * **Default coordinates** are placeholders around the Del Perro pier, including the horror token positions. Capture real positions with the coordinate tool before an event; tokens left at the defaults appear at the pier, not in your maze.
-* **Horror tokens** have no prop by default and show as glowing spinning rings until you set your own coin props (see the admin manual). The float/spin/glow is client-side animation of a local prop (`DrawLightWithRange` for the glow); it has not been checked in game yet.
+* **Horror coins** are the bundled `carnivalcoin*` props (about 8 MB each, mostly textures — players download them once). The float/spin/glow is client-side animation of a local prop (`DrawLightWithRange` for the glow); it has not been checked in game yet.
+* **NUI look** was reviewed in headless Chromium (`tools/ui-screens.mjs`), not in FiveM's CEF; fonts are bundled so rendering should match.
 
 ## Design limitations
 
-* **Shooting Gallery (NUI aim game).** The server generates every target's spawn time, lane and kind, and accepts a hit only if that target was on screen at that moment by the server clock (±latency allowance), had not been hit, and the click rate is plausible. The bullseye ring is judged by the client (worth a small bonus). A modified client could still auto-click every target perfectly — like any aimbot for a 2D game — but cannot exceed the schedule; rejected shots are logged and visible to staff.
+* **Shooting Gallery (NUI aim game).** The server generates every target's spawn time, lane and kind, and accepts a hit only if that target was on screen at that moment by the server clock (±latency allowance), had not been hit, and the click rate is plausible. The bullseye ring is judged by the client (worth a small bonus). A modified client could still auto-click every target perfectly — like any aimbot for a 2D game — but cannot exceed the schedule; rejected shots are logged in the monitoring log.
 * **Walk-up group games.** The theatre, Hall of Deception and House of Horrors gather only players for whom it is the next game and who arrive during the short lobby. On a quiet server these are often solo: a solo show earns the configured solo points, and a solo mystery or maze run works as normal. Anyone arriving mid-run waits for the next one.
 * **Walk-up idle visits** close after *idle seconds* without credit; the player can start that game again.
-* **Walk-up with a staff-only fortune teller.** In fortune *staff* mode, players whose next game is the fortune teller wait for a reader. Turn on *Requires an on-duty performer* for the fortune teller so it is passed over (and played later) whenever nobody is checked in. The default *both* mode needs no staff.
-* **Theatre audience vote.** Self-service shows are judged by the group's vote; groups can collude. Use staff mode if you want a judge.
+* **Theatre audience vote.** Shows are judged by the audience's vote; players can collude. There is no judge.
 * **Token positions** are sent to runners so props can be rendered; a cheating client could reveal them. Collection still requires being physically within range inside the boundary.
 * **One active event at a time.** Earlier events remain fully queryable; parallel live events are not supported.
 * **Item registration** cannot be automated (ox_inventory has no runtime registration): items must be pasted into `ox_inventory/data/items.lua`.
 * **Locale**: player-facing text is English; error-code fallbacks live in `locales/en.json`.
-* **Score cap semantics**: attraction `maxScore` limits positive points per attraction; staff adjustments/corrections are not capped by it (they are capped by *maximum single manual adjustment*).
+* **Score cap semantics**: attraction `maxScore` limits positive points per attraction; admin adjustments/corrections are not capped by it (they are capped by *maximum single manual adjustment*).
 * **Wheel spins** are limited per participant per event (not per round visit).
 * **Physical horror tokens** (optional keepsakes) carry no points; possession never grants points.
 * **Background artwork** is supplied by the owner (slots are ready; none are shipped).

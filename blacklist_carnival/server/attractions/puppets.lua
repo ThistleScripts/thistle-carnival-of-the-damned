@@ -1,24 +1,19 @@
--- Attraction: The Puppet Master's Theatre (staff-led improvisation).
--- The Puppet Master builds a performance (scenario + performers + roles), shows
--- the cards, runs the timer and judges. Awards are individual, previewed before
--- commit, and committed exactly once per performance (guarded status change +
--- per-performer idempotency keys).
+-- Attraction: The Puppet Master's Theatre (player improvisation).
+-- Players take the stage; after a short lobby the theatre deals a random
+-- scenario and roles, runs the timer and the audience votes for the best
+-- performer. Awards are individual and committed exactly once per performance
+-- (guarded status change + per-performer idempotency keys).
 
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
 local Api = Carnival.Api
 local ID = 'puppets'
 
 local current = nil   -- active performance (not committed / cancelled)
-local lobby = nil     -- self-service: { sessionId, at, cast = { pid... } }
-local voting = nil    -- self-service: { perfId, endsAt, ballots = { [voterPid] = candidatePid } }
+local lobby = nil     -- { sessionId, at, cast = { pid... } } before the curtain rises
+local voting = nil    -- { perfId, endsAt, ballots = { [voterPid] = candidatePid } }
 local commitLines
 
 local function cfg() return Carnival.Config.get().attractions.puppets end
-
-local function scenarioById(id)
-    for _, s in ipairs(cfg().scenarios) do if s.id == id then return s end end
-    return nil
-end
 
 local function persist(perf, set)
     Carnival.Db.updateRow('carnival_theatre_performances', set, 'id = ?', { perf.id })
@@ -78,19 +73,6 @@ local function closeCards(perf, text)
     end
 end
 
-local function publicPerformance(perf)
-    if not perf then return nil end
-    return {
-        id = perf.id, status = perf.status, scenario = perf.scenario, isCustom = Carnival.Db.bool(perf.is_custom),
-        performers = U.map(perf.performers, function(x)
-            local p = Carnival.Participants.get(x.participantId)
-            return { participantId = x.participantId, name = p and p.display_name or '?', role = x.role, online = Carnival.Participants.sourceOf(x.participantId) ~= nil }
-        end),
-        duration = perf.duration_seconds, startedAt = perf.started_at, endsAt = perf.ends_at, remaining = perf.paused_remaining,
-        serverTime = os.time(),
-    }
-end
-
 local function loadPerformance(row)
     local perfs = Carnival.Db.query('SELECT participant_id, role_name FROM carnival_theatre_performers WHERE performance_id = ? ORDER BY id', { row.id }) or {}
     row.scenario = Carnival.Db.decode(row.scenario_snapshot, {})
@@ -99,15 +81,8 @@ local function loadPerformance(row)
 end
 
 ---------------------------------------------------------------------------
--- Operator actions
+-- Performances
 ---------------------------------------------------------------------------
-local function requireSession(ctx)
-    local s, code, msg = Carnival.Attractions.requireOperator(ctx, ID)
-    if s == nil then return nil, code, msg end
-    if not s then return nil, 'no_session', 'No group is at the theatre right now.' end
-    return s
-end
-
 local function insertPerformance(session, scenario, performers, duration, isCustom, actor)
     local e = Carnival.Events.active
     local id = Carnival.Db.insertRow('carnival_theatre_performances', {
@@ -124,173 +99,6 @@ local function insertPerformance(session, scenario, performers, duration, isCust
         details = { scenario = scenario.id, custom = isCustom, performers = #performers, duration = duration } })
     Carnival.Push.invalidate('theatre')
     return current
-end
-
-local function create(ctx, payload)
-    local session, code, msg = requireSession(ctx)
-    if not session then return nil, code, msg end
-    if current and current.status ~= 'committed' and current.status ~= 'cancelled' then
-        return nil, 'invalid', 'Finish, commit or cancel the current performance first.'
-    end
-    local c = cfg()
-    local scenario, isCustom
-    if payload.custom then
-        if not ctx:has('theatre.custom') then return nil, 'forbidden', 'You may not create custom scenarios.' end
-        local cu = payload.custom
-        local title, terr = V.string(cu.title, 96)
-        if not title then return nil, 'invalid', 'title ' .. terr end
-        local desc, derr = V.text(cu.description, 1000)
-        if not desc then return nil, 'invalid', 'description ' .. derr end
-        local maxP = V.int(cu.maxPoints or c.maxPointsPerAward, 0, c.maxPointsPerAward) or c.maxPointsPerAward
-        scenario = { id = 'custom', title = title, description = desc, category = 'custom', difficulty = V.oneOf(cu.difficulty, { 'easy', 'medium', 'hard', 'absurd' }) or 'medium',
-            minPlayers = 1, maxPlayers = 12, timeLimit = c.defaultDurationSeconds, minPoints = 0, maxPoints = maxP, roles = {} }
-        isCustom = true
-    else
-        local sc = type(payload.scenarioId) == 'string' and scenarioById(payload.scenarioId)
-        if not sc then return nil, 'invalid', 'Choose a scenario.' end
-        scenario = U.deepCopy(sc)
-    end
-
-    local list = type(payload.performers) == 'table' and payload.performers or {}
-    if #list < 1 or #list > 12 then return nil, 'invalid', 'Choose between 1 and 12 performers.' end
-    if not isCustom and (#list < scenario.minPlayers or #list > scenario.maxPlayers) then
-        return nil, 'invalid', ('This scenario needs %d-%d performers.'):format(scenario.minPlayers, scenario.maxPlayers)
-    end
-    local seen, performers = {}, {}
-    for _, x in ipairs(list) do
-        local pid = V.id(x.participantId)
-        local p = pid and Carnival.Participants.get(pid)
-        if not p or p.status ~= 'active' or p.colour ~= session.colour then
-            return nil, 'invalid', 'Performers must be active members of the group at the theatre.'
-        end
-        if seen[pid] then return nil, 'invalid', 'A performer is listed twice.' end
-        seen[pid] = true
-        local role = x.role and V.string(x.role, 64, true) or ''
-        performers[#performers + 1] = { participantId = pid, role = role ~= '' and role or nil }
-    end
-    local duration = V.int(payload.duration or scenario.timeLimit or c.defaultDurationSeconds, 15, 1800) or c.defaultDurationSeconds
-
-    local perf = insertPerformance(session, scenario, performers, duration, isCustom, ctx.actor)
-    if not perf then return nil, 'database_error' end
-    return publicPerformance(perf)
-end
-
-local function requireCurrent(statuses)
-    if not current then return nil, 'invalid', 'There is no performance.' end
-    if statuses and not U.toSet(statuses)[current.status] then
-        return nil, 'invalid', ('The performance is %s.'):format(current.status)
-    end
-    return current
-end
-
-local function control(ctx, action)
-    local s, code, msg = Carnival.Attractions.requireOperator(ctx, ID)
-    if s == nil then return nil, code, msg end
-    local now = os.time()
-    if action == 'display' then
-        local perf, c2, m2 = requireCurrent({ 'draft', 'displayed' })
-        if not perf then return nil, c2, m2 end
-        persist(perf, { status = 'displayed' })
-        pushCards(perf)
-    elseif action == 'start' then
-        local perf, c2, m2 = requireCurrent({ 'draft', 'displayed' })
-        if not perf then return nil, c2, m2 end
-        local e = Carnival.Events.active
-        if not e or not C.LIVE_STATES[e.state] then return nil, 'not_live', 'The event is paused or not running.' end
-        persist(perf, { status = 'running', started_at = now, ends_at = now + perf.duration_seconds })
-        pushCards(perf)
-    elseif action == 'pause' then
-        local perf, c2, m2 = requireCurrent({ 'running' })
-        if not perf then return nil, c2, m2 end
-        persist(perf, { status = 'paused', paused_remaining = math.max(0, perf.ends_at - now) })
-        pushCards(perf)
-    elseif action == 'resume' then
-        local perf, c2, m2 = requireCurrent({ 'paused' })
-        if not perf then return nil, c2, m2 end
-        persist(perf, { status = 'running', ends_at = now + (perf.paused_remaining or 0), paused_remaining = Carnival.Db.NULL })
-        pushCards(perf)
-    elseif action == 'end' then
-        local perf, c2, m2 = requireCurrent({ 'running', 'paused', 'displayed' })
-        if not perf then return nil, c2, m2 end
-        persist(perf, { status = 'ended', ended_at = now })
-        closeCards(perf, 'The curtain falls. The Puppet Master is judging...')
-    else
-        return nil, 'invalid', 'Unknown action.'
-    end
-    Carnival.Monitor.log('info', 'attraction', 'theatre_' .. action, { attractionId = ID, actor = ctx.actor, details = { performanceId = current.id } })
-    Carnival.Push.invalidate('theatre')
-    return publicPerformance(current)
-end
-
--- Build the award lines (clamped) for preview / commit.
-local function buildAwards(perf, payload)
-    local c = cfg()
-    local maxPoints = math.min(perf.scenario.maxPoints or c.maxPointsPerAward, c.maxPointsPerAward)
-    local performerSet = U.toSet(performerIds(perf))
-    local lines, warnings, seen = {}, {}, {}
-    for _, a in ipairs(type(payload.awards) == 'table' and payload.awards or {}) do
-        local pid = V.id(a.participantId)
-        if not pid or not performerSet[pid] then return nil, 'Awards may only go to this performance\'s performers.' end
-        if seen[pid] then return nil, 'A performer appears twice in the awards.' end
-        seen[pid] = true
-        local requested = V.int(a.points or 0, 0, 100000) or 0
-        local points = U.clamp(requested, 0, maxPoints)
-        if points ~= requested then warnings[#warnings + 1] = ('Award for #%d clamped to %d.'):format(pid, points) end
-        local winner = a.winner == true
-        if winner and points < (perf.scenario.minPoints or 0) then
-            warnings[#warnings + 1] = ('Winner #%d receives less than the scenario minimum (%d).'):format(pid, perf.scenario.minPoints)
-        end
-        local cap = Carnival.Config.get().attractions.puppets.maxScore
-        local already = Carnival.Scoring.attractionPoints(pid, ID)
-        local p = Carnival.Participants.get(pid)
-        lines[#lines + 1] = {
-            participantId = pid, name = p and p.display_name or '?', points = points, winner = winner,
-            bonus = payload.participationBonus == true and c.participationBonus or 0,
-            capNote = (cap > 0 and already + points > cap) and ('attraction cap will limit this to %d'):format(math.max(0, cap - already)) or nil,
-        }
-    end
-    for pid in pairs(performerSet) do
-        if not seen[pid] then
-            local p = Carnival.Participants.get(pid)
-            lines[#lines + 1] = { participantId = pid, name = p and p.display_name or '?', points = 0, winner = false,
-                bonus = payload.participationBonus == true and c.participationBonus or 0 }
-        end
-    end
-    return lines, warnings
-end
-
-local function preview(ctx, payload)
-    local s, code, msg = Carnival.Attractions.requireOperator(ctx, ID)
-    if s == nil then return nil, code, msg end
-    local perf, c2, m2 = requireCurrent({ 'ended' })
-    if not perf then return nil, c2, m2 end
-    local lines, warnings = buildAwards(perf, payload)
-    if not lines then return nil, 'invalid', warnings end
-    return { lines = lines, warnings = warnings, performanceId = perf.id }
-end
-
-local function commit(ctx, payload)
-    local s, code, msg = Carnival.Attractions.requireOperator(ctx, ID)
-    if s == nil then return nil, code, msg end
-    local perfId = V.id(payload.performanceId)
-    return Carnival.withLock('theatre:commit', function()
-        local perf = current
-        if not perf or perf.id ~= perfId then
-            local row = perfId and Carnival.Db.single('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perfId })
-            if row and row.status == 'committed' then
-                Carnival.Monitor.log('info', 'duplicate', 'theatre_duplicate_commit', { attractionId = ID, actor = ctx.actor, details = { performanceId = perfId } })
-                return { alreadyCommitted = true }
-            end
-            return nil, 'invalid', 'That performance is not awaiting judgement.'
-        end
-        if perf.status ~= 'ended' then return nil, 'invalid', ('The performance is %s.'):format(perf.status) end
-        local lines, warnings = buildAwards(perf, payload)
-        if not lines then return nil, 'invalid', warnings end
-        local note = V.text(payload.note or '', 1000, true) or ''
-        local results = commitLines(perf, lines, note, ctx.actor)
-        if not results then return { alreadyCommitted = true } end
-        return { results = results, warnings = warnings }
-    end)
 end
 
 -- Write awards for an ended performance exactly once. Returns results or nil
@@ -331,7 +139,7 @@ commitLines = function(perf, lines, note, actor)
             details = { results = results } })
         for _, r in ipairs(results) do
             local src = Carnival.Participants.sourceOf(r.participantId)
-            if src and r.winner then Carnival.Push.notify(src, 'Bravo!', perf.selfRun and 'The audience chose you as the star of the show!' or 'The Puppet Master chose you as a winner.', 'success', 'treat_sparkle') end
+            if src and r.winner then Carnival.Push.notify(src, 'Bravo!', 'The audience chose you as the star of the show!', 'success', 'treat_sparkle') end
         end
         if current == perf then current = nil end
         Carnival.Push.invalidate('theatre')
@@ -344,39 +152,9 @@ commitLines = function(perf, lines, note, actor)
     end
 end
 
-local function cancel(ctx, payload)
-    local s, code, msg = Carnival.Attractions.requireOperator(ctx, ID)
-    if s == nil then return nil, code, msg end
-    local perf, c2, m2 = requireCurrent({ 'draft', 'displayed', 'running', 'paused', 'ended' })
-    if not perf then return nil, c2, m2 end
-    local reason, rerr = V.reason(payload.reason, true)
-    if not reason then return nil, 'invalid', rerr end
-    persist(perf, { status = 'cancelled', ended_at = os.time(), judging_note = reason })
-    closeCards(perf, 'The performance was cancelled.')
-    Carnival.Audit.record(ctx.actor, 'theatre_performance_cancelled', { targetType = 'performance', targetId = perf.id, reason = reason })
-    current = nil
-    Carnival.Push.invalidate('theatre')
-    return true
-end
-
-local function randomScenario(payload)
-    local candidates = {}
-    for _, sc in ipairs(cfg().scenarios) do
-        local ok = true
-        if payload.category and payload.category ~= '' and sc.category ~= payload.category then ok = false end
-        if payload.difficulty and payload.difficulty ~= '' and sc.difficulty ~= payload.difficulty then ok = false end
-        local players = tonumber(payload.players)
-        if players and (players < sc.minPlayers or players > sc.maxPlayers) then ok = false end
-        if ok then candidates[#candidates + 1] = sc end
-    end
-    if #candidates == 0 then return nil, 'not_found', 'No scenario matches those filters.' end
-    return candidates[math.random(#candidates)]
-end
-
 ---------------------------------------------------------------------------
--- Self-service shows: lobby -> random scenario -> performance -> audience vote
+-- Shows: lobby -> random scenario -> performance -> audience vote
 ---------------------------------------------------------------------------
-local function selfMode() return cfg().mode == 'self' or cfg().mode == 'both' end
 
 local function pickScenario(n)
     local fits, fallback = {}, nil
@@ -416,7 +194,6 @@ local function startSelfShow(l)
     for i, pid in ipairs(cast) do performers[i] = { participantId = pid, role = scenario.roles[i] or 'Performer' } end
     local perf = insertPerformance(session, scenario, performers, scenario.timeLimit or cfg().defaultDurationSeconds, false, Carnival.Identity.SYSTEM)
     if not perf then return end
-    perf.selfRun = true
     local now = os.time()
     persist(perf, { status = 'running', started_at = now, ends_at = now + perf.duration_seconds })
     pushCards(perf)
@@ -485,8 +262,6 @@ Api.register('theatre.play', {
     handler = function(ctx)
         local p, session, msg = Carnival.Attractions.eligibility(ctx.source, ID)
         if not p then return nil, session, msg end
-        -- (a walk-up player is now on the Puppet Master's list)
-        if not selfMode() then return nil, 'staff_only', 'Wait for the Puppet Master to call you on stage.' end
         if current and current.session_id == session.id then
             return nil, 'busy', 'A show is already on stage. Watch, then vote for the best performer!'
         end
@@ -541,29 +316,29 @@ Carnival.Attractions.register({
         return not (current and current.session_id == session.id and current.status ~= 'committed' and current.status ~= 'cancelled')
     end,
     onTimerExpired = function(session)
-        -- let a self-service show (and its vote) finish; it completes the visit afterwards
+        -- let a show (and its vote) finish; it completes the visit afterwards
         if lobby and lobby.sessionId == session.id then lobby = nil end
-        if current and current.selfRun and current.session_id == session.id and current.status ~= 'committed' then return 'hold' end
+        if current and current.session_id == session.id and current.status ~= 'committed' then return 'hold' end
         return 'complete'
     end,
     onSessionEnd = function(session)
         if lobby and lobby.sessionId == session.id then lobby = nil end
-        if current and current.session_id == session.id and current.selfRun then
+        if current and current.session_id == session.id then
             voting = nil
             if current.status ~= 'ended' then persist(current, { status = 'ended', ended_at = os.time() }) end
             closeCards(current, 'The theatre is closing.')
             finishSelfShow(current, {}, 'Session ended before the vote finished')
-            return
-        end
-        if current and current.session_id == session.id and current.status ~= 'ended' then
-            persist(current, { status = 'cancelled', ended_at = os.time(), judging_note = 'Session ended before judging' })
-            closeCards(current, 'The theatre is closing.')
-            current = nil
         end
     end,
     onPause = function()
         if current and current.status == 'running' then
             persist(current, { status = 'paused', paused_remaining = math.max(0, current.ends_at - os.time()) })
+            pushCards(current)
+        end
+    end,
+    onResume = function()
+        if current and current.status == 'paused' then
+            persist(current, { status = 'running', ends_at = os.time() + (current.paused_remaining or 0), paused_remaining = Carnival.Db.NULL })
             pushCards(current)
         end
     end,
@@ -584,7 +359,6 @@ Carnival.Attractions.register({
                 Carnival.Monitor.log('warning', 'recovery', 'theatre_performance_interrupted', { attractionId = ID, details = { performanceId = row.id } })
             end
             current = loadPerformance(row)
-            current.selfRun = row.operator_license == 'system'
         end
     end,
     staffSummary = function() return current and { performance = current.status, title = current.scenario.title } or nil end,
@@ -599,56 +373,14 @@ Carnival.onTick('theatre', function(now)
     end
     if current and current.status == 'running' and current.ends_at and now >= current.ends_at then
         persist(current, { status = 'ended', ended_at = now })
-        closeCards(current, current.selfRun and 'Curtain! Vote for the best performer.' or 'Time! The Puppet Master is judging...')
+        closeCards(current, 'Curtain! Vote for the best performer.')
         Carnival.Monitor.log('info', 'countdown', 'theatre_time_up', { attractionId = ID, details = { performanceId = current.id } })
         Carnival.Push.invalidate('theatre')
     end
-    -- self-run show that has ended (also after a restart) moves to the audience vote once
-    if current and current.selfRun and current.status == 'ended' and not current.voteOpened then
+    -- a show that has ended (also after a restart) moves to the audience vote once
+    if current and current.status == 'ended' and not current.voteOpened then
         current.voteOpened = true
         openVote(current)
     end
     if voting and now >= voting.endsAt then closeVote() end
 end)
-
----------------------------------------------------------------------------
--- API
----------------------------------------------------------------------------
-local OP = 'attractions.operate.puppets'
-
-Api.register('theatre.state', {
-    perm = OP, rate = 'staff',
-    handler = function()
-        local e = Carnival.Events.active
-        local session = Carnival.Rotation.sessionFor(ID)
-        local eligible = {}
-        if session then
-            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
-                eligible[#eligible + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil,
-                    points = Carnival.Scoring.attractionPoints(p.id, ID) }
-            end
-        end
-        local history = {}
-        if e then
-            for _, r in ipairs(Carnival.Db.query("SELECT * FROM carnival_theatre_performances WHERE event_id = ? AND status IN ('committed', 'cancelled') ORDER BY id DESC LIMIT 20", { e.id }) or {}) do
-                local perfs = Carnival.Db.query('SELECT tp.*, p.display_name FROM carnival_theatre_performers tp JOIN carnival_participants p ON p.id = tp.participant_id WHERE tp.performance_id = ?', { r.id }) or {}
-                history[#history + 1] = { id = r.id, status = r.status, scenario = Carnival.Db.decode(r.scenario_snapshot, {}).title, operator = r.operator_name,
-                    note = r.judging_note, committedAt = r.committed_at, performers = perfs }
-            end
-        end
-        return { session = session, eligible = eligible, scenarios = cfg().scenarios, current = publicPerformance(current), history = history,
-            defaultDuration = cfg().defaultDurationSeconds, maxPointsPerAward = cfg().maxPointsPerAward, participationBonus = cfg().participationBonus }
-    end,
-})
-
-Api.register('theatre.random', {
-    perm = OP, rate = 'staff',
-    handler = function(ctx, payload) return randomScenario(payload) end,
-})
-Api.register('theatre.create', { perm = OP, rate = 'staff', handler = create })
-for _, action in ipairs({ 'display', 'start', 'pause', 'resume', 'end' }) do
-    Api.register('theatre.' .. action, { perm = OP, rate = 'staff', handler = function(ctx) return control(ctx, action) end })
-end
-Api.register('theatre.preview', { perm = OP, rate = 'staff', handler = preview })
-Api.register('theatre.commit', { perm = OP, rate = 'staff', handler = commit })
-Api.register('theatre.cancel', { perm = OP, rate = 'staff', handler = cancel })

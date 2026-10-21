@@ -15,7 +15,7 @@ end
 function Horror.enter()
     local res, code, msg = Carnival.api('horror.enter', {})
     if not res then
-        return lib.notify({ title = 'House of Horrors', description = msg or code, type = code == 'staff_only' and 'inform' or 'error' })
+        return lib.notify({ title = 'House of Horrors', description = msg or code, type = 'error' })
     end
     if res.running then
         return lib.notify({ title = 'House of Horrors', description = 'Your group is already inside - hurry!', type = 'warning' })

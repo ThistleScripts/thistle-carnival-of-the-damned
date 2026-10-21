@@ -80,6 +80,11 @@ client_scripts {
 
 ui_page 'web/dist/index.html'
 
+-- House of Horrors coin props (stream/: .ydr model, .ytd textures, .ytyp archetype)
+data_file 'DLC_ITYP_REQUEST' 'stream/carnivalcoinbronze.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/carnivalcoinsilver.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/carnivalcoingold.ytyp'
+
 files {
     'locales/*.json',
     'web/dist/index.html',

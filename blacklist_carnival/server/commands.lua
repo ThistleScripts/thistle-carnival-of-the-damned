@@ -31,23 +31,15 @@ local function result(src, ok, code, msg)
     if ok then reply(src, 'Done.', 'success') else reply(src, msg or tostring(code), 'error') end
 end
 
--- /carnival : opens the most privileged panel available, otherwise the player view.
+-- /carnival : the player's own view (ticket, route, scores, leaderboard).
 RegisterCommand('carnival', function(src)
     if src == 0 then return end
-    local mode = 'player'
-    if Carnival.Perms.has(src, 'panel.admin') then mode = 'admin'
-    elseif Carnival.Perms.has(src, 'panel.staff') then mode = 'staff' end
-    TriggerClientEvent('blacklist_carnival:client:openPanel', src, mode)
+    TriggerClientEvent('blacklist_carnival:client:openPanel', src, 'player')
 end, false)
 
 RegisterCommand('carnivaladmin', function(src)
     if src == 0 or not guard(src, 'panel.admin') then return end
     TriggerClientEvent('blacklist_carnival:client:openPanel', src, 'admin')
-end, false)
-
-RegisterCommand('carnivalstaff', function(src)
-    if src == 0 or not guard(src, 'panel.staff') then return end
-    TriggerClientEvent('blacklist_carnival:client:openPanel', src, 'staff')
 end, false)
 
 RegisterCommand('carnivalboard', function(src)
@@ -138,7 +130,6 @@ end, false)
 
 TriggerEvent('chat:addSuggestion', '/carnival', 'Open the Carnival of the Damned panel')
 TriggerEvent('chat:addSuggestion', '/carnivaladmin', 'Open the carnival configurator (admin)')
-TriggerEvent('chat:addSuggestion', '/carnivalstaff', 'Open the carnival staff panel')
 TriggerEvent('chat:addSuggestion', '/carnivalboard', 'Show the carnival leaderboard')
 TriggerEvent('chat:addSuggestion', '/carnivalstatus', 'Show the carnival event status')
 TriggerEvent('chat:addSuggestion', '/carnivalstart', 'Start the carnival event', { { name = 'reason', help = 'optional note' } })

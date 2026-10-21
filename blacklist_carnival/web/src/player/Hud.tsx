@@ -40,7 +40,7 @@ export function Hud() {
             <div className="hud-now">{attractionLabel(settings, current.attraction)}</div>
             <div className="hud-sub">
               {walkup ? 'Your next game · target the attendant to play'
-                : current.status === 'active' ? 'Open now' : current.status === 'pending' ? 'Waiting for staff' : current.status}
+                : current.status === 'active' ? 'Open now' : current.status === 'pending' ? 'Opening shortly' : current.status}
               {p.next ? ` · next: ${attractionLabel(settings, p.next)}` : ''}
             </div>
           </div>

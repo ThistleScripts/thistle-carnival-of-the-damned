@@ -40,6 +40,23 @@ export function LeaderboardTable({ data }: { data: any }) {
   );
 }
 
+// The top three on stands: second, first, third.
+function Podium({ entries }: { entries: any[] }) {
+  const top = [entries.find((e) => e.rank === 2), entries.find((e) => e.rank === 1), entries.find((e) => e.rank === 3)];
+  if (!top[1]) return null;
+  return (
+    <div className="podium">
+      {top.map((e, i) => e ? (
+        <div key={i} className={`podium-place podium-${e.rank}`} data-rank={e.rank}>
+          {e.colour ? <ColourChip colour={e.colour} withLabel={false} /> : null}
+          <div className="podium-name">{e.name}</div>
+          <div className="podium-points">{e.total}</div>
+        </div>
+      ) : <div key={i} />)}
+    </div>
+  );
+}
+
 export function LeaderboardView({ initial, onClose }: { initial: any; onClose: () => void }) {
   const live = useStore((s) => s.leaderboard);
   useEffect(() => {
@@ -51,6 +68,7 @@ export function LeaderboardView({ initial, onClose }: { initial: any; onClose: (
       <Backdrop name="leaderboard" className="panel-frame board-frame">
         <header className="frame-head">
           <div>
+            <div className="kicker">The standings</div>
             <h2>{data?.eventName ?? 'Leaderboard'}</h2>
             <span className="muted">
               {data?.active === false && data?.frozen ? `Final results · ${formatTime(data.frozenAt)}` : data?.frozen ? 'Final results (frozen)' : 'Live standings'}
@@ -59,6 +77,7 @@ export function LeaderboardView({ initial, onClose }: { initial: any; onClose: (
           </div>
           <Button variant="ghost" onClick={onClose}>Close</Button>
         </header>
+        <Podium entries={data?.entries ?? []} />
         {data?.you?.rank ? <div className="board-you">You are <strong>#{data.you.rank}</strong> with <strong>{data.you.total}</strong> points</div> : null}
         <LeaderboardTable data={data} />
       </Backdrop>

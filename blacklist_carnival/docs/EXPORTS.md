@@ -14,7 +14,7 @@ local event = exports.blacklist_carnival:getCurrentEvent()
 | `getScore(source)` | player source | `total, breakdown` (`{ [attractionId] = points }`) or `nil` | none |
 | `awardPoints(targetSource, delta, reason, idempotencyKey, actorSource?, attractionId?)` | `delta` integer (may be negative); `idempotencyKey` 4–100 chars, unique per award | `true, tx` (`tx.duplicate = true` when the key was already used) or `false, errorCode` | `actorSource == 0` or `scores.adjust` |
 | `getAttractionState(attractionId)` | attraction id | `{ id, label, readiness, session, summary }` or `nil` | none |
-| `registerExternalResult(targetSource, attractionId, points, resultKey, actorSource?)` | the participant must be eligible for that attraction right now | `true, tx` or `false, errorCode` | `actorSource == 0` or `attractions.operate.<id>` |
+| `registerExternalResult(targetSource, attractionId, points, resultKey, actorSource?)` | the participant must be eligible for that attraction right now | `true, tx` or `false, errorCode` | `actorSource == 0` or `scores.adjust (was attractions.operate.)<id>` |
 
 Error codes include `not_registered`, `forbidden`, `bad_key`, `invalid_attraction`, `wrong_attraction`, `session_not_active`, `ticket_missing`, `event_not_live`, `event_closed`, `database_error`.
 

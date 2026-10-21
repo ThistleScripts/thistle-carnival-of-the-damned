@@ -21,7 +21,6 @@ Carnival.Attractions = Attractions
 
 local defs = {}
 local statusOverride = {}   -- [attractionId] = { status, note }
-local onDuty = {}           -- [src] = attractionId
 
 function Attractions.register(def)
     assert(C.ATTRACTION_INDEX[def.id], 'unknown attraction ' .. tostring(def.id))
@@ -52,20 +51,6 @@ local function call(id, fnName, ...)
     return a, b
 end
 
--- Staff-judged attractions are never completed by the round timer. Theatre and
--- deception are only staff-judged when configured in staff mode.
-function Attractions.isStaffJudged(id)
-    if not C.STAFF_JUDGED[id] then return false end
-    local a = Carnival.Config.get().attractions[id]
-    return a ~= nil and a.mode == 'staff'
-end
-
--- Self-service attractions run without staff.
-function Attractions.isSelfService(id)
-    local a = Carnival.Config.get().attractions[id]
-    return a ~= nil and (a.mode == nil or a.mode == 'self' or a.mode == 'both')
-end
-
 function Attractions.sessionStarted(s) call(s.attraction_id, 'onSessionStart', s) end
 function Attractions.sessionEnded(s, status) call(s.attraction_id, 'onSessionEnd', s, status) end
 function Attractions.sessionBusy(s) return call(s.attraction_id, 'isBusy', s) == true end
@@ -92,26 +77,13 @@ end
 ---------------------------------------------------------------------------
 -- Readiness
 ---------------------------------------------------------------------------
-function Attractions.dutyStaff(attractionId)
-    local out = {}
-    for src, a in pairs(onDuty) do
-        if a == attractionId and GetPlayerName(src) then
-            out[#out + 1] = { source = src, name = Carnival.Identity.characterName(src) }
-        end
-    end
-    return out
-end
-
 function Attractions.readiness(id)
     local cfg = Carnival.Config.get().attractions[id]
-    local duty = Attractions.dutyStaff(id)
-    local res = { available = true, status = 'ready', reason = nil, performers = #duty, duty = duty }
+    local res = { available = true, status = 'ready', reason = nil }
     if not cfg or not cfg.enabled then
         res.available, res.status, res.reason = false, 'disabled', 'disabled in configuration'
     elseif statusOverride[id] and statusOverride[id].status == 'unavailable' then
         res.available, res.status, res.reason = false, 'unavailable', statusOverride[id].note or 'marked unavailable by staff'
-    elseif cfg.requiresPerformer and #duty == 0 then
-        res.available, res.status, res.reason = false, 'no_performer', 'no performer on duty'
     end
     return res
 end
@@ -136,7 +108,6 @@ function Attractions.overview()
         local summary = call(id, 'staffSummary')
         out[#out + 1] = {
             id = id, label = Carnival.Config.get().attractions[id].label,
-            staffJudged = Attractions.isStaffJudged(id),
             readiness = Attractions.readiness(id),
             session = s and { id = s.id, colour = s.colour, status = s.status, startedAt = s.started_at } or nil,
             summary = summary,
@@ -217,32 +188,13 @@ function Attractions.eligibility(src, attractionId, opts)
     return p, session
 end
 
--- Staff helper: staff operating an attraction must hold the permission; returns
--- the active session of that attraction (if any).
-function Attractions.requireOperator(ctx, attractionId)
-    if not ctx:has('attractions.operate.' .. attractionId) then
-        Carnival.Monitor.security(ctx.source, 'permission_denied', { attraction = attractionId }, 'permission')
-        return nil, 'forbidden', 'You are not an operator of this attraction.'
-    end
-    return Carnival.Rotation.activeSessionFor(attractionId) or false
-end
-
-AddEventHandler('playerDropped', function()
-    if onDuty[source] then
-        local a = onDuty[source]
-        onDuty[source] = nil
-        Carnival.Monitor.log('info', 'attraction', 'staff_off_duty', { attractionId = a, details = { reason = 'disconnected' } })
-        Carnival.Push.invalidate('rotation', 'attractions')
-    end
-end)
-
 ---------------------------------------------------------------------------
 -- API
 ---------------------------------------------------------------------------
 local Api = Carnival.Api
 
 Api.register('attractions.overview', {
-    perm = 'panel.staff', rate = 'staff',
+    perm = 'panel.admin', rate = 'staff',
     handler = function() return Attractions.overview() end,
 })
 
@@ -258,32 +210,3 @@ Api.register('attractions.setStatus', {
         return Attractions.setStatus(ctx.source, id, status, note)
     end,
 })
-
-Api.register('staff.checkIn', {
-    perm = 'panel.staff', rate = 'staff',
-    handler = function(ctx, payload)
-        local id = V.attraction(payload.attractionId)
-        if not id then return nil, 'invalid', 'Invalid attraction.' end
-        if not ctx:has('attractions.operate.' .. id) then return nil, 'forbidden', 'You are not assigned to this attraction.' end
-        onDuty[ctx.source] = id
-        Carnival.Monitor.log('info', 'attraction', 'staff_on_duty', { attractionId = id, actor = ctx.actor })
-        Carnival.Push.invalidate('rotation', 'attractions')
-        -- a held session may now be startable
-        return { attraction = id }
-    end,
-})
-
-Api.register('staff.checkOut', {
-    perm = 'panel.staff', rate = 'staff',
-    handler = function(ctx)
-        local a = onDuty[ctx.source]
-        onDuty[ctx.source] = nil
-        if a then
-            Carnival.Monitor.log('info', 'attraction', 'staff_off_duty', { attractionId = a, actor = ctx.actor })
-            Carnival.Push.invalidate('rotation', 'attractions')
-        end
-        return true
-    end,
-})
-
-function Attractions.dutyOf(src) return onDuty[src] end

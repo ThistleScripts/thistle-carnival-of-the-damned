@@ -101,7 +101,7 @@ function Wheel.spin(src)
         if outcome.item and outcome.item ~= '' and (outcome.count or 0) > 0 then
             local r, rcode = Carnival.Rewards.create({
                 participantId = p.id, source = 'wheel', item = outcome.item, count = outcome.count,
-                key = 'wheel:reward:' .. spinId, requiresApproval = outcome.requiresApproval,
+                key = 'wheel:reward:' .. spinId,
                 note = 'Wheel outcome ' .. outcome.label,
             })
             if r then
@@ -161,44 +161,6 @@ Api.register('wheel.open', {
 Api.register('wheel.spin', {
     rate = 'action',
     handler = function(ctx) return Wheel.spin(ctx.source) end,
-})
-
-Api.register('wheel.staff.state', {
-    perm = 'attractions.operate.wheel', rate = 'staff',
-    handler = function()
-        local e = Carnival.Events.active
-        if not e then return { spins = {}, approvals = {} } end
-        local session = Carnival.Rotation.sessionFor(ID)
-        local spins = Carnival.Db.query([[SELECT s.id, s.participant_id, p.display_name, s.spin_number, s.outcome_label, s.outcome_type, s.points, s.item, s.item_count, s.created_at,
-                r.status AS reward_status, r.id AS reward_id
-            FROM carnival_wheel_spins s JOIN carnival_participants p ON p.id = s.participant_id
-            LEFT JOIN carnival_rewards r ON r.id = s.reward_id WHERE s.event_id = ? ORDER BY s.id DESC LIMIT 60]], { e.id }) or {}
-        local approvals = Carnival.Db.query([[SELECT r.id, r.item, r.count, r.note, r.created_at, p.display_name FROM carnival_rewards r
-            JOIN carnival_participants p ON p.id = r.participant_id WHERE r.event_id = ? AND r.status = 'awaiting_approval' ORDER BY r.id]], { e.id }) or {}
-        local members = {}
-        if session then
-            for _, p in ipairs(Carnival.Rotation.sessionMembers(session, false)) do
-                members[#members + 1] = { id = p.id, name = p.display_name, online = Carnival.Participants.sourceOf(p.id) ~= nil, spins = spinsUsed(e.id, p.id) }
-            end
-        end
-        return { session = session, spins = spins, approvals = approvals, members = members, maxSpins = cfg().maxSpins }
-    end,
-})
-
-Api.register('wheel.staff.approve', {
-    perm = 'attractions.operate.wheel', rate = 'staff',
-    handler = function(ctx, payload)
-        local id, err = V.id(payload.rewardId)
-        if not id then return nil, 'invalid', 'rewardId ' .. err end
-        local r = Carnival.Db.single('SELECT source FROM carnival_rewards WHERE id = ?', { id })
-        if not r or r.source ~= 'wheel' then return nil, 'not_found' end
-        if payload.reject == true then
-            local reason, rerr = V.reason(payload.reason, true)
-            if not reason then return nil, 'invalid', rerr end
-            return Carnival.Rewards.cancel(ctx.source, id, reason)
-        end
-        return Carnival.Rewards.approve(ctx.source, id, V.reason(payload.reason, false) or '')
-    end,
 })
 
 Carnival.WheelAttraction = Wheel

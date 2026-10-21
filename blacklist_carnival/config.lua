@@ -29,7 +29,6 @@ Config.Retention = {
 Config.Security = {
     -- ACE prefix. Roles: `add_ace group.admin carnival.role.administrator allow`
     -- Individual permissions: `add_ace identifier.license:xxx carnival.perm.scores.adjust allow`
-    -- Attraction scoping for operators/performers: `carnival.attraction.<id>`
     AcePrefix = 'carnival',
 
     -- License allowlist: identifier -> role. Accepts license: or license2: identifiers.
@@ -38,9 +37,9 @@ Config.Security = {
     },
 
     -- Logical roles. `rank` orders roles (higher = more senior). Permission strings
-    -- support a trailing `*` wildcard. `attractions.operate.@assigned` expands to the
-    -- attractions this staff member is assigned to (ACE carnival.attraction.<id>
-    -- or an in-game staff assignment).
+    -- support a trailing `*` wildcard. The games run themselves; these roles are
+    -- for running the carnival from /carnivaladmin. Staff who only act at the
+    -- carnival need no role.
     Roles = {
         owner = {
             label = 'Owner', rank = 100,
@@ -49,38 +48,23 @@ Config.Security = {
         administrator = {
             label = 'Administrator', rank = 80,
             permissions = {
-                'panel.admin', 'panel.staff', 'config.view', 'config.edit',
+                'panel.admin', 'config.view', 'config.edit',
                 'events.manage', 'events.operate', 'events.history',
                 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust',
-                'rewards.manage', 'attractions.operate.*', 'theatre.custom', 'deception.secrets',
-                'horror.control', 'monitoring.view', 'audit.view', 'export.history',
+                'rewards.manage', 'deception.secrets', 'monitoring.view', 'audit.view', 'export.history',
                 'staff.manage', 'leaderboard.staff',
             },
         },
         event_manager = {
             label = 'Event Manager', rank = 60,
             permissions = {
-                'panel.staff', 'events.operate', 'participants.view', 'participants.manage',
-                'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.*',
-                'theatre.custom', 'deception.secrets', 'horror.control', 'leaderboard.staff',
-            },
-        },
-        attraction_operator = {
-            label = 'Attraction Operator', rank = 40,
-            permissions = {
-                'panel.staff', 'participants.view', 'scores.view', 'attractions.operate.@assigned',
-                'leaderboard.staff',
-            },
-        },
-        performer = {
-            label = 'Performer / Judge', rank = 30,
-            permissions = {
-                'panel.staff', 'participants.view', 'attractions.operate.@assigned', 'theatre.custom',
+                'panel.admin', 'events.operate', 'events.history', 'participants.view', 'participants.manage',
+                'scores.view', 'scores.adjust', 'rewards.manage', 'leaderboard.staff',
             },
         },
         observer = {
             label = 'Read-only Observer', rank = 10,
-            permissions = { 'panel.staff', 'participants.view', 'scores.view', 'leaderboard.staff' },
+            permissions = { 'panel.admin', 'participants.view', 'scores.view', 'leaderboard.staff' },
         },
     },
 
@@ -89,15 +73,6 @@ Config.Security = {
     -- from this file or ACE.
     AllowDatabaseGrants = true,
     MaxGrantableRank = 60,
-
-    -- Separate allowlist for the House of Horrors controls. When RequireHorrorAllowlist
-    -- is true, `horror.control` additionally requires the player's license to be listed
-    -- here (roles listed in HorrorAllowlistBypassRoles are exempt).
-    RequireHorrorAllowlist = true,
-    HorrorControllers = {
-        -- 'license:0123456789abcdef0123456789abcdef01234567',
-    },
-    HorrorAllowlistBypassRoles = { owner = true },
 
     -- Seconds a resolved permission set is cached per player.
     PermissionCacheSeconds = 30,

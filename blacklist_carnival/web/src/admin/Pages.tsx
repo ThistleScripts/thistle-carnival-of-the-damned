@@ -1,103 +1,145 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import {
-  ATTRACTION_IDS, ATTRACTION_SHORT, STATE_LABELS, attractionLabel, formatClock, formatTime,
+  ATTRACTION_IDS, ATTRACTION_SHORT, STATE_LABELS, formatAgo, formatTime,
 } from '../format';
 import {
   Async, Button, Card, ColourChip, Countdown, Delta, Empty, Field, Modal, Pagination, Stat, StatusPill, Table, confirmAction, toast, useAction, useApi,
 } from '../components/ui';
-import { EventControls, ParticipantDetail, TransactionTable } from '../shared/Operations';
+import { EventControls, GroupsPanel, ParticipantDetail, RotationPanel, TransactionTable } from '../shared/Operations';
 import { Icon } from '../components/Art';
 
 // ---------------------------------------------------------------------------
-// Dashboard
+// Overview
 // ---------------------------------------------------------------------------
-export function Dashboard() {
-  const settings = useStore((s) => s.settings);
-  const st = useApi<any>('admin.dashboard', {}, [], ['dashboard', 'rotation', 'scores', 'participants', 'rewards', 'config', 'events']);
+function attractionLine(a: any): string {
+  const s = a.summary;
+  if (!s) return a.session ? 'Players inside' : 'Waiting for players';
+  if (s.playing != null) return s.playing ? `${s.playing} playing` : 'Waiting for players';
+  if (s.activeVisits != null) return s.activeVisits ? `${s.activeVisits} reading${s.activeVisits === 1 ? '' : 's'}` : 'Waiting for players';
+  if (s.inside != null) return `Run in progress · ${s.inside} inside`;
+  if (s.performance) return s.performance === 'running' ? `Show on stage: ${s.title}` : `Show ${s.performance}`;
+  if (s.mystery) return s.status === 'questioning' ? `Investigating "${s.mystery}"` : `Mystery ${s.status}`;
+  if (s.spins != null) return `${s.spins} spins tonight`;
+  return 'Open';
+}
+
+export function Overview({ onNavigate }: { onNavigate: (page: string) => void }) {
+  const perms = useStore((s) => s.permissions);
+  const st = useApi<any>('admin.dashboard', {}, [], ['dashboard', 'rotation', 'scores', 'participants', 'rewards', 'config', 'events', 'attractions']);
+  const { run } = useAction();
   return (
     <Async state={st}>
       {(d) => {
         const e = d.event;
         const h = d.health;
+        const walkup = e.mode === 'walkup';
+        const playing = (d.rotation?.walkupSessions ?? []).reduce((n: number, w: any) => n + w.players.length, 0);
+        const problems = (h.counters.error ?? 0) + (h.counters.critical ?? 0);
+        const healthy = h.database.healthy && h.inventoryRunning && h.targetRunning;
         return (
           <div className="stack">
-            <div className="stats">
-              <Stat label="Event" value={e.active ? `#${e.id}` : 'none'} />
-              <Stat label="State" value={e.active ? <StatusPill status={e.state} /> : '—'} />
-              <Stat label="Registration" value={e.registrationOpen ? 'Open' : 'Closed'} tone={e.registrationOpen ? 'ok' : undefined} />
-              <Stat label="Participants" value={d.participants ? `${d.participants.total}` : '0'} />
-              <Stat label="Online" value={d.participants ? d.participants.online : 0} tone="ok" />
-              <Stat label="Round" value={e.round ? `${e.round}/${e.totalRounds}` : '—'} />
-              <Stat label="Round timer" value={e.roundEndsAt ? <Countdown endsAt={e.roundEndsAt} /> : e.roundRemaining != null ? <Countdown remaining={e.roundRemaining} /> : '—'} />
-              <Stat label="Outstanding rewards" value={d.outstandingRewards} tone={d.outstandingRewards > 0 ? 'warn' : undefined} />
-              <Stat label="Database" value={h.database.healthy ? 'Healthy' : 'ERROR'} tone={h.database.healthy ? 'ok' : 'blood'} />
-              <Stat label="Config" value={h.config.source === 'event' ? `event v${h.config.event?.version}` : `global v${h.config.global?.version}`} />
-              <Stat label="Resource" value={`v${h.resourceVersion}`} />
-              <Stat label="Warnings / errors" value={`${h.counters.warning ?? 0} / ${(h.counters.error ?? 0) + (h.counters.critical ?? 0)}`} tone={(h.counters.error ?? 0) > 0 ? 'blood' : undefined} />
-            </div>
-            {e.active ? <Card title={e.name}><EventControls /></Card> : <Card title="No active event"><p>Create an event on the Events page.</p></Card>}
-            <div className="grid-2">
-              <Card title="Groups">
-                {d.groups ? (
-                  <Table compact head={['Group', 'Members', 'Online', 'Now', 'Done']}>
-                    {d.groups.groups.filter((g: any) => g.enabled).map((g: any) => (
-                      <tr key={g.colour}><td><ColourChip colour={g.colour} /></td><td>{g.members}/{g.capacity}</td><td>{g.online}</td>
-                        <td>{g.current ? <>{attractionLabel(settings, g.current.attraction)} <StatusPill status={g.current.status} /></> : '—'}</td>
-                        <td>{g.completed.filter((c: any) => c.status === 'completed').length}/6</td></tr>
-                    ))}
-                  </Table>
-                ) : <Empty text="No event." />}
-              </Card>
-              <Card title="Attraction readiness">
+            <section className="hero">
+              <div className="hero-main">
+                <div className="hero-kicker">{walkup ? 'Walk-up carnival' : e.active ? 'Timed rounds' : 'No carnival tonight'}</div>
+                <h2 className="hero-title">{e.active ? e.name : 'The gates are closed'}</h2>
+                <div className="hero-sub">
+                  {e.active ? <StatusPill status={e.state} /> : null}
+                  {e.active && e.registrationOpen ? <span className="pill pill-ok">Ticket booth open</span> : null}
+                  {e.round ? <span className="pill pill-muted">Round {e.round}/{e.totalRounds}</span> : null}
+                  {e.roundEndsAt ? <span className="muted">ends in <Countdown endsAt={e.roundEndsAt} /></span> : null}
+                </div>
+                {e.active ? <EventControls /> : <p className="muted">In walk-up mode a carnival opens by itself within a few seconds. In timed-round mode, create one under Nights &amp; results.</p>}
+              </div>
+              <div className="hero-stats">
+                <Stat label="Tickets sold" value={d.participants ? d.participants.total : 0} />
+                <Stat label="Online" value={d.participants ? d.participants.online : 0} tone="ok" />
+                <Stat label="Playing now" value={walkup ? playing : '—'} tone="gold" />
+                <Stat label="Prizes waiting" value={d.outstandingRewards} tone={d.outstandingRewards > 0 ? 'warn' : undefined} />
+              </div>
+            </section>
+
+            {!healthy || problems > 0 ? (
+              <div className={`banner ${healthy ? 'banner-warn' : 'banner-bad'}`}>
+                <strong>{healthy ? `${problems} error${problems === 1 ? '' : 's'} logged since the last restart.` : 'Something needs attention.'}</strong>
+                <span>
+                  {!h.database.healthy ? ' Database unreachable.' : ''}{!h.inventoryRunning ? ' ox_inventory is not running.' : ''}{!h.targetRunning ? ' ox_target is not running.' : ''}
+                </span>
+                <Button small onClick={() => onNavigate('system')}>Open System</Button>
+              </div>
+            ) : null}
+
+            <div className="overview-cols">
+              <div className="stack">
+              <Card title="Attractions">
                 {d.attractions ? (
-                  <Table compact head={['Attraction', 'Readiness', 'Group', 'Live']}>
-                    {d.attractions.map((a: any) => (
-                      <tr key={a.id}><td><Icon name={a.id} size={14} /> {a.label}</td><td><StatusPill status={a.readiness.status} /></td>
-                        <td>{a.session ? <><ColourChip colour={a.session.colour} withLabel={false} /> <StatusPill status={a.session.status} /></> : '—'}</td>
-                        <td className="small">{a.summary ? Object.entries(a.summary).map(([k, v]) => `${k}: ${v}`).join(' · ') : ''}</td></tr>
-                    ))}
-                  </Table>
-                ) : <Empty text="No event." />}
+                  <div className="attraction-grid">
+                    {d.attractions.map((a: any) => {
+                      const closed = !a.readiness.available;
+                      return (
+                        <div key={a.id} className={`attraction-tile ${closed ? 'attraction-closed' : ''}`}>
+                          <div className="attraction-icon"><Icon name={a.id} size={26} /></div>
+                          <div className="attraction-info">
+                            <strong>{ATTRACTION_SHORT[a.id] ?? a.label}</strong>
+                            <span className="small muted">{closed ? (a.readiness.reason ?? 'Closed') : attractionLine(a)}</span>
+                          </div>
+                          {perms.has('events.operate') && a.readiness.status !== 'disabled' ? (
+                            closed ? (
+                              <Button small variant="gold" onClick={async () => { const r = await confirmAction({ title: `Reopen ${a.label}?`, reason: 'optional' }); if (r) run('attractions.setStatus', { attractionId: a.id, status: 'available', note: r.reason }, 'Reopened'); }}>Reopen</Button>
+                            ) : (
+                              <Button small variant="ghost" onClick={async () => { const r = await confirmAction({ title: `Close ${a.label}?`, message: 'Players skip it and come back to it later. Anyone mid-game finishes first.', reason: 'required' }); if (r) run('attractions.setStatus', { attractionId: a.id, status: 'unavailable', note: r.reason }, 'Closed'); }}>Close</Button>
+                            )
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : <Empty text="No carnival is open." />}
               </Card>
-              <Card title="Top 10">
+
+              {walkup && d.rotation ? (
+                <Card title="Playing now"><RotationPanel /></Card>
+              ) : null}
+
+              </div>
+              <div className="stack">
+              <Card title="Top of the board" actions={perms.has('leaderboard.staff') ? <Button small variant="ghost" onClick={() => onNavigate('players')}>All players</Button> : null}>
                 {d.leaderboard?.length ? (
-                  <Table compact head={['#', 'Name', 'Group', 'Points']}>
-                    {d.leaderboard.map((x: any) => <tr key={x.id}><td>{x.rank}</td><td>{x.name}</td><td><ColourChip colour={x.colour} withLabel={false} /></td><td className="num">{x.total}</td></tr>)}
-                  </Table>
+                  <ol className="mini-board">
+                    {d.leaderboard.map((x: any) => (
+                      <li key={x.id} className={x.rank <= 3 ? `mini-top mini-top-${x.rank}` : ''}>
+                        <span className="mini-rank">{x.rank}</span>
+                        <ColourChip colour={x.colour} withLabel={false} />
+                        <span className="mini-name">{x.name}</span>
+                        <span className="mini-points">{x.total}</span>
+                      </li>
+                    ))}
+                  </ol>
                 ) : <Empty text="No scores yet." />}
               </Card>
-              <Card title="Recent score transactions">
+
+              <Card title="Latest scores">
                 {d.recentTransactions.length ? (
-                  <Table compact head={['When', 'Who', 'Where', 'Δ', 'Source']}>
-                    {d.recentTransactions.map((t: any) => <tr key={t.id}><td className="small">{formatClock(t.created_at)}</td><td>{t.display_name}</td><td>{ATTRACTION_SHORT[t.attraction_id] ?? 'General'}</td><td><Delta value={t.delta} /></td><td className="small">{t.source}</td></tr>)}
-                  </Table>
-                ) : <Empty text="None yet." />}
+                  <ul className="feed">
+                    {d.recentTransactions.slice(0, 8).map((t: any) => (
+                      <li key={t.id}>
+                        <span className="feed-time">{formatAgo(t.created_at, d.serverTime)}</span>
+                        <span className="feed-text"><strong>{t.display_name}</strong> {ATTRACTION_SHORT[t.attraction_id] ? <span className="muted">at {ATTRACTION_SHORT[t.attraction_id]}</span> : null}</span>
+                        <Delta value={t.delta} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : <Empty text="Nobody has scored yet." />}
               </Card>
-              <Card title="Recent staff actions">
-                {d.recentStaffActions.length ? (
-                  <ul className="feed">{d.recentStaffActions.map((a: any) => <li key={a.id}><span className="small muted">{formatClock(a.created_at)}</span> <strong>{a.actor_name ?? 'system'}</strong> {a.action.replace(/_/g, ' ')} {a.target_type ? <span className="small muted">{a.target_type} {a.target_id}</span> : null}</li>)}</ul>
-                ) : <Empty text="None yet." />}
-              </Card>
-              <Card title="Recent warnings & errors">
-                {d.recentProblems.length ? (
-                  <ul className="feed">{d.recentProblems.map((p: any, i: number) => <li key={i}><span className="small muted">{formatClock(p.created_at)}</span> <StatusPill status={p.severity} /> {p.category}/{p.action} <span className="small muted">{p.details?.slice(0, 120)}</span></li>)}</ul>
-                ) : <Empty text="All quiet." />}
-              </Card>
-            </div>
-            <Card title="Resource health">
-              <div className="health">
-                <span>Ready: {h.ready ? 'yes' : 'no'}</span>
-                <span>Uptime: {Math.floor(h.uptime / 60)} min</span>
-                <span>Schema: v{h.schemaVersion}</span>
-                <span>ox_inventory: {h.inventoryRunning ? 'running' : 'NOT RUNNING'}</span>
-                <span>ox_target: {h.targetRunning ? 'running' : 'NOT RUNNING'}</span>
-                <span>qbx_core: {h.qbxRunning ? 'running' : 'NOT RUNNING'}</span>
-                <span>Discord: {h.discordEnabled ? 'enabled' : 'off'}</span>
-                <span>DB last error: {h.database.lastError ? `${h.database.lastError.slice(0, 80)} (${formatTime(h.database.lastErrorAt)})` : 'none'}</span>
-                <span>Players online: {h.onlinePlayers}</span>
               </div>
-            </Card>
+            </div>
+
+            {!walkup && e.active ? (
+              <>
+                <Card title="Rounds"><RotationPanel /></Card>
+                <Card title="Ticket colours"><GroupsPanel /></Card>
+              </>
+            ) : null}
           </div>
         );
       }}
@@ -474,7 +516,7 @@ export function AuditPage() {
 export function StaffPage() {
   const st = useApi<any>('staff.list', {}, [], ['staff']);
   const { busy, run } = useAction();
-  const [grant, setGrant] = useState({ source: '', license: '', role: '', attractionId: '', eventScoped: false });
+  const [grant, setGrant] = useState({ source: '', license: '', role: '', eventScoped: false });
   return (
     <Async state={st}>
       {(d) => (
@@ -494,28 +536,23 @@ export function StaffPage() {
                     <option value="">Choose…</option>{d.grantable.map((r: any) => <option key={r.id} value={r.id}>{r.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Attraction assignment (operators / performers)">
-                  <select value={grant.attractionId} onChange={(e) => setGrant({ ...grant, attractionId: e.target.value })}>
-                    <option value="">None</option>{d.attractions.map((a: string) => <option key={a} value={a}>{ATTRACTION_SHORT[a]}</option>)}
-                  </select>
-                </Field>
                 <label className="check"><input type="checkbox" checked={grant.eventScoped} onChange={(e) => setGrant({ ...grant, eventScoped: e.target.checked })} /> Only for the current event</label>
                 <Button variant="primary" busy={busy} disabled={!grant.role || (!grant.source && !grant.license)} onClick={async () => {
                   const r = await confirmAction({ title: 'Grant this role?', reason: 'required' });
                   if (!r) return;
-                  const res = await run('staff.grant', { source: grant.source ? Number(grant.source) : undefined, license: grant.source ? undefined : grant.license, role: grant.role, attractionId: grant.attractionId || undefined, eventScoped: grant.eventScoped, reason: r.reason }, 'Role granted');
-                  if (res.ok) { setGrant({ source: '', license: '', role: '', attractionId: '', eventScoped: false }); st.reload(); }
+                  const res = await run('staff.grant', { source: grant.source ? Number(grant.source) : undefined, license: grant.source ? undefined : grant.license, role: grant.role, eventScoped: grant.eventScoped, reason: r.reason }, 'Role granted');
+                  if (res.ok) { setGrant({ source: '', license: '', role: '', eventScoped: false }); st.reload(); }
                 }}>Grant</Button>
-                <p className="small muted">Owner and Administrator come only from config.lua or ACE and cannot be granted here. You can only grant roles below your own.</p>
+                <p className="small muted">Roles are for running the carnival from this panel; actors need none. Owner and Administrator come only from config.lua or ACE and cannot be granted here. You can only grant roles below your own.</p>
               </div>
             )}
           </Card>
           <Card title="Assignments">
             {d.assignments.length === 0 ? <Empty text="No in-game assignments." /> : (
-              <Table head={['#', 'Name', 'License', 'Role', 'Attraction', 'Event', 'Granted', 'Status', '']}>
+              <Table head={['#', 'Name', 'License', 'Role', 'Event', 'Granted', 'Status', '']}>
                 {d.assignments.map((a: any) => (
                   <tr key={a.id} className={a.revoked_at ? 'muted' : ''}>
-                    <td>{a.id}</td><td>{a.display_name ?? '—'}</td><td className="mono small">{a.license}</td><td>{a.role}</td><td>{a.attraction_id ? ATTRACTION_SHORT[a.attraction_id] : '—'}</td>
+                    <td>{a.id}</td><td>{a.display_name ?? '—'}</td><td className="mono small">{a.license}</td><td>{a.role}</td>
                     <td>{a.event_id ?? 'all'}</td><td className="small">{formatTime(a.created_at)}</td>
                     <td>{a.revoked_at ? `revoked ${formatTime(a.revoked_at)}` : <StatusPill status="active" />}</td>
                     <td>{!a.revoked_at ? <Button small variant="danger" busy={busy} onClick={async () => {
@@ -537,24 +574,52 @@ export function StaffPage() {
 }
 
 // ---------------------------------------------------------------------------
-// System
+// Health & items
 // ---------------------------------------------------------------------------
-export function SystemPage() {
+function Check({ ok, label, detail }: { ok: boolean; label: string; detail?: string }) {
+  return (
+    <div className={`health-check ${ok ? 'health-ok' : 'health-bad'}`}>
+      <span className="health-mark">{ok ? '✓' : '!'}</span>
+      <div><strong>{label}</strong>{detail ? <span className="small muted">{detail}</span> : null}</div>
+    </div>
+  );
+}
+
+export function HealthPage() {
+  const st = useApi<any>('system.health', {}, [], ['dashboard']);
   const items = useApi<any>('items.validate', {});
   return (
-    <Card title="Inventory item check" actions={<Button small onClick={items.reload}>Re-check</Button>}>
-      <Async state={items}>
-        {(d) => (
-          <>
-            {!d.inventoryRunning ? <div className="state-error">ox_inventory is not running.</div> :
-              d.ok ? <div className="state-ok">Every carnival and configured reward item is registered.</div> :
-                <div className="state-error">Missing: {d.missing.join(', ')} — see docs/INSTALLATION.md.</div>}
-            <Table compact head={['Item', 'Registered', 'Referenced by']}>
-              {(d.checked ?? []).map((c: any, i: number) => <tr key={i}><td className="mono">{c.item}</td><td>{c.registered ? '✔' : '✘'}</td><td className="small">{c.path ?? 'resource item'}</td></tr>)}
-            </Table>
-          </>
-        )}
-      </Async>
-    </Card>
+    <div className="stack">
+      <Card title="Resource health" actions={<Button small variant="ghost" onClick={st.reload}>Refresh</Button>}>
+        <Async state={st}>
+          {(h) => (
+            <div className="health-grid">
+              <Check ok={h.ready} label="Resource ready" detail={`v${h.resourceVersion} · up ${Math.floor(h.uptime / 60)} min · schema v${h.schemaVersion}`} />
+              <Check ok={h.database.healthy} label="Database" detail={h.database.lastError ? `last error: ${h.database.lastError.slice(0, 80)} (${formatTime(h.database.lastErrorAt)})` : 'no errors'} />
+              <Check ok={h.inventoryRunning} label="ox_inventory" detail={h.inventoryRunning ? 'running' : 'not running — tickets and prizes cannot be given'} />
+              <Check ok={h.targetRunning} label="ox_target" detail={h.targetRunning ? 'running' : 'not running — peds cannot be targeted'} />
+              <Check ok={h.qbxRunning} label="qbx_core" detail={h.qbxRunning ? 'running' : 'not running'} />
+              <Check ok={(h.counters.error ?? 0) + (h.counters.critical ?? 0) === 0} label="Errors since restart" detail={`${h.counters.warning ?? 0} warnings · ${(h.counters.error ?? 0) + (h.counters.critical ?? 0)} errors`} />
+              <Check ok label="Settings" detail={h.config.source === 'event' ? `event override v${h.config.event?.version}` : `global v${h.config.global?.version}`} />
+              <Check ok label="Discord webhooks" detail={h.discordEnabled ? 'enabled' : 'off'} />
+            </div>
+          )}
+        </Async>
+      </Card>
+      <Card title="Inventory items" actions={<Button small variant="ghost" onClick={items.reload}>Re-check</Button>}>
+        <Async state={items}>
+          {(d) => (
+            <>
+              {!d.inventoryRunning ? <div className="banner banner-bad">ox_inventory is not running.</div> :
+                d.ok ? <div className="banner banner-ok">Every carnival and configured reward item is registered.</div> :
+                  <div className="banner banner-bad">Missing: {d.missing.join(', ')} — see docs/INSTALLATION.md.</div>}
+              <Table compact head={['Item', 'Registered', 'Referenced by']}>
+                {(d.checked ?? []).map((c: any, i: number) => <tr key={i}><td className="mono">{c.item}</td><td>{c.registered ? '✔' : '✘'}</td><td className="small">{c.path ?? 'resource item'}</td></tr>)}
+              </Table>
+            </>
+          )}
+        </Async>
+      </Card>
+    </div>
   );
 }

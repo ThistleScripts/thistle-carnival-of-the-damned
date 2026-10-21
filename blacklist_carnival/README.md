@@ -1,27 +1,27 @@
 # blacklist_carnival — Carnival of the Damned
 
-A staff-operated, roleplay-focused carnival event for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
+A self-running, roleplay-focused carnival for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
 
-Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped. Staff are optional ambient actors who can monitor or step in from the staff panel; the fortune teller can lead readings. Owners/admins configure everything from an in-game configurator, with no Lua edits for ordinary event setup.
+Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup.
 
 **Two carnival modes** (*General → Carnival mode*):
 
 * **Walk-up** (default): the carnival opens itself and stays open. Nobody has to create, open or start an event. A player buys a ticket, walks to the first game on it and plays, then the next, at their own pace.
-* **Scheduled**: staff create an event and run it in timed rounds, with each colour group moving together.
+* **Scheduled**: an admin creates a night and it runs in timed rounds, with each colour group moving together.
 
 | Attraction | Type | Highlights |
 |---|---|---|
-| The Shooting Gallery | self-service | Mouse-aim NUI game: targets slide across lanes, golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
-| The Wheel of Misfortune | automated | Weighted server-side outcomes, points ±, prizes, trick/treat, staff approval for special prizes. |
-| The Fortune Teller's Curse | automated + staff-led | Riddles and multiple choice marked on the server, fortunes, roleplay awards. |
-| The Puppet Master's Theatre | self-service (or staff) | Players take the stage, get a random scenario and roles, perform on a timer, the audience votes the winner. Staff mode keeps a Puppet Master judge. |
-| The Hall of Deception | self-service (or staff) | Starts when the group arrives; suspects' testimony on the terminal, clues unlock over time, accusations auto-marked. Staff can still act as performers. |
-| The House of Horrors | self-service (or staff) | A player opens the doors, the group gathers, server timer with warnings, bronze/silver/gold tokens, escape bonuses, optional performer scares. |
+| The Shooting Gallery | solo | Mouse-aim NUI game: targets slide across lanes, golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
+| The Wheel of Misfortune | solo | Marquee wheel with weighted server-side outcomes, points ±, prizes, trick/treat. |
+| The Fortune Teller's Curse | solo | A reading with riddles and multiple choice marked on the server, and a fortune. |
+| The Puppet Master's Theatre | group | Players take the stage, get a random scenario and roles, perform on a timer, the audience votes the winner. |
+| The Hall of Deception | group | Starts when players arrive; suspects' testimony on the terminal, clues unlock over time, accusations auto-marked. |
+| The House of Horrors | group | A player opens the doors, the group gathers, server timer with warnings, floating glowing bronze/silver/gold coins, escape bonuses. |
 
 ## Documentation
 
 * [Installation & start order](docs/INSTALLATION.md)
-* [Administrator manual](docs/ADMIN_MANUAL.md) · [Event staff manual](docs/STAFF_MANUAL.md)
+* [Administrator manual](docs/ADMIN_MANUAL.md) · [Actor guide](docs/ACTOR_GUIDE.md)
 * [Permissions](docs/PERMISSIONS.md) · [Commands](docs/COMMANDS.md) · [Exports](docs/EXPORTS.md)
 * [Database reference](docs/DATABASE.md)
 * [Testing checklist & results](docs/TESTING.md) · [Security checklist](docs/SECURITY.md)
@@ -32,7 +32,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 1. Add the items from `../ox_inventory_additions/data/carnival_items.lua` to `ox_inventory/data/items.lua` and copy `../ox_inventory_additions/web/images/*.png` to `ox_inventory/web/images/`.
 2. Put your license in `Config.Security.Allowlist` (config.lua) as `owner`.
 3. `ensure blacklist_carnival` after its dependencies. Tables are created automatically.
-4. In game: `/carnivaladmin` → set the booth and attraction locations with **Use my position**. In walk-up mode (the default) the carnival is already open: players can buy a ticket and play. For a staff-run night, switch *General → Carnival mode* to *scheduled*, then *Events & history* → *Create event* → open registration.
+4. In game: `/carnivaladmin` → set the booth and attraction locations with **Use my position**. In walk-up mode (the default) the carnival is already open: players can buy a ticket and play. For a night in timed rounds, switch *Settings → Carnival → General → Carnival mode* to *scheduled*, then *Nights & results* → *Create event* → open registration.
 
 ## Layout
 
@@ -47,10 +47,11 @@ client/                   NUI bridge + focus, audio, interactions (NPCs/ox_targe
                           participants/HUD, rotation, leaderboard, attractions/*
 web/                      React + TypeScript (Vite) source; web/dist is the built UI
 sql/                      migrations (applied automatically) + schema.sql
+stream/                   House of Horrors coin props (.ydr/.ytd/.ytyp)
 items/                    ox_inventory definitions + item manifest
 images/inventory/         original 256×256 item images
 locales/en.json           message strings used by the NUI
-tools/                    generators for the item images and sounds
+tools/                    generators for the item images and sounds; ui-screens.mjs renders every NUI screen to PNG
 tests/                    static checks, integration harness + suite, NUI fixture exporter
 docs/                     manuals and references
 ```

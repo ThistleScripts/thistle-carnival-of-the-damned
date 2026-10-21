@@ -2,16 +2,17 @@
 
 All checks run on the server (`server/permissions.lua`). Hiding a button in the UI is never the security boundary: every API endpoint, command and export re-checks the permission.
 
+The games run themselves. Staff at the carnival are actors and need **no role at all**. Roles are only for people who manage the carnival from `/carnivaladmin`.
+
 ## How a player's role is resolved
 
 The highest-ranked of:
 
 1. `Config.Security.Allowlist` — `license:`/`license2:` identifier → role.
 2. ACE `carnival.role.<role>`.
-3. An in-game staff assignment (`carnival_staff_assignments`) made by someone with `staff.manage` — capped at `Config.Security.MaxGrantableRank` (default 60 = Event Manager) and always below the granter's own rank. Owner/Administrator can therefore only come from config.lua or ACE.
+3. An in-game assignment (`carnival_staff_assignments`) made by someone with `staff.manage` — capped at `Config.Security.MaxGrantableRank` (default 60 = Event Manager) and always below the granter's own rank. Owner/Administrator can therefore only come from config.lua or ACE.
 
-Extra single permissions: ACE `carnival.perm.<permission>`.
-Attraction scoping for operators/performers: ACE `carnival.attraction.<id>` or an in-game assignment with an attraction.
+Extra single permissions: ACE `carnival.perm.<permission>`. A role name that is not defined in `config.lua` (for example one left over from an older version) is ignored.
 
 Resolved permissions are cached for `PermissionCacheSeconds` (30 s) and invalidated immediately when assignments change; clients receive their new permission list and open panels update.
 
@@ -20,34 +21,24 @@ Resolved permissions are cached for `PermissionCacheSeconds` (30 s) and invalida
 | Role | Rank | Purpose |
 |---|---|---|
 | `owner` | 100 | Everything (`*`). |
-| `administrator` | 80 | Configurator, events, history, staff management, all attraction controls. |
-| `event_manager` | 60 | Runs the live event: pause/resume, rotation overrides, participants, scores, rewards, all attractions (incl. deception secrets, horror control if allowlisted). No configurator. |
-| `attraction_operator` | 40 | Staff panel + only the attractions they are assigned to. |
-| `performer` | 30 | Staff panel + assigned attractions + custom theatre scenarios. Receives only their own Hall of Deception brief. |
-| `observer` | 10 | Read-only staff panel and leaderboard. |
+| `administrator` | 80 | Everything in the admin panel: settings, nights & results, players, prizes, roles, logs. |
+| `event_manager` | 60 | Runs the night from the admin panel: pause/resume, end the night, close/reopen attractions, players, scores, prize deliveries. Cannot change settings. |
+| `observer` | 10 | Read-only admin panel: overview, players and the full leaderboard. |
 
 ## Permission list
 
 | Permission | Grants |
 |---|---|
 | `panel.admin` | Open `/carnivaladmin`. |
-| `panel.staff` | Open `/carnivalstaff`. |
-| `config.view` / `config.edit` | Read / change gameplay configuration (versioned). |
-| `events.manage` | Create/duplicate/edit events, open/close registration, start, cancel, final results, complete, recovery tools. |
-| `events.operate` | Pause/resume, extend/skip/delay/advance rotation, attraction availability. |
-| `events.history` | Past events, results and their participants. |
+| `config.view` / `config.edit` | Read / change settings (versioned). |
+| `events.manage` | Create/duplicate/edit nights, open/close registration, start, cancel, final results, complete, recovery tools. |
+| `events.operate` | Pause/resume, close/reopen attractions, timed-round overrides, complete a stuck visit. |
+| `events.history` | Past nights, results and their participants. |
 | `participants.view` / `participants.manage` | See / register, transfer, remove, reinstate, replace tickets. |
-| `scores.view` / `scores.adjust` | Ledger / manual adjustments, reversals, ledger verification. |
-| `rewards.manage` | Approve, retry, reconcile, cancel reward deliveries. |
-| `attractions.operate.<id>` | Operator console for one attraction (`shooting`, `wheel`, `fortune`, `puppets`, `deception`, `horror`). |
-| `theatre.custom` | Create custom theatre scenarios. |
-| `deception.secrets` | See the Hall of Deception answer key, briefs, preview/commit scoring. |
-| `horror.control` | Start/pause/stop/reset House of Horrors runs (also requires the horror allowlist unless the role is in `HorrorAllowlistBypassRoles`). |
-| `monitoring.view` / `audit.view` | Monitoring centre / audit trail. |
+| `scores.view` / `scores.adjust` | Ledger / manual adjustments, reversals, ledger verification, results from other resources (`registerExternalResult`). |
+| `rewards.manage` | Retry, reconcile and cancel prize deliveries. |
+| `deception.secrets` | See and edit the Hall of Deception answer keys and clues in settings. |
+| `monitoring.view` / `audit.view` | Monitoring log / audit trail. |
 | `export.history` | Export frozen results (audited). |
-| `staff.manage` | Grant/revoke in-game staff roles. |
-| `leaderboard.staff` | Full staff leaderboard with breakdowns. |
-
-## House of Horrors allowlist
-
-`Config.Security.RequireHorrorAllowlist = true` means `horror.control` only applies to licenses in `Config.Security.HorrorControllers` (owners bypass by default). Performers assigned to the horror house can still trigger scares (`attractions.operate.horror`).
+| `staff.manage` | Grant/revoke in-game roles. |
+| `leaderboard.staff` | Full leaderboard with per-attraction breakdowns. |

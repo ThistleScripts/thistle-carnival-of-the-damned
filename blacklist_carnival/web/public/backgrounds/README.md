@@ -7,7 +7,6 @@ Recommended: 1920x1080, dark, low-contrast so text stays readable. **No clown im
 | File name (`.png` or `.jpg`) | Screen |
 |---|---|
 | `admin` | Owner/admin configurator |
-| `staff` | Event staff panel |
 | `hub` | Player hub (`/carnival`) |
 | `ticket` | Ticket card |
 | `leaderboard` | Leaderboard |

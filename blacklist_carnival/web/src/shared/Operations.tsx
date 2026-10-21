@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import {
-  ATTRACTION_IDS, ATTRACTION_SHORT, COLOURS, STATE_LABELS, TRANSITIONS, attractionLabel, colourHex, colourLabel, formatClock, formatTime,
+  ATTRACTION_IDS, ATTRACTION_SHORT, COLOURS, STATE_LABELS, TRANSITIONS, attractionLabel, colourHex, colourLabel, formatAgo, formatClock, formatTime,
 } from '../format';
 import {
   Async, Button, Card, ColourChip, Countdown, Delta, Empty, Field, Modal, Pagination, StatusPill, Table, confirmAction, toast, useAction, useApi,
@@ -12,6 +12,10 @@ import { requestId } from '../nui';
 // ---------------------------------------------------------------------------
 // Event state & controls
 // ---------------------------------------------------------------------------
+const ACTION_LABELS: Record<string, string> = {
+  paused: 'Pause', final_results: 'End the night', completed: 'Close the books', cancelled: 'Cancel', between_rounds: 'Between rounds',
+};
+
 const MANAGE_ONLY = new Set(['configuring', 'inactive', 'registration_open', 'registration_closed', 'ready', 'final_results', 'completed', 'cancelled']);
 
 export function EventControls() {
@@ -23,12 +27,14 @@ export function EventControls() {
   const go = async (to: string) => {
     const danger = to === 'cancelled';
     const res = await confirmAction({
-      title: `${STATE_LABELS[to]}?`, danger,
-      message: to === 'final_results' ? 'Ends the rotation and freezes the leaderboard as final results (prize tiers are delivered if enabled).' :
+      title: `${ACTION_LABELS[to] ?? STATE_LABELS[to]}?`, danger,
+      message: to === 'final_results' ? (e.mode === 'walkup'
+        ? 'Freezes tonight\'s leaderboard as the final results (prize tiers are delivered if enabled). Once you close the books, a fresh carnival opens and players buy new tickets.'
+        : 'Ends the rotation and freezes the leaderboard as final results (prize tiers are delivered if enabled).') :
         to === 'cancelled' ? 'Cancelling stops every attraction. History is kept, but the event cannot be resumed.' :
           `Move the event from ${STATE_LABELS[e.state!]} to ${STATE_LABELS[to]}.`,
       reason: danger ? 'required' : 'optional',
-      confirmLabel: STATE_LABELS[to],
+      confirmLabel: ACTION_LABELS[to] ?? STATE_LABELS[to],
     });
     if (!res) return;
     await run('events.transition', { to, reason: res.reason }, `Event: ${STATE_LABELS[to]}`);
@@ -36,6 +42,7 @@ export function EventControls() {
 
   const options = (TRANSITIONS[e.state ?? ''] ?? []).filter((to) => {
     if (e.state === 'paused' && (to === 'running' || to === 'between_rounds')) return false; // use Resume
+    if (e.mode === 'walkup' && to === 'between_rounds') return false; // walk-up carnivals have no rounds
     if (MANAGE_ONLY.has(to) || (to === 'running' && e.state === 'ready')) return perms.has('events.manage');
     return perms.has('events.operate') || perms.has('events.manage');
   });
@@ -48,7 +55,7 @@ export function EventControls() {
         {e.roundEndsAt ? <span>Round ends in <Countdown endsAt={e.roundEndsAt} /></span> : null}
         {e.roundRemaining != null ? <span>Frozen at <Countdown remaining={e.roundRemaining} /></span> : null}
         {e.nextRoundAt ? <span>Next round in <Countdown endsAt={e.nextRoundAt} /></span> : null}
-        {e.overtime ? <span className="pill pill-warn">overtime — waiting on staff-judged attractions</span> : null}
+        {e.overtime ? <span className="pill pill-warn">overtime — waiting for a show or run to finish</span> : null}
         <span className="muted">{e.participantCount}/{e.maxParticipants} registered</span>
       </div>
       <div className="btn-row">
@@ -60,7 +67,7 @@ export function EventControls() {
         ) : null}
         {options.map((to) => (
           <Button key={to} variant={to === 'cancelled' ? 'danger' : to === 'paused' ? 'default' : 'gold'} busy={busy} onClick={() => go(to)}>
-            {to === 'paused' ? 'Pause' : STATE_LABELS[to]}
+            {ACTION_LABELS[to] ?? STATE_LABELS[to]}
           </Button>
         ))}
       </div>
@@ -95,17 +102,16 @@ export function RotationPanel() {
     <Async state={state}>
       {(d) => d.walkup ? (
         <div className="rotation">
-          <p className="small muted">Walk-up mode: players buy a ticket and play the games on it in their colour's order, at their own pace. There are no rounds to run.</p>
-          <h4>Open attraction visits</h4>
           {(d.walkupSessions ?? []).length === 0 ? <Empty text="Nobody is playing right now." /> : (
-            <Table head={['Attraction', 'Players', 'Since', 'Actions']}>
+            <Table head={['Attraction', 'Players', 'Status', 'Started', '']}>
               {d.walkupSessions.map((w: any) => {
-                const canComplete = canOperate || perms.has(`attractions.operate.${w.attraction}`);
+                const canComplete = canOperate;
                 return (
                   <tr key={w.sessionId}>
-                    <td><Icon name={w.attraction} size={14} /> {attractionLabel(settings, w.attraction)}{w.busy ? <span className="pill pill-gold">in play</span> : null}</td>
-                    <td>{w.players.length === 0 ? '—' : w.players.map((p: any) => <span key={p.id} className="walkup-player"><ColourChip colour={p.colour} /> {p.name}{p.online ? '' : ' (offline)'}</span>)}</td>
-                    <td>{w.startedAt ? formatClock(w.startedAt) : '—'}</td>
+                    <td><span className="cell-attraction"><Icon name={w.attraction} size={16} /> {ATTRACTION_SHORT[w.attraction] ?? attractionLabel(settings, w.attraction)}</span></td>
+                    <td>{w.players.length === 0 ? '—' : w.players.map((p: any) => <span key={p.id} className="walkup-player"><ColourChip colour={p.colour} withLabel={false} /> {p.name}{p.online ? '' : <span className="muted"> (offline)</span>}</span>)}</td>
+                    <td>{w.busy ? <span className="pill pill-gold">in play</span> : <span className="pill pill-muted">gathering</span>}</td>
+                    <td className="muted">{formatAgo(w.startedAt, d.serverTime)}</td>
                     <td className="btn-row">
                       {canComplete ? <Button small busy={busy} onClick={async () => {
                         const r = await confirmAction({ title: 'Complete this visit for every player in it?', reason: 'optional' });
@@ -172,14 +178,14 @@ export function RotationPanel() {
           {(d.current ?? []).length === 0 ? <Empty text="No round in progress." /> : (
             <Table head={['Group', 'Attraction', 'Status', 'Players', 'Readiness', 'Actions']}>
               {d.current.map((g: any) => {
-                const canComplete = canOperate || perms.has(`attractions.operate.${g.attraction}`);
+                const canComplete = canOperate;
                 return (
                   <tr key={g.colour}>
                     <td><ColourChip colour={g.colour} /></td>
-                    <td>{attractionLabel(settings, g.attraction)}{g.staffJudged ? <span className="pill pill-muted">judged</span> : null}</td>
+                    <td>{attractionLabel(settings, g.attraction)}</td>
                     <td><StatusPill status={g.status} />{g.delayedUntil ? <span className="small"> until {formatClock(g.delayedUntil)}</span> : null}</td>
                     <td>{g.online}/{g.members} online</td>
-                    <td><StatusPill status={g.readiness?.status} />{g.readiness?.performers ? <span className="small"> {g.readiness.performers} on duty</span> : null}</td>
+                    <td><StatusPill status={g.readiness?.status} /></td>
                     <td className="btn-row">
                       {g.status === 'pending' && canOperate ? <Button small variant="gold" onClick={() => groupAction('rotation.activate', g.colour, `Open ${ATTRACTION_SHORT[g.attraction]} for ${g.colour}`, { reason: 'optional' })}>Open</Button> : null}
                       {(g.status === 'active' || g.status === 'pending') && canComplete ? <Button small onClick={() => groupAction('rotation.completeSession', g.colour, 'Mark this group complete?', { reason: 'optional' })}>Complete</Button> : null}
@@ -191,42 +197,6 @@ export function RotationPanel() {
               })}
             </Table>
           )}
-        </div>
-      )}
-    </Async>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Attraction readiness
-// ---------------------------------------------------------------------------
-export function AttractionReadiness() {
-  const perms = useStore((s) => s.permissions);
-  const st = useApi<any[]>('attractions.overview', {}, [], ['attractions', 'rotation']);
-  const { run } = useAction();
-  return (
-    <Async state={st}>
-      {(list) => (
-        <div className="attraction-grid">
-          {list.map((a) => (
-            <div key={a.id} className="attraction-tile">
-              <div className="attraction-tile-head"><Icon name={a.id} size={22} /><strong>{a.label}</strong></div>
-              <div><StatusPill status={a.readiness.status} /> {a.readiness.reason ? <span className="small muted">{a.readiness.reason}</span> : null}</div>
-              <div className="small">On duty: {a.readiness.duty?.map((d: any) => d.name).join(', ') || 'nobody'}</div>
-              {a.session ? <div className="small">Group: <ColourChip colour={a.session.colour} /> <StatusPill status={a.session.status} /></div> : <div className="small muted">No group this round</div>}
-              {a.summary ? <div className="small muted">{Object.entries(a.summary).map(([k, v]) => `${k}: ${v}`).join(' · ')}</div> : null}
-              <div className="btn-row">
-                {perms.has(`attractions.operate.${a.id}`) ? <Button small onClick={() => run('staff.checkIn', { attractionId: a.id }, 'Checked in')}>Check in</Button> : null}
-                {perms.has('events.operate') ? (
-                  a.readiness.status === 'unavailable' ? (
-                    <Button small variant="gold" onClick={async () => { const r = await confirmAction({ title: 'Mark available?', reason: 'optional' }); if (r) run('attractions.setStatus', { attractionId: a.id, status: 'available', note: r.reason }, 'Marked available'); }}>Mark available</Button>
-                  ) : (
-                    <Button small variant="danger" onClick={async () => { const r = await confirmAction({ title: `Mark ${a.label} unavailable?`, reason: 'required' }); if (r) run('attractions.setStatus', { attractionId: a.id, status: 'unavailable', note: r.reason }, 'Marked unavailable'); }}>Mark unavailable</Button>
-                  )
-                ) : null}
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </Async>
@@ -489,7 +459,7 @@ export function TransactionTable({ rows, canReverse, onChanged }: { rows: any[];
 }
 
 // ---------------------------------------------------------------------------
-// Leaderboard (staff view) and activity
+// Leaderboard (admin view)
 // ---------------------------------------------------------------------------
 export function StaffLeaderboard() {
   const st = useApi<any>('leaderboard.staff', {}, [], ['scores', 'participants']);
@@ -516,55 +486,6 @@ export function StaffLeaderboard() {
         </>
       )}
     </Async>
-  );
-}
-
-export function ActivityFeed() {
-  const st = useApi<any>('staff.activity', {}, [], ['rotation', 'scores', 'attractions', 'dashboard']);
-  return (
-    <Async state={st} empty={(d) => (d.rows.length === 0 ? 'No activity yet.' : null)}>
-      {(d) => (
-        <ul className="feed">
-          {d.rows.map((r: any) => (
-            <li key={r.id}>
-              <span className="small muted">{formatClock(r.created_at)}</span>
-              <StatusPill status={r.severity} />
-              <span className="pill pill-muted">{r.category}</span>
-              {r.attraction_id ? <Icon name={r.attraction_id} size={14} /> : null}
-              <span>{r.action.replace(/_/g, ' ')}</span>
-              {r.result ? <span className="small muted">→ {r.result}</span> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Async>
-  );
-}
-
-export function ReportProblem({ onClose }: { onClose: () => void }) {
-  const [category, setCategory] = useState('technical');
-  const [attraction, setAttraction] = useState('');
-  const [message, setMessage] = useState('');
-  const { busy, run } = useAction();
-  return (
-    <Modal title="Report a problem" onClose={onClose} footer={
-      <Button variant="primary" busy={busy} disabled={message.trim().length < 3} onClick={async () => {
-        const r = await run('staff.report', { category, attractionId: attraction || undefined, message }, 'Report sent to the event team');
-        if (r.ok) onClose();
-      }}>Send report</Button>
-    }>
-      <Field label="Category">
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="technical">Technical</option><option value="player">Player behaviour</option><option value="attraction">Attraction</option><option value="other">Other</option>
-        </select>
-      </Field>
-      <Field label="Attraction (optional)">
-        <select value={attraction} onChange={(e) => setAttraction(e.target.value)}>
-          <option value="">—</option>{ATTRACTION_IDS.map((a) => <option key={a} value={a}>{ATTRACTION_SHORT[a]}</option>)}
-        </select>
-      </Field>
-      <Field label="What happened?"><textarea rows={4} maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} /></Field>
-    </Modal>
   );
 }
 

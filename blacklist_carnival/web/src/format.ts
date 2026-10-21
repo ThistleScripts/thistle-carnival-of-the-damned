@@ -19,6 +19,16 @@ export function formatTime(epoch?: number | null): string {
   });
 }
 
+// "just now", "4m ago", "2h ago" relative to the server clock.
+export function formatAgo(epoch?: number | null, now: number = Date.now() / 1000): string {
+  if (!epoch) return '—';
+  const s = Math.max(0, Math.floor(now - epoch));
+  if (s < 45) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
 export function formatClock(epoch?: number | null): string {
   if (!epoch) return '—';
   return new Date(epoch * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });

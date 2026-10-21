@@ -42,9 +42,10 @@ local function glob(pattern)
 end
 
 -- fxmanifest --------------------------------------------------------------------
-local m = { shared = {}, server = {}, client = {}, files = {} }
+local m = { shared = {}, server = {}, client = {}, files = {}, dataFiles = {} }
 local env = setmetatable({}, { __index = function(_, k)
     return function(arg)
+        if k == 'data_file' then return function(path) m.dataFiles[#m.dataFiles + 1] = path end end
         if k == 'shared_scripts' then m.shared = arg
         elseif k == 'server_scripts' then m.server = arg
         elseif k == 'client_scripts' then m.client = arg
@@ -55,8 +56,17 @@ local env = setmetatable({}, { __index = function(_, k)
 end })
 assert(loadfile('fxmanifest.lua', 't', env))()
 local all = {}
-for _, list in ipairs({ m.shared, m.server, m.client, m.files }) do
+for _, list in ipairs({ m.shared, m.server, m.client, m.files, m.dataFiles }) do
     for _, f in ipairs(list) do all[#all + 1] = f end
+end
+-- every streamed coin prop is complete (model, textures, archetype) and declared
+for _, c in ipairs({ 'bronze', 'silver', 'gold' }) do
+    for _, ext in ipairs({ 'ydr', 'ytd', 'ytyp' }) do
+        check(read('stream/carnivalcoin' .. c .. '.' .. ext) ~= nil, 'stream file missing: carnivalcoin' .. c .. '.' .. ext)
+    end
+    local declared = false
+    for _, f in ipairs(m.dataFiles) do if f == 'stream/carnivalcoin' .. c .. '.ytyp' then declared = true end end
+    check(declared, 'coin archetype not loaded with data_file: ' .. c)
 end
 all[#all + 1] = m.ui
 for _, f in ipairs(all) do

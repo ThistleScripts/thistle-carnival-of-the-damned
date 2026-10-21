@@ -88,26 +88,12 @@ local function registered()
     return p and p.registered and p.status == 'active'
 end
 
-local function staffOptions(attractionId)
+-- Admins can open any game screen with demo data (artwork / layout check).
+local function previewOption(attractionId)
     return {
-        {
-            name = 'carnival_staff_' .. attractionId, icon = 'fa-solid fa-id-badge', label = 'Staff: check in here',
-            canInteract = function() return Carnival.has('attractions.operate.' .. attractionId) end,
-            onSelect = function()
-                local res = Carnival.apiNotify('staff.checkIn', { attractionId = attractionId })
-                if res then lib.notify({ title = 'On duty', description = 'You are on duty at ' .. Carnival.Client.settings.attractions[attractionId].label, type = 'success' }) end
-            end,
-        },
-        {
-            name = 'carnival_preview_' .. attractionId, icon = 'fa-solid fa-eye', label = 'Staff: preview game screen',
-            canInteract = function() return Carnival.has('panel.staff') or Carnival.has('panel.admin') end,
-            onSelect = function() Carnival.Preview.open(attractionId) end,
-        },
-        {
-            name = 'carnival_staffpanel_' .. attractionId, icon = 'fa-solid fa-clipboard-list', label = 'Staff: open panel',
-            canInteract = function() return Carnival.has('panel.staff') end,
-            onSelect = function() Carnival.openPanel('staff') end,
-        },
+        name = 'carnival_preview_' .. attractionId, icon = 'fa-solid fa-eye', label = 'Admin: preview game screen',
+        canInteract = function() return Carnival.has('panel.admin') end,
+        onSelect = function() Carnival.Preview.open(attractionId) end,
     }
 end
 
@@ -170,7 +156,7 @@ function Interactions.build()
     for _, id in ipairs(C.ATTRACTIONS) do
         local a = s.attractions[id]
         if a.enabled then
-            local opts = merge(ATTRACTION_OPTIONS[id](), staffOptions(id))
+            local opts = merge(ATTRACTION_OPTIONS[id](), { previewOption(id) })
             place('attraction_' .. id, a.location, a.npcModel, a.interactDistance, opts)
             addBlip(a.location, a.blip, a.label)
         end

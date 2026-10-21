@@ -102,7 +102,6 @@ RegisterNUICallback('close', function(data, cb)
     if type(data) == 'table' and data.view then
         Carnival.closeView(data.view)
         if data.view == 'leaderboard' then Carnival.api('ui.subscribe', { topic = 'leaderboard', on = false }) end
-        if data.view == 'staff' then Carnival.api('ui.subscribe', { topic = 'staff', on = false }) end
         if data.view == 'admin' then Carnival.api('ui.subscribe', { topic = 'admin', on = false }) end
     else
         Carnival.closeAllViews()
@@ -193,7 +192,6 @@ RegisterNetEvent('blacklist_carnival:client:push', function(channel, data)
         setPermissions(data.permissions)
         -- close panels the player may no longer use
         if focusViews.admin and not Carnival.has('panel.admin') then Carnival.closeView('admin') end
-        if focusViews.staff and not Carnival.has('panel.staff') then Carnival.closeView('staff') end
     elseif channel == 'settings' then
         Client.settings = data
     end
@@ -212,10 +210,6 @@ function Carnival.openPanel(mode)
         if not Carnival.has('panel.admin') then return lib.notify({ title = 'Carnival', description = 'You do not have access.', type = 'error' }) end
         Carnival.api('ui.subscribe', { topic = 'admin', on = true })
         Carnival.openView('admin', {})
-    elseif mode == 'staff' then
-        if not Carnival.has('panel.staff') then return lib.notify({ title = 'Carnival', description = 'You do not have access.', type = 'error' }) end
-        Carnival.api('ui.subscribe', { topic = 'staff', on = true })
-        Carnival.openView('staff', {})
     elseif mode == 'leaderboard' then
         Carnival.openLeaderboard()
     else
@@ -262,7 +256,7 @@ end)
 AddEventHandler('gameEventTriggered', function(name, args)
     if name == 'CEventNetworkEntityDamage' and args[1] == PlayerPedId() and IsEntityDead(PlayerPedId()) then
         for view in pairs(focusViews) do
-            if view ~= 'admin' and view ~= 'staff' then Carnival.closeView(view) end
+            if view ~= 'admin' then Carnival.closeView(view) end
         end
     end
 end)
