@@ -15,7 +15,8 @@ The server logic was executed for real (integration tests run the actual server 
   * `oxmysql` returns `TINYINT(1)` as booleans (handled either way) and `MySQL.transaction.await` returns `false` on rollback.
 * **Discord webhooks** — code path not exercised against Discord.
 * **Default coordinates** are placeholders around the Del Perro pier, including the horror token positions. Capture real positions with the coordinate tool before an event; tokens left at the defaults appear at the pier, not in your maze.
-* **Horror coins** are the bundled `carnivalcoin*` props (about 8 MB each, mostly textures — players download them once). The float/spin/glow is client-side animation of a local prop (`DrawLightWithRange` for the glow); it has not been checked in game yet.
+* **Horror coins** are the bundled `stream/props/carnivalcoin*` props (about 8 MB each, mostly textures — players download them once). The float/spin/glow is client-side animation of a local prop (`DrawLightWithRange` for the glow); it has not been checked in game yet.
+* **Prop placer** — placement mode (raycast, controls, ghost preview) and local prop spawning have not been run in game. The manifest loads archetypes with a wildcard (`stream/props/*.ytyp`); if your server build does not expand wildcards in `data_file`, list each `.ytyp` on its own line. Props are spawned by every client within ~150 m: keep heavy props (large textures) few in number.
 * **NUI look** was reviewed in headless Chromium (`tools/ui-screens.mjs`), not in FiveM's CEF; fonts are bundled so rendering should match.
 
 ## Design limitations

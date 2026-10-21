@@ -53,7 +53,7 @@ To use your own server items as wheel or prize-tier rewards, just enter their na
 
 ### House of Horrors coins
 
-The three coin props are streamed by this resource (`stream/carnivalcoin{bronze,silver,gold}.ydr/.ytd/.ytyp`, loaded with `data_file 'DLC_ITYP_REQUEST'` in `fxmanifest.lua`). Nothing else to install.
+The three coin props are streamed by this resource (`stream/props/carnivalcoin{bronze,silver,gold}.ydr/.ytd/.ytyp`). Every `.ytyp` in `stream/props/` is loaded by `data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'` in `fxmanifest.lua`, so props you add for the prop placer only need their files dropped into that folder. Nothing else to install.
 
 Actors at the carnival need no role or setup: every game runs itself.
 

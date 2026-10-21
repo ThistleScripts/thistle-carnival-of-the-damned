@@ -6,10 +6,10 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 
 | Suite | Result |
 |---|---|
-| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **792 checks, 0 failures** (also: every column the server writes exists in the schema; the coin props are complete and loaded) |
-| Server integration (real server scripts, real database) | **63 tests, 63 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 22 tests passed** |
-| `sql/schema.sql` imported twice into an empty MariaDB database | **37 tables, no errors (idempotent)** |
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **798 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
+| Server integration (real server scripts, real database) | **67 tests, 67 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts) |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 23 tests passed** |
+| `sql/schema.sql` imported twice into an empty MariaDB database | **38 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
 
@@ -28,11 +28,12 @@ Scoring: reason required · bounds · idempotent adjustment · negative totals c
 Recovery: restart → event paused, scores recovered, reward mid-delivery → `unknown` (retry refused until reconciled), horror run interrupted not restarted, resume works.
 Completion: six rounds, each colour visits each attraction exactly once · final results frozen + prize rewards · correction creates results v2 · completed results unchanged after config change · no scoring after completion · new event leaves history intact · CSV export (audited, permission-gated).
 Walk-up mode: switching the mode opens a carnival with only system transitions and keeps registration open · no rounds · each colour's first game is the first on its ticket · out-of-order games refused with directions · wheel, gallery, fortune, solo theatre, deception and horror each complete and advance the ticket · no joining a run in progress · idle visits close without credit · restart keeps it running with progress · finalising freezes results and a fresh carnival opens.
+World props: only `props.manage` can place · model/position/rotation validated · placing, moving and removing push to every player and are audited · bootstrap carries every prop · removed props keep their row · props reload after a restart.
 Roles & audit: grants bounded by rank, revocation immediate · audit covers key actions and is never updated/deleted by code · DB failure reported and recovered · monitoring queryable with filters.
 
 ### NUI tests (web/src/__tests__/nui.test.tsx)
 
-HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · permission loss hides gated navigation.
+HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · props tab lists props, starts the in-world placer (new and move) and removes after confirming · permission loss hides gated navigation.
 
 ### Visual review
 
@@ -63,6 +64,7 @@ Run these on a staging server before the first live event. IDs are referenced fr
 **NUI**
 - M-NUI-1 Every panel opens/closes; Escape closes; the cursor is never left captured; `/carnivalclose` always recovers.
 - M-NUI-2 Minimise the admin panel, walk, reopen.
+- M-PROP-1 Drop a prop into `stream/props/`, restart, place it from *Settings → Props*: preview follows your aim, scroll/arrow/G/X work, Enter places it; a second player sees it; restart the server and it is still there; move and remove it by targeting it.
 - M-NUI-3 Remove an admin role while the panel is open → panel closes / navigation shrinks within 30 s.
 - M-NUI-4 `stop blacklist_carnival` while a panel is open → focus released, peds/props/blips removed.
 

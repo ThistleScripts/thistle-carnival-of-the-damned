@@ -131,6 +131,7 @@ C.PERMISSIONS = {
     'monitoring.view', 'audit.view',
     'export.history',
     'staff.manage',
+    'props.manage',
     'leaderboard.staff',
 }
 
@@ -144,7 +145,7 @@ C.MONITOR_CATEGORIES = {
     'lifecycle', 'event_state', 'registration', 'ticket', 'ticket_validation', 'group',
     'rotation', 'attraction', 'player', 'score', 'reward', 'staff_action', 'permission',
     'invalid_request', 'duplicate', 'database', 'callback', 'countdown', 'token',
-    'config', 'recovery', 'security', 'staff_report', 'inventory',
+    'config', 'recovery', 'security', 'staff_report', 'inventory', 'props',
 }
 
 -- Bundled sound assets (web/public/sounds). Config fields that reference sounds

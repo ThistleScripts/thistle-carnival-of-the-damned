@@ -21,7 +21,7 @@ Resolved permissions are cached for `PermissionCacheSeconds` (30 s) and invalida
 | Role | Rank | Purpose |
 |---|---|---|
 | `owner` | 100 | Everything (`*`). |
-| `administrator` | 80 | Everything in the admin panel: settings, nights & results, players, prizes, roles, logs. |
+| `administrator` | 80 | Everything in the admin panel: settings, props, nights & results, players, prizes, roles, logs. |
 | `event_manager` | 60 | Runs the night from the admin panel: pause/resume, end the night, close/reopen attractions, players, scores, prize deliveries. Cannot change settings. |
 | `observer` | 10 | Read-only admin panel: overview, players and the full leaderboard. |
 
@@ -42,3 +42,4 @@ Resolved permissions are cached for `PermissionCacheSeconds` (30 s) and invalida
 | `export.history` | Export frozen results (audited). |
 | `staff.manage` | Grant/revoke in-game roles. |
 | `leaderboard.staff` | Full leaderboard with per-attraction breakdowns. |
+| `props.manage` | Place, move and remove world props (prop placer). |

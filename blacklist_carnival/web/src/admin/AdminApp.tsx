@@ -6,6 +6,7 @@ import { releaseFocus } from '../nui';
 import { ConfigEditor } from './ConfigEditor';
 import { AuditPage, EventsPage, HealthPage, LedgerPage, MonitoringPage, Overview, RewardsPage, StaffPage } from './Pages';
 import { ParticipantsPanel, StaffLeaderboard } from '../shared/Operations';
+import { PropsPage } from './PropsPage';
 
 type PageId = 'overview' | 'players' | 'nights' | 'settings' | 'system';
 interface Tab { id: string; label: string; perm?: string }
@@ -24,11 +25,12 @@ const PAGES: Page[] = [
   },
   { id: 'nights', label: 'Nights & results', icon: 'crown', blurb: 'Every carnival night, its results and exports', perm: 'events.history' },
   {
-    id: 'settings', label: 'Settings', icon: 'gear', blurb: 'Locations, rules and content',
+    id: 'settings', label: 'Settings', icon: 'gear', blurb: 'Locations, rules, content and props',
     tabs: [
       { id: 'carnival', label: 'Carnival', perm: 'config.view' },
       { id: 'attractions', label: 'Attractions', perm: 'config.view' },
       { id: 'scoring', label: 'Scoring & prizes', perm: 'config.view' },
+      { id: 'props', label: 'Props', perm: 'props.manage' },
     ],
   },
   {
@@ -104,7 +106,7 @@ export default function AdminApp({ onClose }: { onClose: () => void }) {
   let content: React.ReactNode = null;
   if (page.id === 'overview') content = <Overview onNavigate={(p) => setPageId(p as PageId)} />;
   else if (page.id === 'nights') content = <EventsPage />;
-  else if (page.id === 'settings') content = <SettingsPage key={tab} tab={tab} />;
+  else if (page.id === 'settings') content = tab === 'props' ? <PropsPage /> : <SettingsPage key={tab} tab={tab} />;
   else if (page.id === 'players') {
     if (tab === 'participants') content = <ParticipantsPanel />;
     else if (tab === 'leaderboard') content = <StaffLeaderboard />;

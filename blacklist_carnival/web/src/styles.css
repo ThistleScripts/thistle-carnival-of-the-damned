@@ -533,3 +533,6 @@ select option { background: #1a1116; }
   .span-2 { grid-column: auto; }
   .overview-cols { grid-template-columns: 1fr; }
 }
+.filter-input { min-width: 220px; padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+.row-actions { justify-content: flex-end; flex-wrap: nowrap; }
+input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 16px; height: 16px; }

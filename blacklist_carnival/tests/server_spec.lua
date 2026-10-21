@@ -97,7 +97,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 4, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -105,7 +105,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 4, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -1088,6 +1088,65 @@ test('finalising the night freezes results and a fresh carnival opens by itself'
     eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { walkEvent })[1].state, 'completed')
     eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { walkEvent }), 1, 'results frozen')
     eq(okRes(H.api(WALKERS[1], 'participant.state')).registered, false, 'a new ticket is needed')
+end)
+
+---------------------------------------------------------------------------
+section('World props (prop placer)')
+---------------------------------------------------------------------------
+local propId
+test('only prop managers can place props; input is validated', function()
+    errRes(H.api(MANAGER, 'props.create', { model = 'carnivalcoingold', x = 1, y = 2, z = 3 }), 'forbidden')
+    errRes(H.api(PLAYERS[1], 'props.list'), 'forbidden')
+    errRes(H.api(ADMIN, 'props.create', { model = 'bad model!', x = 1, y = 2, z = 3 }), 'invalid')
+    errRes(H.api(ADMIN, 'props.create', { model = 'carnival_gate', x = 1, y = 2 }), 'invalid')
+    errRes(H.api(ADMIN, 'props.create', { model = 'carnival_gate', x = 1, y = 2, z = 99999 }), 'invalid')
+    errRes(H.api(ADMIN, 'props.create', { model = 'carnival_gate', x = 1, y = 2, z = 3, rz = 9000 }), 'invalid')
+end)
+
+test('a placed prop is saved, audited and pushed to every player', function()
+    H.pushes = {}
+    local p = okRes(H.api(ADMIN, 'props.create', { model = 'carnival_gate', label = 'Main gate', x = -1630.5, y = -1050.25, z = 13.1, rz = 90, collision = true }))
+    propId = p.id
+    eq(p.label, 'Main gate')
+    eq(p.collision, true)
+    local pushed = H.pushesFor(PLAYERS[1], 'props')
+    eq(#pushed, 1, 'one push')
+    eq(pushed[1].action, 'upsert')
+    eq(pushed[1].prop.id, propId)
+    eq(count('SELECT COUNT(*) AS n FROM carnival_props WHERE id = ? AND deleted_at IS NULL', { propId }), 1)
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = 'prop_placed'"), 1)
+    -- a player who joins later receives every prop in the bootstrap
+    local boot = Carnival.Push.bootstrapData(PLAYERS[2])
+    eq(boot.props[#boot.props].id, propId)
+end)
+
+test('moving a prop updates everyone; removing one hides it but keeps the record', function()
+    H.pushes = {}
+    local p = okRes(H.api(ADMIN, 'props.update', { id = propId, x = -1631, y = -1051, z = 13.2, rz = 180, collision = false }))
+    eq(p.rz, 180)
+    eq(p.collision, false)
+    eq(p.label, 'Main gate', 'unchanged fields kept')
+    eq(H.pushesFor(PLAYERS[1], 'props')[1].prop.x, -1631)
+    local gone = okRes(H.api(ADMIN, 'props.create', { model = 'carnivalcoinsilver', x = 1, y = 2, z = 3 }))
+    okRes(H.api(ADMIN, 'props.delete', { id = gone.id }))
+    errRes(H.api(ADMIN, 'props.delete', { id = gone.id }), 'not_found')
+    errRes(H.api(ADMIN, 'props.update', { id = gone.id, z = 5 }), 'not_found')
+    local pushes = H.pushesFor(PLAYERS[1], 'props')
+    eq(pushes[#pushes].action, 'remove')
+    eq(pushes[#pushes].id, gone.id)
+    truthy(H.sql('SELECT deleted_at FROM carnival_props WHERE id = ?', { gone.id })[1].deleted_at, 'record kept')
+    eq(#okRes(H.api(ADMIN, 'props.list')).props, 1)
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action IN ('prop_updated', 'prop_removed')"), 2)
+end)
+
+test('props persist across a restart', function()
+    H.start({ configure = configure })
+    local all = Carnival.Props.all()
+    eq(#all, 1)
+    eq(all[1].id, propId)
+    eq(all[1].rz, 180)
+    eq(all[1].collision, false)
+    eq(Carnival.Push.bootstrapData(PLAYERS[1]).props[1].model, 'carnival_gate')
 end)
 
 ---------------------------------------------------------------------------

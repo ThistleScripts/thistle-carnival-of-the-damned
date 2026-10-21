@@ -59,15 +59,26 @@ local all = {}
 for _, list in ipairs({ m.shared, m.server, m.client, m.files, m.dataFiles }) do
     for _, f in ipairs(list) do all[#all + 1] = f end
 end
--- every streamed coin prop is complete (model, textures, archetype) and declared
+-- every streamed coin prop is complete (model, textures, archetype) and its
+-- archetype is loaded by a data_file entry (the stream/props/*.ytyp glob)
+local function loadedBy(path)
+    for _, f in ipairs(m.dataFiles) do
+        if f == path then return true end
+        if f:find('%*') then
+            local pat = '^' .. f:gsub('[%.%-]', '%%%0'):gsub('%*', '[^/]*') .. '$'
+            if path:match(pat) then return true end
+        end
+    end
+    return false
+end
 for _, c in ipairs({ 'bronze', 'silver', 'gold' }) do
     for _, ext in ipairs({ 'ydr', 'ytd', 'ytyp' }) do
-        check(read('stream/carnivalcoin' .. c .. '.' .. ext) ~= nil, 'stream file missing: carnivalcoin' .. c .. '.' .. ext)
+        check(read('stream/props/carnivalcoin' .. c .. '.' .. ext) ~= nil, 'stream file missing: carnivalcoin' .. c .. '.' .. ext)
     end
-    local declared = false
-    for _, f in ipairs(m.dataFiles) do if f == 'stream/carnivalcoin' .. c .. '.ytyp' then declared = true end end
-    check(declared, 'coin archetype not loaded with data_file: ' .. c)
+    check(loadedBy('stream/props/carnivalcoin' .. c .. '.ytyp'), 'coin archetype not loaded with data_file: ' .. c)
 end
+-- every .ytyp shipped in stream/props is loaded too
+for _, f in ipairs(glob('stream/props/*.ytyp')) do check(loadedBy(f), 'archetype not loaded with data_file: ' .. f) end
 all[#all + 1] = m.ui
 for _, f in ipairs(all) do
     if not f:match('^@') then

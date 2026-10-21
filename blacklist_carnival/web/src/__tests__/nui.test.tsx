@@ -21,6 +21,7 @@ vi.mock('../nui', async () => {
     releaseFocus: vi.fn(),
     effect: vi.fn(),
     setWaypoint: vi.fn(),
+    placeProp: vi.fn(),
     captureCoords: vi.fn(async () => ({ x: 1, y: 2, z: 3, w: 90 })),
   };
 });
@@ -31,6 +32,7 @@ import { installBridge } from '../bridge';
 installBridge();
 import { getState, setState } from '../store';
 import { formatDuration, signed, colourHex } from '../format';
+import { placeProp } from '../nui';
 
 const settings: any = {
   ...(fixture as any).defaults,
@@ -259,6 +261,35 @@ describe('admin panel', () => {
     expect(screen.queryByText('Between rounds')).toBeNull();
     expect(screen.queryByText('Force-advance round')).toBeNull();
     expect(screen.getByText('End the night')).toBeTruthy();
+  });
+
+  it('props tab lists placed props, starts the in-world placer and removes props', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    responses['props.list'] = { ok: true, data: { max: 1000, models: ['carnival_gate'], props: [
+      { id: 7, model: 'carnival_gate', label: 'Main gate', x: -1630.5, y: -1050.25, z: 13.1, rx: 0, ry: 0, rz: 90, collision: true, createdBy: 'Owner', createdAt: now },
+      { id: 8, model: 'carnivalcoingold', x: 1, y: 2, z: 3, rx: 0, ry: 0, rz: -90, collision: false, createdBy: 'Owner', createdAt: now },
+    ] } };
+    responses['props.delete'] = { ok: true, data: true };
+    render(<App />);
+    setState({ permissions: new Set(['panel.admin', 'config.view', 'props.manage']) });
+    lua('open', { view: 'admin', data: {} });
+    fireEvent.click(screen.getByText('Settings'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Props' }));
+    await screen.findByText('Main gate');
+    expect(screen.getByText('270°')).toBeTruthy();
+    // place a new prop
+    const model = screen.getByPlaceholderText('e.g. carnivalcoingold');
+    expect((screen.getByText('Place in the world') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(model, { target: { value: 'carnival_stall' } });
+    fireEvent.click(screen.getByText('Place in the world'));
+    expect(placeProp).toHaveBeenCalledWith({ model: 'carnival_stall', label: undefined, collision: true });
+    // move an existing one
+    fireEvent.click(screen.getAllByText('Move')[0]);
+    expect(placeProp).toHaveBeenLastCalledWith({ id: 7 });
+    // remove (after confirming)
+    fireEvent.click(screen.getAllByText('Remove')[1]);
+    fireEvent.click(document.querySelector('.modal-foot .btn-danger') as HTMLElement);
+    await waitFor(() => expect(calls.some((c) => c.endpoint === 'props.delete' && c.payload.id === 8)).toBe(true));
   });
 
   it('permission loss while open closes nothing in the NUI but hides gated navigation', () => {

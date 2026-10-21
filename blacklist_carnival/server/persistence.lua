@@ -18,6 +18,7 @@ Db.MIGRATIONS = {
     { version = 2, name = 'seed_attractions', file = 'sql/migrations/002_seed_attractions.sql' },
     { version = 3, name = 'theatre_timer_columns', file = 'sql/migrations/003_theatre_timer_columns.sql' },
     { version = 4, name = 'walkup_mode', file = 'sql/migrations/004_walkup_mode.sql' },
+    { version = 5, name = 'world_props', file = 'sql/migrations/005_world_props.sql' },
 }
 
 local function shorten(sql)

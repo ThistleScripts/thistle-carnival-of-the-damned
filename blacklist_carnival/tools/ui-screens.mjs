@@ -83,9 +83,14 @@ const responses = {
   'system.health': { ok: true, data: dashboard.health },
   'items.validate': { ok: true, data: { ok: true, inventoryRunning: true, missing: [], checked: [{ item: 'carnival_ticket_red', registered: true }, { item: 'carnival_prize_box', registered: true }] } },
   'config.get': { ok: true, data: { data: fixture.defaults, schema: fixture.schema, versions: { source: 'global', global: { version: 7 } }, scope: 'global', hasEventOverride: false, activeEventId: 3, canEdit: true, canSeeSecrets: true, liveLocked: false, sounds: fixture.sounds } },
+  'props.list': { ok: true, data: { max: 1000, models: ['carnival_gate', 'carnival_lamp'], props: [
+    { id: 1, model: 'carnival_gate', label: 'Main gate', x: -1630.52, y: -1050.25, z: 13.1, rx: 0, ry: 0, rz: 230, collision: true, createdBy: 'Owner', createdAt: now() - 3600 },
+    { id: 2, model: 'carnival_lamp', label: 'Lamp by the booth', x: -1636.1, y: -1055.8, z: 13.15, rx: 0, ry: 0, rz: 45, collision: true, createdBy: 'Owner', createdAt: now() - 1800 },
+    { id: 3, model: 'carnivalcoingold', label: null, x: -1604.0, y: -1115.5, z: 14.1, rx: 0, ry: 0, rz: 0, collision: false, createdBy: 'Admin', createdAt: now() - 120 },
+  ] } },
   'participants.search': { ok: true, data: { page: 1, pageSize: 25, total: 10, rows: board.entries.map((e) => ({ id: e.participantId, display_name: e.name, colour: e.colour, status: 'active', total_score: e.total, online: e.rank % 3 !== 0, last_seen_at: now() - e.rank * 60 })) } },
 };
-const perms = ['panel.admin', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history'];
+const perms = ['panel.admin', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history', 'props.manage'];
 
 const scenes = {
   hud: [['hud', { visible: true }]],
@@ -102,6 +107,7 @@ const scenes = {
   admin: [['open', { view: 'admin', data: {} }]],
   settings: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)']],
   horrorsettings: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(2)'], ['click', '.chip:nth-child(6)']],
+  props: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(4)']],
   players: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(2)']],
 };
 

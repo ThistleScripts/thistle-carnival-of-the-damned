@@ -1,4 +1,4 @@
--- Carnival of the Damned - full schema (equivalent to sql/migrations/001-004).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-005).
 -- Optional: the resource applies migrations automatically on start. Importing this
 -- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
 -- start the resource records the migrations as applied (the columns added by 003/004
@@ -660,3 +660,24 @@ INSERT IGNORE INTO carnival_attractions (id, label, staff_judged, created_at) VA
     ('puppets', 'The Puppet Master''s Theatre', 1, UNIX_TIMESTAMP()),
     ('deception', 'The Hall of Deception', 1, UNIX_TIMESTAMP()),
     ('horror', 'The House of Horrors', 0, UNIX_TIMESTAMP());
+
+CREATE TABLE IF NOT EXISTS carnival_props (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    model VARCHAR(64) NOT NULL,
+    label VARCHAR(64) NULL,
+    x DOUBLE NOT NULL,
+    y DOUBLE NOT NULL,
+    z DOUBLE NOT NULL,
+    rot_x DOUBLE NOT NULL DEFAULT 0,
+    rot_y DOUBLE NOT NULL DEFAULT 0,
+    rot_z DOUBLE NOT NULL DEFAULT 0,
+    collision TINYINT(1) NOT NULL DEFAULT 1,
+    created_by VARCHAR(80) NULL,
+    created_by_name VARCHAR(96) NULL,
+    created_at BIGINT UNSIGNED NOT NULL,
+    updated_by VARCHAR(80) NULL,
+    updated_at BIGINT UNSIGNED NULL,
+    deleted_by VARCHAR(80) NULL,
+    deleted_at BIGINT UNSIGNED NULL,
+    KEY idx_props_active (deleted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

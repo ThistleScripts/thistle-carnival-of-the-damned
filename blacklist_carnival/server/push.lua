@@ -82,6 +82,7 @@ function Push.bootstrapData(src)
         settings = Carnival.Config.publicSettings(),
         event = Carnival.Events.publicState(),
         participant = Carnival.Participants.ownState(src),
+        props = Carnival.Props and Carnival.Props.all() or {},
     }
 end
 

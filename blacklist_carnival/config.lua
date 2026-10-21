@@ -52,7 +52,7 @@ Config.Security = {
                 'events.manage', 'events.operate', 'events.history',
                 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust',
                 'rewards.manage', 'deception.secrets', 'monitoring.view', 'audit.view', 'export.history',
-                'staff.manage', 'leaderboard.staff',
+                'staff.manage', 'leaderboard.staff', 'props.manage',
             },
         },
         event_manager = {

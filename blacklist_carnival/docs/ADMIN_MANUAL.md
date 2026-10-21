@@ -9,7 +9,7 @@ The games run themselves and staff are actors, so the panel is only for running 
 | Overview | Is the carnival open, how many tickets are sold and who is online. The attractions, each with what is happening there and a **Close/Reopen** button. Who is playing where right now, the top of the board and the latest scores. Pause, end the night or cancel. |
 | Players | **Participants** (search, open a player: ticket, route, scores, prizes; transfer, replace ticket, remove/reinstate, adjust score), the full **Leaderboard**, the **Score ledger** (every transaction, reversals, *Verify ledger*) and **Prize deliveries** (retry, reconcile, cancel). |
 | Nights & results | Every carnival night: results (versioned), CSV export, state history and settings snapshots. *Use as template* creates a new night from an old one. |
-| Settings | **Carnival** (general, ticket booth, ticket colours, rotation, audio), **Attractions** (pick an attraction from the chips: location, NPC, rules and content) and **Scoring & prizes**. |
+| Settings | **Carnival** (general, ticket booth, ticket colours, rotation, audio), **Attractions** (pick an attraction from the chips: location, NPC, rules and content), **Scoring & prizes** and **Props** (the prop placer). |
 | System | **Health & items** (database, dependencies, errors, item check), **Roles**, **Monitoring** and **Audit trail**. |
 
 What you see depends on your role (see PERMISSIONS.md); every action is checked again on the server.
@@ -70,11 +70,32 @@ Recovery tools (Nights & results, active night): reload state from the database,
 
 ### House of Horrors coins
 
-The bronze, silver and gold coins are bundled in `stream/` (`carnivalcoinbronze`, `carnivalcoinsilver`, `carnivalcoingold`) and loaded by the resource's manifest. Each coin floats above its token position, bobs, spins and glows in its type's colour. If a model cannot load, a glowing spinning ring is shown instead so tokens are never invisible.
+The bronze, silver and gold coins are bundled in `stream/props/` (`carnivalcoinbronze`, `carnivalcoinsilver`, `carnivalcoingold`) and loaded by the resource's manifest. Each coin floats above its token position, bobs, spins and glows in its type's colour. If a model cannot load, a glowing spinning ring is shown instead so tokens are never invisible.
 
-Tune them under *Settings → Attractions → House of Horrors → Token types* (float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own props instead, stream them with a `.ytyp` that declares them and enter their model names.
+Tune them under *Settings → Attractions → House of Horrors → Token types* (float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
 
 Coins are created only within about 60 m of the player, so they are always placed after the area has streamed in.
+
+## World props (prop placer)
+
+Dress the carnival with your own props. Every placed prop is saved in the database (`carnival_props`), survives restarts and is spawned by every player's game when they are within about 150 m, so everyone sees the same thing.
+
+**Adding prop files.** Put each prop's `.ydr`, `.ytd` and `.ytyp` into `blacklist_carnival/stream/props/` next to the coins and restart the resource. Every `.ytyp` in that folder is loaded automatically (`data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'`), so there is nothing to edit — just keep the files directly in `stream/props/`, not in sub-folders. The model name is the file name without the extension.
+
+**Placing.** *Settings → Props*, type the model name (known models are suggested), optionally a name and whether it is solid, and press **Place in the world**. Or type `/carnivalprop <model> [name]`. The panel minimises and a see-through copy of the prop follows where you look:
+
+| Control | Does |
+|---|---|
+| Look around | Move the prop (it sits on whatever you are looking at) |
+| Mouse wheel | Rotate (hold Shift for 1° steps) |
+| Arrow up / down | Raise / lower (hold Shift to move faster) |
+| Arrow left / right | Tilt |
+| G | Drop it onto the ground |
+| X | Reset rotation, tilt and height |
+| Enter or left click | Place |
+| Backspace or right click | Cancel |
+
+**Moving and removing.** Target a placed prop for *Admin: move prop* / *Admin: remove prop*, or use **Move**, **Waypoint** and **Remove** on the Props list. Every placement, move and removal is in the audit trail; removed props keep their database row. Placing needs the `props.manage` permission (owners and administrators by default); up to 1,000 props can be placed.
 
 ## Prizes
 

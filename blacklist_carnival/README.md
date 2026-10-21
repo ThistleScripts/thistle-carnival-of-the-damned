@@ -2,7 +2,7 @@
 
 A self-running, roleplay-focused carnival for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
 
-Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup.
+Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup, including a **prop placer** that saves props to the database so every player sees them and they survive restarts.
 
 **Two carnival modes** (*General → Carnival mode*):
 
@@ -47,7 +47,7 @@ client/                   NUI bridge + focus, audio, interactions (NPCs/ox_targe
                           participants/HUD, rotation, leaderboard, attractions/*
 web/                      React + TypeScript (Vite) source; web/dist is the built UI
 sql/                      migrations (applied automatically) + schema.sql
-stream/                   House of Horrors coin props (.ydr/.ytd/.ytyp)
+stream/props/             props: House of Horrors coins + your own props for the prop placer
 items/                    ox_inventory definitions + item manifest
 images/inventory/         original 256×256 item images
 locales/en.json           message strings used by the NUI
