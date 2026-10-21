@@ -82,6 +82,7 @@ function Push.bootstrapData(src)
         settings = Carnival.Config.publicSettings(),
         event = Carnival.Events.publicState(),
         participant = Carnival.Participants.ownState(src),
+        props = Carnival.Props and Carnival.Props.all() or {},
     }
 end
 
@@ -131,8 +132,7 @@ Carnival.Api.register('ui.subscribe', {
     rate = 'participant',
     handler = function(ctx, payload)
         local topic = payload.topic
-        if topic == 'staff' and not ctx:has('panel.staff') then return nil, 'forbidden' end
-        if topic == 'admin' and not ctx:has('panel.admin') then return nil, 'forbidden' end
+        if (topic == 'staff' or topic == 'admin') and not ctx:has('panel.admin') then return nil, 'forbidden' end
         if not Push.subscribe(ctx.source, topic, payload.on == true) then return nil, 'invalid', 'unknown topic' end
         if topic == 'leaderboard' and payload.on == true then
             Push.send(ctx.source, 'leaderboard', Carnival.Leaderboard.publicView(ctx.source))

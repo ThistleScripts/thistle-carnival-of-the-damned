@@ -24,6 +24,20 @@ function Cfg.onChange(fn)
     changeHandlers[#changeHandlers + 1] = fn
 end
 
+-- Settings saved by older versions whose value should follow a new default:
+-- the horror tokens used to be placeholder GTA props (or none) before the
+-- carnival coins were bundled.
+local LEGACY_TOKEN_MODELS = { [''] = true, prop_ld_case_01 = true, prop_money_bag_01 = true, prop_ld_gold_chest = true }
+
+local function upgrade(doc)
+    local h = type(doc) == 'table' and type(doc.attractions) == 'table' and doc.attractions.horror
+    if type(h) ~= 'table' or type(h.tokenTypes) ~= 'table' then return doc end
+    for ttype, t in pairs(h.tokenTypes) do
+        if type(t) == 'table' and LEGACY_TOKEN_MODELS[t.model or ''] then t.model = 'carnivalcoin' .. ttype end
+    end
+    return doc
+end
+
 local function loadActive(scope, eventId)
     local row
     if scope == 'global' then
@@ -32,7 +46,7 @@ local function loadActive(scope, eventId)
         row = Carnival.Db.single("SELECT * FROM carnival_config_versions WHERE scope = 'event' AND event_id = ? AND is_active = 1 ORDER BY version DESC LIMIT 1", { eventId })
     end
     if not row then return nil end
-    return Carnival.Db.decode(row.data), { id = row.id, version = row.version, createdAt = row.created_at, createdBy = row.created_by_name }
+    return upgrade(Carnival.Db.decode(row.data)), { id = row.id, version = row.version, createdAt = row.created_at, createdBy = row.created_by_name }
 end
 
 local function buildEffective()
@@ -125,10 +139,6 @@ function Cfg.referencedItems(tree)
     end
     for i, it in ipairs(tree.rewards.allowedItems or {}) do add(it, ('rewards.allowedItems.%d'):format(i)) end
     for i, it in ipairs(tree.rewards.prizeBox or {}) do add(it.item, ('rewards.prizeBox.%d.item'):format(i)) end
-    if a.shooting.provideWeapon then
-        add(a.shooting.weaponItem, 'attractions.shooting.weaponItem')
-        add(a.shooting.ammoItem, 'attractions.shooting.ammoItem')
-    end
     if a.horror.physicalTokens then
         for _, t in ipairs(C.TOKEN_TYPES) do add(C.TOKEN_ITEMS[t], 'attractions.horror.physicalTokens') end
     end
@@ -158,6 +168,9 @@ local function liveEventAffected(scope)
     if not state then return false end
     local live = state == C.STATES.RUNNING or state == C.STATES.PAUSED or state == C.STATES.BETWEEN
     if not live then return false end
+    -- walk-up events never close; players progress individually, so the matrix
+    -- and colours may be edited while they are open
+    if Carnival.Events.isWalkup() then return false end
     if scope == 'event' then return true end
     return docs.event == nil -- global changes only affect the event if it has no override
 end
@@ -331,12 +344,9 @@ function Cfg.publicSettings()
         }
     end
     local sh = e.attractions.shooting
-    attractions.shooting.stand = sh.stand
-    attractions.shooting.maxDistanceFromStand = sh.maxDistanceFromStand
     attractions.shooting.durationSeconds = sh.durationSeconds
-    attractions.shooting.targets = U.map(sh.targets, function(t)
-        return { id = t.id, coords = t.coords, heading = t.heading, model = t.model, kind = t.kind, radius = t.radius, points = t.points }
-    end)
+    attractions.shooting.lanes = sh.lanes
+    attractions.shooting.targetLifetimeMs = sh.targetLifetimeMs
     local wh = e.attractions.wheel
     attractions.wheel.maxSpins = wh.maxSpins
     attractions.wheel.cooldownSeconds = wh.cooldownSeconds
@@ -355,10 +365,10 @@ function Cfg.publicSettings()
     end
     attractions.horror.tokenTypes = {}
     for _, t in ipairs(C.TOKEN_TYPES) do
-        attractions.horror.tokenTypes[t] = { model = h.tokenTypes[t].model, distance = h.tokenTypes[t].distance, points = h.tokenTypes[t].points }
+        attractions.horror.tokenTypes[t] = U.deepCopy(h.tokenTypes[t])
     end
     return {
-        general = { eventName = e.general.eventName, blipLabel = e.general.blipLabel, hudEnabled = e.general.hudEnabled },
+        general = { mode = e.general.mode, eventName = e.general.eventName, blipLabel = e.general.blipLabel, hudEnabled = e.general.hudEnabled },
         registration = {
             entrance = e.registration.entrance, npcModel = e.registration.npcModel,
             interactDistance = e.registration.interactDistance, blip = e.registration.blip,

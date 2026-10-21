@@ -63,7 +63,15 @@ export async function captureCoords(): Promise<{ x: number; y: number; z: number
   }
 }
 
-// Unique id for idempotent staff actions (retries reuse the same id).
+// Hand over to the in-world prop placer: the admin panel minimises so the
+// player can move and aim (reopen it with /carnivaladmin).
+export function placeProp(opts: { id?: number; model?: string; label?: string; collision?: boolean }) {
+  if (!isNui) return;
+  releaseFocus('admin');
+  fetchNui('propPlace', opts).catch(() => undefined);
+}
+
+// Unique id for idempotent admin actions (retries reuse the same id).
 export function requestId(): string {
   const a = new Uint8Array(12);
   crypto.getRandomValues(a);

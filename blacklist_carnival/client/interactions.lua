@@ -88,21 +88,12 @@ local function registered()
     return p and p.registered and p.status == 'active'
 end
 
-local function staffOptions(attractionId)
+-- Admins can open any game screen with demo data (artwork / layout check).
+local function previewOption(attractionId)
     return {
-        {
-            name = 'carnival_staff_' .. attractionId, icon = 'fa-solid fa-id-badge', label = 'Staff: check in here',
-            canInteract = function() return Carnival.has('attractions.operate.' .. attractionId) end,
-            onSelect = function()
-                local res = Carnival.apiNotify('staff.checkIn', { attractionId = attractionId })
-                if res then lib.notify({ title = 'On duty', description = 'You are on duty at ' .. Carnival.Client.settings.attractions[attractionId].label, type = 'success' }) end
-            end,
-        },
-        {
-            name = 'carnival_staffpanel_' .. attractionId, icon = 'fa-solid fa-clipboard-list', label = 'Staff: open panel',
-            canInteract = function() return Carnival.has('panel.staff') end,
-            onSelect = function() Carnival.openPanel('staff') end,
-        },
+        name = 'carnival_preview_' .. attractionId, icon = 'fa-solid fa-eye', label = 'Admin: preview game screen',
+        canInteract = function() return Carnival.has('panel.admin') end,
+        onSelect = function() Carnival.Preview.open(attractionId) end,
     }
 end
 
@@ -114,33 +105,29 @@ end
 local ATTRACTION_OPTIONS = {
     shooting = function()
         return {
-            { name = 'carnival_shoot_join', icon = 'fa-solid fa-crosshairs', label = 'Join the firing line', canInteract = registered,
-                onSelect = function() Carnival.Shooting.join() end },
-            { name = 'carnival_shoot_leave', icon = 'fa-solid fa-person-walking-arrow-right', label = 'Leave the queue', canInteract = registered,
-                onSelect = function() Carnival.api('shooting.leave', {}) end },
+            { name = 'carnival_shoot_play', icon = 'fa-solid fa-crosshairs', label = 'Play the Shooting Gallery',
+                onSelect = function() Carnival.Shooting.play() end },
         }
     end,
     wheel = function()
-        return { { name = 'carnival_wheel', icon = 'fa-solid fa-dharmachakra', label = 'Spin the Wheel of Misfortune', canInteract = registered,
+        return { { name = 'carnival_wheel', icon = 'fa-solid fa-dharmachakra', label = 'Spin the Wheel of Misfortune',
             onSelect = function() Carnival.Wheel.open() end } }
     end,
     fortune = function()
-        return { { name = 'carnival_fortune', icon = 'fa-solid fa-hat-wizard', label = 'Consult the Fortune Teller', canInteract = registered,
+        return { { name = 'carnival_fortune', icon = 'fa-solid fa-hat-wizard', label = 'Consult the Fortune Teller',
             onSelect = function() Carnival.Fortune.begin() end } }
     end,
     puppets = function()
-        return { { name = 'carnival_theatre', icon = 'fa-solid fa-masks-theater', label = 'Take a seat at the theatre', canInteract = registered,
-            onSelect = function()
-                lib.notify({ title = 'The Puppet Master\'s Theatre', description = 'Wait to be called on stage. Your scenario card will appear when the Puppet Master chooses you.', type = 'inform' })
-            end } }
+        return { { name = 'carnival_theatre', icon = 'fa-solid fa-masks-theater', label = 'Take the stage',
+            onSelect = function() Carnival.Theatre.play() end } }
     end,
     deception = function()
-        return { { name = 'carnival_deception', icon = 'fa-solid fa-user-secret', label = 'Use the accusation terminal', canInteract = registered,
+        return { { name = 'carnival_deception', icon = 'fa-solid fa-user-secret', label = 'Use the accusation terminal',
             onSelect = function() Carnival.Deception.open() end } }
     end,
     horror = function()
-        return { { name = 'carnival_horror', icon = 'fa-solid fa-skull', label = 'The House of Horrors', canInteract = registered,
-            onSelect = function() Carnival.Horror.info() end } }
+        return { { name = 'carnival_horror', icon = 'fa-solid fa-skull', label = 'Enter the House of Horrors',
+            onSelect = function() Carnival.Horror.enter() end } }
     end,
 }
 
@@ -154,7 +141,7 @@ function Interactions.build()
         { name = 'carnival_register', icon = 'fa-solid fa-ticket', label = 'Buy a ticket (register)',
             canInteract = function()
                 local p = Carnival.Client.participant
-                return p and not p.registered and p.canRegister
+                return not (p and p.registered)
             end,
             onSelect = function() Carnival.Tickets.register() end },
         { name = 'carnival_ticket_view', icon = 'fa-solid fa-id-card', label = 'Show my ticket', canInteract = registered,
@@ -169,7 +156,7 @@ function Interactions.build()
     for _, id in ipairs(C.ATTRACTIONS) do
         local a = s.attractions[id]
         if a.enabled then
-            local opts = merge(ATTRACTION_OPTIONS[id](), staffOptions(id))
+            local opts = merge(ATTRACTION_OPTIONS[id](), { previewOption(id) })
             place('attraction_' .. id, a.location, a.npcModel, a.interactDistance, opts)
             addBlip(a.location, a.blip, a.label)
         end

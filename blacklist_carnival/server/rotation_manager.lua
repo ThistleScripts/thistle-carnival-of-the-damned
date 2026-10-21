@@ -2,9 +2,13 @@
 --
 -- A round has one session per enabled colour; the matrix decides which attraction
 -- each colour visits. The round timer runs on the server. When it expires,
--- automated attractions may be completed automatically, but staff-judged
--- attractions (theatre, deception) are never completed by the timer — the round
--- goes into overtime until staff finish them.
+-- attractions are completed automatically unless a run is still in progress
+-- (a show, mystery or maze run): the round goes into overtime until it ends.
+--
+-- Walk-up events have no rounds. Each participant works through their colour's
+-- column of the matrix at their own pace. An attraction keeps one open walk-up
+-- session; players whose next game it is join it when they arrive, and leave it
+-- once they have played (or the group run they joined has finished).
 
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
 local S, SS = C.STATES, C.SESSION_STATUS
@@ -17,6 +21,8 @@ local completedByColour = {}   -- [colour] = { attraction = status }
 local completedByPid = {}      -- [pid] = { attractionId, ... }
 local warningsSent = {}
 local transitionPausedRemaining = nil
+local walkup = {}              -- [attractionId] = open walk-up session row (+ lastActivity)
+local joined = {}              -- [sessionId] = { [participantId] = true } players in a walk-up session
 
 local function cfg() return Carnival.Config.get() end
 local function matrix() return cfg().rotation.matrix end
@@ -28,18 +34,27 @@ function Rotation.currentRound() return round end
 local function reset()
     round, sessions, completedByColour, completedByPid, warningsSent = nil, {}, {}, {}, {}
     transitionPausedRemaining = nil
+    walkup, joined = {}, {}
 end
 
 function Rotation.recover(e)
     reset()
     if not e then return end
-    for _, r in ipairs(Carnival.Db.query("SELECT colour, attraction_id, status FROM carnival_attraction_sessions WHERE event_id = ? AND status IN ('completed', 'skipped')", { e.id }) or {}) do
+    for _, r in ipairs(Carnival.Db.query("SELECT colour, attraction_id, status FROM carnival_attraction_sessions WHERE event_id = ? AND kind = 'round' AND status IN ('completed', 'skipped')", { e.id }) or {}) do
         completedByColour[r.colour] = completedByColour[r.colour] or {}
         completedByColour[r.colour][r.attraction_id] = r.status
     end
     for _, r in ipairs(Carnival.Db.query("SELECT participant_id, attraction_id FROM carnival_attraction_participation WHERE event_id = ? AND status = 'completed'", { e.id }) or {}) do
         completedByPid[r.participant_id] = completedByPid[r.participant_id] or {}
         table.insert(completedByPid[r.participant_id], r.attraction_id)
+    end
+    for _, s in ipairs(Carnival.Db.query("SELECT * FROM carnival_attraction_sessions WHERE event_id = ? AND kind = 'walkup' AND status = 'active'", { e.id }) or {}) do
+        s.lastActivity = os.time()
+        joined[s.id] = {}
+        for _, m in ipairs(Carnival.Db.query('SELECT participant_id FROM carnival_session_members WHERE session_id = ? AND left_at IS NULL', { s.id }) or {}) do
+            joined[s.id][m.participant_id] = true
+        end
+        walkup[s.attraction_id] = s
     end
     round = Carnival.Db.single('SELECT * FROM carnival_rounds WHERE event_id = ? ORDER BY round_number DESC LIMIT 1', { e.id })
     if round then
@@ -61,11 +76,13 @@ function Rotation.sessionForColour(colour) return sessions[colour] end
 
 function Rotation.sessionById(id)
     for _, s in pairs(sessions) do if s.id == id then return s end end
+    for _, s in pairs(walkup) do if s.id == id then return s end end
     return nil
 end
 
 -- Active session for an attraction in the current round (one at most).
 function Rotation.activeSessionFor(attractionId)
+    if walkup[attractionId] then return walkup[attractionId] end
     for _, s in pairs(sessions) do
         if s.attraction_id == attractionId and s.status == SS.ACTIVE then return s end
     end
@@ -73,10 +90,51 @@ function Rotation.activeSessionFor(attractionId)
 end
 
 function Rotation.sessionFor(attractionId)
+    if walkup[attractionId] then return walkup[attractionId] end
     for _, s in pairs(sessions) do
         if s.attraction_id == attractionId then return s end
     end
     return nil
+end
+
+function Rotation.isWalkup()
+    return Carnival.Events.isWalkup()
+end
+
+-- Participants taking part in a session: the joined players of a walk-up
+-- session, or the colour group of a round session.
+function Rotation.sessionMembers(s, onlineOnly)
+    if s.kind ~= 'walkup' then return Carnival.Participants.members(s.colour, onlineOnly) end
+    local out = {}
+    for pid in pairs(joined[s.id] or {}) do
+        local p = Carnival.Participants.get(pid)
+        if p and p.status == 'active' and (not onlineOnly or Carnival.Participants.sourceOf(pid)) then out[#out + 1] = p end
+    end
+    table.sort(out, function(a, b) return a.id < b.id end)
+    return out
+end
+
+function Rotation.sessionIncludes(s, p)
+    if not s or not p then return false end
+    if s.kind == 'walkup' then return joined[s.id] ~= nil and joined[s.id][p.id] == true end
+    return p.colour ~= nil and p.colour == s.colour
+end
+
+-- The session a participant plays an attraction in (nil if they are not there).
+function Rotation.participantSession(p, attractionId)
+    if not p then return nil end
+    local s = walkup[attractionId]
+    if s then return (joined[s.id] or {})[p.id] and s or nil end
+    s = p.colour and sessions[p.colour]
+    return (s and s.attraction_id == attractionId) and s or nil
+end
+
+-- Send a push to everyone taking part in a session.
+function Rotation.pushSession(s, channel, data)
+    if s.kind ~= 'walkup' then return Carnival.Push.group(s.colour, channel, data) end
+    for _, p in ipairs(Rotation.sessionMembers(s, true)) do
+        Carnival.Push.send(Carnival.Participants.sourceOf(p.id), channel, data)
+    end
 end
 
 function Rotation.nextAttractionFor(colour)
@@ -103,6 +161,7 @@ function Rotation.hasCompleted(pid, attractionId)
 end
 
 function Rotation.participantView(p)
+    if Rotation.isWalkup() then return Rotation.walkupView(p) end
     local s = p.colour and sessions[p.colour]
     return {
         completed = Rotation.completedFor(p.id),
@@ -111,8 +170,31 @@ function Rotation.participantView(p)
     }
 end
 
+-- True once the current round's timer has expired (held sessions finish their
+-- work and then complete themselves).
+function Rotation.inOvertime()
+    return round ~= nil and round.state == 'active' and Carnival.Db.bool(round.overtime)
+end
+
+-- Complete a held session after its attraction finished during overtime.
+function Rotation.completeIfOvertime(sessionId, note)
+    if Rotation.isWalkup() or not Rotation.inOvertime() then return end
+    local s = Rotation.sessionById(sessionId)
+    if s and s.status == SS.ACTIVE then Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, note) end
+end
+
+-- A group run (show, maze run, mystery) has finished: a walk-up visit is
+-- complete for everyone who took part; a round session only completes here if
+-- the round timer already expired.
+function Rotation.runFinished(sessionId, note)
+    if not Rotation.isWalkup() then return Rotation.completeIfOvertime(sessionId, note) end
+    local s = Rotation.sessionById(sessionId)
+    if s and s.status == SS.ACTIVE then Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, note) end
+end
+
 function Rotation.publicState()
     local e = Carnival.Events.active
+    if Rotation.isWalkup() then return { round = 0, totalRounds = Rotation.totalRounds(), walkup = true } end
     if not round then return { round = 0, totalRounds = Rotation.totalRounds() } end
     local paused = e and e.state == S.PAUSED
     return {
@@ -149,7 +231,7 @@ function Rotation.staffState()
         if s then
             current[#current + 1] = {
                 colour = c, sessionId = s.id, attraction = s.attraction_id, status = s.status,
-                staffJudged = C.STAFF_JUDGED[s.attraction_id] == true, delayedUntil = s.delayed_until,
+                delayedUntil = s.delayed_until,
                 online = #Carnival.Participants.members(c, true), members = #Carnival.Participants.members(c, false),
                 readiness = Carnival.Attractions.readiness(s.attraction_id),
             }
@@ -161,6 +243,18 @@ function Rotation.staffState()
     pub.enabledColours = Carnival.Groups.enabledColours()
     pub.serverTime = os.time()
     pub.allRoundsDone = round ~= nil and round.state == 'completed' and round.round_number >= Rotation.totalRounds()
+    pub.walkupSessions = {}
+    for _, a in ipairs(C.ATTRACTIONS) do
+        local s = walkup[a]
+        if s then
+            pub.walkupSessions[#pub.walkupSessions + 1] = {
+                sessionId = s.id, attraction = a, startedAt = s.started_at, busy = Carnival.Attractions.sessionBusy(s),
+                players = U.map(Rotation.sessionMembers(s, false), function(p)
+                    return { id = p.id, name = p.display_name, colour = p.colour, online = Carnival.Participants.sourceOf(p.id) ~= nil }
+                end),
+            }
+        end
+    end
     return pub
 end
 
@@ -265,35 +359,40 @@ function Rotation.startRound(n, actor)
 end
 
 function Rotation.startEvent(actor)
+    if Rotation.isWalkup() then
+        Carnival.Monitor.log('info', 'rotation', 'walkup_opened', { actor = actor })
+        Carnival.Push.all('notify', { title = Carnival.Config.get().general.eventName, description = 'The carnival is open! Buy a ticket at the booth.', type = 'inform', sound = cfg().audio.roundSound })
+        pushRotationChanged()
+        return true
+    end
     return Rotation.startRound(1, actor)
 end
 
 -- Record attraction participation for every active member of the group and award
 -- the global participation bonus for completed visits.
-local function recordParticipation(s, status)
+local function recordOne(s, p, status)
+    if Rotation.hasCompleted(p.id, s.attraction_id) then return end
     local bonus = cfg().scoring.participationBonus
-    local now = os.time()
-    for _, p in ipairs(Carnival.Participants.members(s.colour, false)) do
-        local already = Rotation.hasCompleted(p.id, s.attraction_id)
-        if not already then
-            local id = Carnival.Db.insertRow('carnival_attraction_participation', {
-                event_id = s.event_id, participant_id = p.id, attraction_id = s.attraction_id,
-                session_id = s.id, status = status, completed_at = now,
+    local id = Carnival.Db.insertRow('carnival_attraction_participation', {
+        event_id = s.event_id, participant_id = p.id, attraction_id = s.attraction_id,
+        session_id = s.id, status = status, completed_at = os.time(),
+    })
+    if id and status == SS.COMPLETED then
+        completedByPid[p.id] = completedByPid[p.id] or {}
+        table.insert(completedByPid[p.id], s.attraction_id)
+        if bonus > 0 then
+            Carnival.Scoring.award({
+                participantId = p.id, delta = bonus, key = ('participation:%d:%d'):format(s.id, p.id),
+                txType = 'participation', source = 'participation_bonus', reason = 'Completed ' .. attractionLabel(s.attraction_id),
+                attractionId = s.attraction_id, sessionId = s.id, roundNumber = s.round_number, skipAttractionCap = true,
+                publicReason = 'Participation bonus',
             })
-            if id and status == SS.COMPLETED then
-                completedByPid[p.id] = completedByPid[p.id] or {}
-                table.insert(completedByPid[p.id], s.attraction_id)
-                if bonus > 0 then
-                    Carnival.Scoring.award({
-                        participantId = p.id, delta = bonus, key = ('participation:%d:%d'):format(s.id, p.id),
-                        txType = 'participation', source = 'participation_bonus', reason = 'Completed ' .. attractionLabel(s.attraction_id),
-                        attractionId = s.attraction_id, sessionId = s.id, roundNumber = s.round_number, skipAttractionCap = true,
-                        publicReason = 'Participation bonus',
-                    })
-                end
-            end
         end
     end
+end
+
+local function recordParticipation(s, status)
+    for _, p in ipairs(Rotation.sessionMembers(s, false)) do recordOne(s, p, status) end
 end
 
 -- Complete (or skip/interrupt) a session. silent suppresses the round check (used
@@ -308,6 +407,10 @@ function Rotation.completeSession(sessionId, actor, note, status, silent)
     local wasActive = s.status == SS.ACTIVE
     setSession(s, { status = status, completed_at = os.time(), completed_by = actor and actor.license or nil, note = note or s.note })
     if wasActive then Carnival.Attractions.sessionEnded(s, status) end
+    if s.kind == 'walkup' then
+        Rotation.closeWalkup(s, status, note)
+        return true
+    end
     if status == SS.COMPLETED or status == SS.SKIPPED then
         completedByColour[s.colour] = completedByColour[s.colour] or {}
         completedByColour[s.colour][s.attraction_id] = status
@@ -347,6 +450,192 @@ function Rotation.checkRoundComplete(actor)
         Carnival.Push.all('notify', { title = ('Round %d complete'):format(n), description = ('Next round in %s.'):format(U.formatDuration(nextAt - now)), type = 'inform' })
     end
     pushRotationChanged()
+end
+
+---------------------------------------------------------------------------
+-- Walk-up mode
+---------------------------------------------------------------------------
+local function walkupCfg() return cfg().rotation.walkup end
+
+-- The colour's attraction order (its column of the matrix).
+function Rotation.sequenceFor(colour)
+    local out, idx = {}, C.COLOUR_INDEX[colour]
+    if not idx then return out end
+    for _, row in ipairs(matrix()) do out[#out + 1] = row[idx] end
+    return out
+end
+
+-- Next attraction for a walk-up participant. Attractions that are unavailable
+-- right now are passed over so nobody is stuck behind one. Returns
+-- attractionId | nil, plus the first unavailable attraction still to do.
+function Rotation.walkupNext(p)
+    if not p.colour then return nil end
+    local blocked
+    for _, a in ipairs(Rotation.sequenceFor(p.colour)) do
+        if not Rotation.hasCompleted(p.id, a) then
+            if Carnival.Attractions.readiness(a).available then return a, blocked end
+            blocked = blocked or a
+        end
+    end
+    return nil, blocked
+end
+
+function Rotation.walkupView(p)
+    local nxt = Rotation.walkupNext(p)
+    local after
+    if nxt and p.colour then
+        local seen = false
+        for _, a in ipairs(Rotation.sequenceFor(p.colour)) do
+            if seen and not Rotation.hasCompleted(p.id, a) then after = a break end
+            if a == nxt then seen = true end
+        end
+    end
+    local s = nxt and walkup[nxt]
+    return {
+        walkup = true,
+        completed = Rotation.completedFor(p.id),
+        sequence = p.colour and Rotation.sequenceFor(p.colour) or {},
+        current = nxt and { attraction = nxt, status = SS.ACTIVE, sessionId = (s and (joined[s.id] or {})[p.id]) and s.id or nil } or nil,
+        next = after,
+        finished = p.colour ~= nil and #Rotation.completedFor(p.id) >= #Rotation.sequenceFor(p.colour),
+    }
+end
+
+-- May this participant start playing this attraction now? (eligibility gate)
+function Rotation.walkupCheck(p, attractionId)
+    if not p.colour then return nil, 'no_colour', 'Your ticket has no colour yet. Visit the ticket booth.' end
+    if Rotation.hasCompleted(p.id, attractionId) then
+        return nil, 'already_completed', 'You have already completed this attraction.'
+    end
+    local s = walkup[attractionId]
+    if s and (joined[s.id] or {})[p.id] then return true end
+    if not Carnival.Attractions.readiness(attractionId).available then
+        return nil, 'unavailable', ('%s is closed right now.'):format(attractionLabel(attractionId))
+    end
+    if walkupCfg().enforceOrder then
+        local nxt = Rotation.walkupNext(p)
+        if nxt ~= attractionId then
+            if not nxt then return nil, 'all_done', 'You have finished every attraction you can play right now.' end
+            return nil, 'wrong_attraction', ('Your ticket sends you to %s next.'):format(attractionLabel(nxt))
+        end
+    end
+    return true
+end
+
+local function memberRow(s, pid, set)
+    Carnival.Db.updateRow('carnival_session_members', set, 'session_id = ? AND participant_id = ?', { s.id, pid })
+end
+
+-- Join (or create) the open walk-up session of an attraction.
+function Rotation.joinWalkup(p, attractionId)
+    return Carnival.withLock('walkup:' .. attractionId, function()
+        local s = walkup[attractionId]
+        if s and (joined[s.id] or {})[p.id] then
+            s.lastActivity = os.time()
+            return s
+        end
+        if s and not Carnival.Attractions.canJoin(s, p) then
+            return nil, 'busy', ('%s is in use. Wait for the current players to finish.'):format(attractionLabel(attractionId))
+        end
+        local now = os.time()
+        local created = false
+        if not s then
+            local e = Carnival.Events.active
+            local id = Carnival.Db.insertRow('carnival_attraction_sessions', {
+                event_id = e.id, kind = 'walkup', attraction_id = attractionId, status = SS.ACTIVE, started_at = now,
+            })
+            if not id then return nil, 'database_error', 'The attraction could not be opened. Try again.' end
+            s = Carnival.Db.single('SELECT * FROM carnival_attraction_sessions WHERE id = ?', { id })
+            s.lastActivity = now
+            joined[s.id] = {}
+            walkup[attractionId] = s
+            created = true
+        end
+        joined[s.id][p.id] = true
+        s.lastActivity = now
+        Carnival.Db.insertRow('carnival_session_members', { session_id = s.id, participant_id = p.id, status = 'joined', joined_at = now })
+        Carnival.Monitor.log('info', 'attraction', 'walkup_joined', { participantId = p.id, attractionId = attractionId, details = { sessionId = s.id, created = created } })
+        if created then Carnival.Attractions.sessionStarted(s) end
+        Carnival.Participants.pushOwn(p.id)
+        Carnival.Push.invalidate('rotation', 'attractions')
+        return s
+    end)
+end
+
+local function notifyNext(p, label)
+    local src = Carnival.Participants.sourceOf(p.id)
+    if not src then return end
+    local nxt = Rotation.walkupNext(p)
+    local text
+    if nxt then
+        text = ('Next on your ticket: %s.'):format(attractionLabel(nxt))
+    elseif p.colour and #Rotation.completedFor(p.id) >= #Rotation.sequenceFor(p.colour) then
+        text = 'You have completed every attraction. Check the leaderboard!'
+    else
+        text = 'Nothing else is open for you right now.'
+    end
+    Carnival.Push.notify(src, label, text, 'success', cfg().audio.roundSound)
+end
+
+-- A participant has finished their own game in a walk-up session (individual
+-- attractions: wheel, fortune, shooting). The session closes once empty.
+function Rotation.memberFinished(sessionId, pid, note)
+    local s = Rotation.sessionById(sessionId)
+    if not s or s.kind ~= 'walkup' or not (joined[s.id] or {})[pid] then return end
+    local p = Carnival.Participants.get(pid)
+    if p then recordOne(s, p, SS.COMPLETED) end
+    joined[s.id][pid] = nil
+    s.lastActivity = os.time()
+    memberRow(s, pid, { status = SS.COMPLETED, left_at = os.time() })
+    Carnival.Monitor.log('info', 'attraction', 'walkup_member_finished', { participantId = pid, attractionId = s.attraction_id, details = { sessionId = s.id, note = note } })
+    if p then
+        notifyNext(p, attractionLabel(s.attraction_id))
+        Carnival.Participants.pushOwn(pid)
+    end
+    if next(joined[s.id] or {}) == nil and not Carnival.Attractions.sessionBusy(s) and s.status == SS.ACTIVE then
+        Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, note or 'Every player has finished')
+    end
+    Carnival.Leaderboard.markDirty()
+    Carnival.Push.invalidate('rotation', 'dashboard')
+end
+
+-- Closing a walk-up session (called after its status is set). Completed
+-- sessions credit everyone still in them; other endings leave the attraction
+-- open for those players to try again.
+function Rotation.closeWalkup(s, status, note)
+    if walkup[s.attraction_id] == s then walkup[s.attraction_id] = nil end
+    local members = Rotation.sessionMembers(s, false)
+    for _, p in ipairs(members) do
+        if status == SS.COMPLETED or status == SS.SKIPPED then recordOne(s, p, status) end
+        memberRow(s, p.id, { status = status, left_at = os.time() })
+    end
+    joined[s.id] = nil
+    Carnival.Monitor.log('info', 'rotation', 'session_' .. status, { attractionId = s.attraction_id, details = { sessionId = s.id, kind = 'walkup', players = #members, note = note } })
+    for _, p in ipairs(members) do
+        if status == SS.COMPLETED then
+            notifyNext(p, attractionLabel(s.attraction_id))
+        else
+            local src = Carnival.Participants.sourceOf(p.id)
+            if src then Carnival.Push.notify(src, attractionLabel(s.attraction_id), ('Your visit ended: %s. You can try again.'):format(note or status), 'warning') end
+        end
+    end
+    pushRotationChanged()
+end
+
+function Rotation.walkupTick(now, e)
+    if e.state ~= S.RUNNING then return end
+    local idle = walkupCfg().idleSeconds
+    for _, s in pairs(walkup) do
+        if now - (s.lastActivity or now) >= idle and not Carnival.Attractions.sessionBusy(s) then
+            Rotation.completeSession(s.id, Carnival.Identity.SYSTEM, 'closed after being idle', SS.INTERRUPTED)
+        end
+    end
+end
+
+-- Any activity at an attraction keeps its walk-up visit open.
+function Rotation.touch(sessionId)
+    local s = Rotation.sessionById(sessionId)
+    if s and s.kind == 'walkup' then s.lastActivity = os.time() end
 end
 
 ---------------------------------------------------------------------------
@@ -474,6 +763,11 @@ function Rotation.resume(actor)
 end
 
 local function closeOpenSessions(actor, status, note)
+    for _, s in pairs(walkup) do
+        setSession(s, { status = status, completed_at = os.time(), completed_by = actor and actor.license or nil, note = note })
+        Carnival.Attractions.sessionEnded(s, status)
+        Rotation.closeWalkup(s, status, note)
+    end
     for _, s in pairs(sessions) do
         if s.status == SS.ACTIVE or s.status == SS.PENDING then
             local wasActive = s.status == SS.ACTIVE
@@ -504,6 +798,7 @@ end
 ---------------------------------------------------------------------------
 Carnival.onTick('rotation', function(now)
     local e = Carnival.Events.active
+    if e and e.mode == 'walkup' then return Rotation.walkupTick(now, e) end
     if not e or not round then return end
     if e.state == S.RUNNING and round.state == 'active' then
         local remaining = (round.ends_at or now) - now
@@ -529,7 +824,7 @@ Carnival.onTick('rotation', function(now)
             for _, s in pairs(sessions) do
                 if s.status == SS.ACTIVE then
                     local decision = 'hold'
-                    if not C.STAFF_JUDGED[s.attraction_id] and cfg().rotation.autoCompleteOnTimer then
+                    if cfg().rotation.autoCompleteOnTimer then
                         decision = Carnival.Attractions.timerExpired(s)
                     end
                     if decision == 'complete' then
@@ -564,7 +859,7 @@ end)
 local Api = Carnival.Api
 
 Api.register('rotation.state', {
-    perm = 'panel.staff', rate = 'staff',
+    perm = 'panel.admin', rate = 'staff',
     handler = function() return Rotation.staffState() end,
 })
 
@@ -617,20 +912,20 @@ Api.register('rotation.activate', {
     end,
 })
 
--- Operators may complete their own attraction's session; managers any session.
 Api.register('rotation.completeSession', {
-    anyPerm = { 'events.operate', 'attractions.operate.shooting', 'attractions.operate.wheel', 'attractions.operate.fortune',
-        'attractions.operate.puppets', 'attractions.operate.deception', 'attractions.operate.horror' },
+    perm = 'events.operate',
     rate = 'staff',
     handler = function(ctx, payload)
-        local colour = V.colour(payload.colour)
-        if not colour then return nil, 'invalid', 'Invalid colour.' end
-        local s = sessions[colour]
-        if not s then return nil, 'not_found', 'That group has no session this round.' end
-        if not ctx:has('events.operate') and not ctx:has('attractions.operate.' .. s.attraction_id) then
-            Carnival.Monitor.security(ctx.source, 'permission_denied', { action = 'complete_session', attraction = s.attraction_id }, 'permission')
-            return nil, 'forbidden'
+        local s, colour
+        if payload.sessionId ~= nil then
+            s = Rotation.sessionById(V.id(payload.sessionId))
+            colour = s and s.colour
+        else
+            colour = V.colour(payload.colour)
+            if not colour then return nil, 'invalid', 'Invalid colour.' end
+            s = sessions[colour]
         end
+        if not s then return nil, 'not_found', 'That session is not open.' end
         local reason = reasonOf(payload, false) or ''
         local ok, code, msg = Rotation.completeSession(s.id, ctx.actor, reason ~= '' and reason or 'Completed by staff')
         if not ok then return nil, code, msg end

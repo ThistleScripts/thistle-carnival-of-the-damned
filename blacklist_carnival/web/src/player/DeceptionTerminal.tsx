@@ -9,7 +9,6 @@ import { syncServerTime } from '../store';
 export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () => void }) {
   const m = data.mystery ?? {};
   const [selected, setSelected] = useState<string[]>([]);
-  const [explanation, setExplanation] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [used, setUsed] = useState<number>(data.submissionsUsed ?? 0);
@@ -22,7 +21,9 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
 
   const submit = async () => {
     setBusy(true);
-    const r = await api('deception.submit', { roundId: data.roundId, selections: selected, explanation });
+    const r = data.preview
+      ? { ok: true, data: { submissionNumber: used + 1, remaining: (data.maxSubmissions ?? 1) - used - 1 } } as any
+      : await api('deception.submit', { roundId: data.roundId, selections: selected });
     setBusy(false);
     if (r.ok && r.data) {
       setUsed(r.data.submissionNumber);
@@ -36,8 +37,10 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
   return (
     <div className="overlay-center">
       <Backdrop name="deception" className="panel-frame deception-frame">
+        {data.preview ? <div className="preview-banner">PREVIEW — demo data, nothing is sent to the server</div> : null}
         <header className="frame-head">
           <div>
+            <div className="kicker">Who is lying?</div>
             <h2>{m.title ?? 'The Hall of Deception'}</h2>
             <span className="muted"><StatusPill status={data.status} /> {open && data.endsAt ? <>closes in <Countdown endsAt={data.endsAt} /></> : null}</span>
           </div>
@@ -52,6 +55,7 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
               <Icon name="deception" size={22} />
               <strong>{p.name}</strong>
               <span>{p.profile}</span>
+              {(p.statements ?? []).length ? <ul className="testimony">{p.statements.map((st: string, i: number) => <li key={i}>“{st}”</li>)}</ul> : null}
               {liars.has(p.id) ? <span className="pill pill-bad">LIAR</span> : null}
             </button>
           ))}
@@ -59,12 +63,11 @@ export function DeceptionTerminal({ data, onClose }: { data: any; onClose: () =>
         {(data.clues ?? []).length > 0 ? (
           <div className="clues">
             <h4>Clues</h4>
-            <ul>{data.clues.map((c: any) => <li key={c.id}><span className="muted small">{formatClock(c.releasedAt)}</span> {c.text}</li>)}</ul>
+            <ul>{data.clues.map((c: any) => <li key={c.id}>{c.releasedAt ? <span className="muted small">{formatClock(c.releasedAt)} · </span> : null}{c.text}</li>)}</ul>
           </div>
         ) : null}
         {open ? (
           <div className="accuse">
-            <textarea placeholder="Explain your reasoning (optional — judges may award bonus points)" maxLength={1000} rows={3} value={explanation} onChange={(e) => setExplanation(e.target.value)} />
             <div className="accuse-row">
               <span className="muted">Choose exactly {m.liarCount} · selected {selected.length} · accusations left {remaining}</span>
               <Button variant="primary" busy={busy} disabled={selected.length !== m.liarCount || remaining <= 0} onClick={submit}>Accuse</Button>

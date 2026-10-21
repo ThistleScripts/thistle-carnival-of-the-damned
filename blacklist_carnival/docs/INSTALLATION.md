@@ -51,6 +51,12 @@ Registration refuses to open while the ticket items are missing (unless virtual 
 
 To use your own server items as wheel or prize-tier rewards, just enter their names in the configurator; the server checks every configured item name against `exports.ox_inventory:Items()` before saving.
 
+### House of Horrors coins
+
+The three coin props are streamed by this resource (`stream/props/carnivalcoin{bronze,silver,gold}.ydr/.ytd/.ytyp`). Every `.ytyp` in `stream/props/` is loaded by `data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'` in `fxmanifest.lua`, so props you add for the prop placer only need their files dropped into that folder. Nothing else to install.
+
+Actors at the carnival need no role or setup: every game runs itself.
+
 ## 6. Permissions
 
 Edit `config.lua` (server only, never sent to clients):
@@ -59,18 +65,14 @@ Edit `config.lua` (server only, never sent to clients):
 Config.Security.Allowlist = {
     ['license:0123456789abcdef0123456789abcdef01234567'] = 'owner',
 }
-Config.Security.HorrorControllers = {
-    'license:...', -- staff allowed to start/stop House of Horrors runs
-}
 ```
 
 Or use ACE in `server.cfg`:
 
 ```cfg
 add_ace group.admin carnival.role.administrator allow
-add_ace identifier.license:xxxx carnival.role.event_manager allow
-add_ace identifier.license:yyyy carnival.role.attraction_operator allow
-add_ace identifier.license:yyyy carnival.attraction.wheel allow     # scope an operator to an attraction
+add_ace identifier.license:xxxx carnival.role.event_manager allow   # runs the night, cannot change settings
+add_ace identifier.license:yyyy carnival.role.observer allow        # read-only admin panel
 add_ace identifier.license:zzzz carnival.perm.scores.adjust allow   # one extra permission
 ```
 
@@ -93,10 +95,10 @@ Webhook URLs live only in convars; they are never written to the database or sen
 
 1. Start the server and watch the console for `resource_ready`.
 2. `/carnivalitems` → all items registered.
-3. `/carnivaladmin` → *Items & health* page: database healthy, ox_inventory/ox_target/qbx_core running.
-4. Walk to each location and use **Use my position** on the configuration pages (entrance, each attraction, shooting stand and targets, horror entry/exit/boundary/tokens/scares). The shipped coordinates are placeholders around the Del Perro pier.
+3. `/carnivaladmin` → *System → Health & items*: database healthy, ox_inventory/ox_target/qbx_core running.
+4. Walk to each location and use **Use my position** on the configuration pages (entrance, each attraction, horror entry/exit/boundary and coin positions). The shipped coordinates are placeholders around the Del Perro pier.
 5. Create an event on *Events & history* and follow the [Administrator manual](ADMIN_MANUAL.md).
 
 ## 9. Backgrounds (optional artwork)
 
-Put `admin`, `staff`, `hub`, `ticket`, `leaderboard`, `wheel`, `fortune`, `deception` or `results` (`.png` or `.jpg`) in `web/public/backgrounds/`, then rebuild the NUI. See `web/public/backgrounds/README.md`. Missing files fall back to the built-in gradient.
+Put `admin`, `hub`, `ticket`, `leaderboard`, `wheel`, `fortune`, `deception` or `results` (`.png` or `.jpg`) in `web/public/backgrounds/`, then rebuild the NUI. See `web/public/backgrounds/README.md`. Missing files fall back to the built-in gradient.

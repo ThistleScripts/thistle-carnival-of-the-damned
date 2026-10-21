@@ -27,7 +27,5 @@ Carnival.onPush('deception', function(data)
     elseif data.action == 'revealed' then
         Carnival.openView('deceptionReveal', data, { focus = false })
         SetTimeout(20000, function() Carnival.closeView('deceptionReveal') end)
-    elseif data.action == 'brief_assigned' then
-        lib.notify({ title = 'Performer brief', description = ('You play %s. Open the staff panel to read your brief.'):format(data.profile), type = 'inform', duration = 10000 })
     end
 end)

@@ -361,9 +361,6 @@ local function crossValidate(cfg, errors)
             if (t.fromRank or 1) > (t.toRank or 1) then err(('prizes.tiers.%d'):format(i), 'from rank is after to rank') end
         end
     end
-    if a.shooting and a.shooting.provideWeapon and (a.shooting.weaponItem or '') == '' then
-        err('attractions.shooting.weaponItem', 'a weapon item is required when providing weapons')
-    end
 end
 
 -- Validate and normalise a complete settings tree.

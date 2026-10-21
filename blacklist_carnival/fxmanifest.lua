@@ -56,6 +56,7 @@ server_scripts {
     'server/attractions/puppets.lua',
     'server/attractions/deception.lua',
     'server/attractions/horror.lua',
+    'server/props.lua',
     'server/admin_api.lua',
     'server/commands.lua',
     'server/exports.lua',
@@ -75,14 +76,13 @@ client_scripts {
     'client/attractions/puppets.lua',
     'client/attractions/deception.lua',
     'client/attractions/horror.lua',
+    'client/props.lua',
+    'client/preview.lua',
 }
 
 ui_page 'web/dist/index.html'
 
-files {
-    'locales/*.json',
-    'web/dist/index.html',
-    'web/dist/assets/*',
-    'web/dist/sounds/*',
-    'web/dist/backgrounds/*',
-}
+-- Props streamed from stream/props/ (.ydr model, .ytd textures, .ytyp archetype):
+-- the House of Horrors coins and anything placed with the prop placer. Every
+-- .ytyp in that folder is loaded, so new props only need their files dropped in.
+data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'

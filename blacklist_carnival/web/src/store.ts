@@ -19,6 +19,7 @@ export interface EventState {
   name?: string;
   description?: string;
   state?: string;
+  mode?: 'walkup' | 'scheduled';
   stateLabel?: string;
   serverTime?: number;
   round?: number;

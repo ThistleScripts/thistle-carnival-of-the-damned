@@ -43,7 +43,13 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
     setError(null);
     setResult(null);
     setSpinning(true);
-    const r = await api('wheel.spin', {});
+    const r = data.preview
+      ? (() => {
+        const index = Math.floor(Math.random() * n) + 1;
+        const o = outcomes[index - 1];
+        return { ok: true, data: { index, outcome: { id: o.id, label: o.label, type: o.type }, points: 0, spinsUsed: used + 1, maxSpins: data.maxSpins, cooldownSeconds: 0 } } as any;
+      })()
+      : await api('wheel.spin', {});
     if (!r.ok || !r.data) {
       setSpinning(false);
       setError(errorText(r));
@@ -80,27 +86,55 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
   return (
     <div className="overlay-center">
       <Backdrop name="wheel" className="panel-frame wheel-frame">
+        {data.preview ? <div className="preview-banner">PREVIEW — demo data, nothing is sent to the server</div> : null}
         <header className="frame-head">
-          <div><h2>{data.label ?? 'The Wheel of Misfortune'}</h2><span className="muted">Spins left: {remaining} of {data.maxSpins}</span></div>
+          <div><div className="kicker">Step right up</div><h2>{data.label ?? 'The Wheel of Misfortune'}</h2><span className="muted">Spins left: {remaining} of {data.maxSpins}</span></div>
           <Button variant="ghost" onClick={onClose} disabled={spinning}>Leave</Button>
         </header>
-        <div className="wheel-stage">
-          <div className="wheel-pointer" aria-hidden="true">▼</div>
-          <svg className="wheel" viewBox="-110 -110 220 220" style={{ transform: `rotate(${rotation}deg)`, transitionDuration: `${duration}ms` }}>
-            <circle r="108" fill="#0c0a0b" stroke="#b8964d" strokeWidth="3" />
+        <div className={`wheel-stage ${spinning ? 'wheel-spinning' : ''}`}>
+          <svg className="wheel-pointer" viewBox="0 0 44 54" aria-hidden="true">
+            <defs>
+              <linearGradient id="wheel-pointer-foil" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#fff1c4" /><stop offset="0.5" stopColor="#d6ae60" /><stop offset="1" stopColor="#8a6629" />
+              </linearGradient>
+            </defs>
+            <path d="M22 52 L4 14 A18 18 0 1 1 40 14 Z" fill="url(#wheel-pointer-foil)" stroke="#3a2410" strokeWidth="1.5" />
+            <circle cx="22" cy="16" r="6" fill="#8e1626" stroke="#3a2410" strokeWidth="1.2" />
+          </svg>
+          <svg className="wheel" viewBox="-120 -120 240 240" style={{ transform: `rotate(${rotation}deg)`, transitionDuration: `${duration}ms` }}>
+            <defs>
+              <radialGradient id="wheel-sheen" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
+                <stop offset="0.25" stopColor="#000" stopOpacity="0.35" />
+                <stop offset="0.75" stopColor="#fff" stopOpacity="0.06" />
+                <stop offset="1" stopColor="#000" stopOpacity="0.4" />
+              </radialGradient>
+              <linearGradient id="wheel-rim" x1="0" y1="-1" x2="0" y2="1">
+                <stop offset="0" stopColor="#f6dfa2" /><stop offset="0.5" stopColor="#a5792f" /><stop offset="1" stopColor="#5d3f16" />
+              </linearGradient>
+              <radialGradient id="wheel-hub" cx="0.35" cy="0.3" r="0.8">
+                <stop offset="0" stopColor="#fff1c4" /><stop offset="0.55" stopColor="#c99a48" /><stop offset="1" stopColor="#5d3f16" />
+              </radialGradient>
+            </defs>
+            <circle r="118" fill="#1a0b10" />
+            <circle r="114" fill="none" stroke="url(#wheel-rim)" strokeWidth="10" />
+            {Array.from({ length: 24 }, (_, i) => {
+              const a = (i / 24) * Math.PI * 2;
+              return <circle key={i} className={`wheel-bulb ${i % 2 ? 'wheel-bulb-alt' : ''}`} cx={Math.cos(a) * 114} cy={Math.sin(a) * 114} r="3" />;
+            })}
             {outcomes.map((o, i) => {
               const mid = ((i + 0.5) / n) * 360;
               return (
                 <g key={o.id}>
-                  <path d={segmentPath(i, n, 100)} fill={o.colour || (i % 2 ? '#2a0d12' : '#151015')} stroke="#b8964d" strokeWidth="0.8" />
-                  <text transform={`rotate(${mid}) translate(0 -62) rotate(90)`} className="wheel-label" textAnchor="middle" dominantBaseline="middle">
+                  <path d={segmentPath(i, n, 104)} fill={o.colour || (i % 2 ? '#2a0d12' : '#151015')} stroke="#d6ae60" strokeWidth="0.9" />
+                  <text transform={`rotate(${mid}) translate(0 -66) rotate(90)`} className="wheel-label" textAnchor="middle" dominantBaseline="middle">
                     {o.label.length > 16 ? o.label.slice(0, 15) + '…' : o.label}
                   </text>
                 </g>
               );
             })}
-            <circle r="16" fill="#151015" stroke="#b8964d" strokeWidth="2" />
-            <circle r="5" fill="#b8964d" />
+            <circle r="104" fill="url(#wheel-sheen)" pointerEvents="none" />
+            <circle r="20" fill="url(#wheel-hub)" stroke="#3a2410" strokeWidth="1.5" />
+            <circle r="7" fill="#8e1626" stroke="#3a2410" strokeWidth="1" />
           </svg>
         </div>
         <div className="wheel-foot">
@@ -109,7 +143,7 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
               <div className="wheel-result-title">{result.outcome.label}</div>
               <div>
                 {result.points ? `${signed(result.points)} points` : 'No points'}
-                {result.reward ? ` · ${result.reward.count}x ${result.reward.label ?? result.reward.item} (${result.reward.status === 'delivered' ? 'in your pockets' : result.reward.status === 'awaiting_approval' ? 'awaiting staff approval' : 'held at the booth'})` : ''}
+                {result.reward ? ` · ${result.reward.count}x ${result.reward.label ?? result.reward.item} (${result.reward.status === 'delivered' ? 'in your pockets' : 'held at the ticket booth'})` : ''}
               </div>
             </div>
           ) : error ? <div className="state-error">{error}</div> : <div className="muted">The wheel remembers every hand that spins it…</div>}

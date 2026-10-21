@@ -1,9 +1,9 @@
--- Carnival of the Damned - full schema (concatenation of sql/migrations/*.sql).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-005).
 -- Optional: the resource applies migrations automatically on start. Importing this
--- file manually is safe (IF NOT EXISTS / INSERT IGNORE); the resource will still
--- record the migrations as applied on first start.
+-- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
+-- start the resource records the migrations as applied (the columns added by 003/004
+-- are already present here, which the migration runner accepts).
 
--- ===== sql/migrations/001_initial.sql =====
 -- Carnival of the Damned - migration 001: initial schema
 -- All timestamps are UTC unix epoch seconds (BIGINT).
 -- Statements are idempotent (IF NOT EXISTS) so the migration may be re-run safely.
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS carnival_events (
     name VARCHAR(96) NOT NULL,
     description TEXT NULL,
     state VARCHAR(32) NOT NULL DEFAULT 'configuring',
+    mode VARCHAR(16) NOT NULL DEFAULT 'scheduled',
     resume_state VARCHAR(32) NULL,
     current_round TINYINT UNSIGNED NOT NULL DEFAULT 0,
     template_of INT UNSIGNED NULL,
@@ -186,9 +187,10 @@ CREATE TABLE IF NOT EXISTS carnival_rounds (
 CREATE TABLE IF NOT EXISTS carnival_attraction_sessions (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     event_id INT UNSIGNED NOT NULL,
-    round_id INT UNSIGNED NOT NULL,
-    round_number TINYINT UNSIGNED NOT NULL,
-    colour VARCHAR(16) NOT NULL,
+    kind VARCHAR(16) NOT NULL DEFAULT 'round',
+    round_id INT UNSIGNED NULL,
+    round_number TINYINT UNSIGNED NULL,
+    colour VARCHAR(16) NULL,
     attraction_id VARCHAR(32) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'pending',
     delayed_until BIGINT UNSIGNED NULL,
@@ -202,6 +204,19 @@ CREATE TABLE IF NOT EXISTS carnival_attraction_sessions (
     CONSTRAINT fk_session_event FOREIGN KEY (event_id) REFERENCES carnival_events (id),
     CONSTRAINT fk_session_round FOREIGN KEY (round_id) REFERENCES carnival_rounds (id),
     CONSTRAINT fk_session_attraction FOREIGN KEY (attraction_id) REFERENCES carnival_attractions (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS carnival_session_members (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id INT UNSIGNED NOT NULL,
+    participant_id INT UNSIGNED NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'joined',
+    joined_at BIGINT UNSIGNED NOT NULL,
+    left_at BIGINT UNSIGNED NULL,
+    UNIQUE KEY uq_session_member (session_id, participant_id),
+    KEY idx_session_member_participant (participant_id),
+    CONSTRAINT fk_session_member_session FOREIGN KEY (session_id) REFERENCES carnival_attraction_sessions (id),
+    CONSTRAINT fk_session_member_participant FOREIGN KEY (participant_id) REFERENCES carnival_participants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS carnival_attraction_participation (
@@ -376,6 +391,8 @@ CREATE TABLE IF NOT EXISTS carnival_theatre_performances (
     judging_note TEXT NULL,
     created_at BIGINT UNSIGNED NOT NULL,
     started_at BIGINT UNSIGNED NULL,
+    ends_at BIGINT UNSIGNED NULL,
+    paused_remaining INT NULL,
     ended_at BIGINT UNSIGNED NULL,
     committed_at BIGINT UNSIGNED NULL,
     KEY idx_theatre_event (event_id, created_at),
@@ -633,7 +650,6 @@ CREATE TABLE IF NOT EXISTS carnival_monitor_log (
     KEY idx_monitor_actor (actor)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ===== sql/migrations/002_seed_attractions.sql =====
 -- Carnival of the Damned - migration 002: attraction registry seed
 -- INSERT IGNORE keeps this idempotent.
 
@@ -645,3 +661,23 @@ INSERT IGNORE INTO carnival_attractions (id, label, staff_judged, created_at) VA
     ('deception', 'The Hall of Deception', 1, UNIX_TIMESTAMP()),
     ('horror', 'The House of Horrors', 0, UNIX_TIMESTAMP());
 
+CREATE TABLE IF NOT EXISTS carnival_props (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    model VARCHAR(64) NOT NULL,
+    label VARCHAR(64) NULL,
+    x DOUBLE NOT NULL,
+    y DOUBLE NOT NULL,
+    z DOUBLE NOT NULL,
+    rot_x DOUBLE NOT NULL DEFAULT 0,
+    rot_y DOUBLE NOT NULL DEFAULT 0,
+    rot_z DOUBLE NOT NULL DEFAULT 0,
+    collision TINYINT(1) NOT NULL DEFAULT 1,
+    created_by VARCHAR(80) NULL,
+    created_by_name VARCHAR(96) NULL,
+    created_at BIGINT UNSIGNED NOT NULL,
+    updated_by VARCHAR(80) NULL,
+    updated_at BIGINT UNSIGNED NULL,
+    deleted_by VARCHAR(80) NULL,
+    deleted_at BIGINT UNSIGNED NULL,
+    KEY idx_props_active (deleted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

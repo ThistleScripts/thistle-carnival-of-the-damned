@@ -1,22 +1,35 @@
 # Administrator manual
 
-Open the configurator with `/carnivaladmin` (or `/carnival`, which opens the most privileged panel you have). **Minimise** hides the panel so you can walk around (for example to capture coordinates); reopen with the same command. **Escape** closes it.
+Open the admin panel with `/carnivaladmin`. **Minimise** hides it so you can walk around (for example to capture coordinates); reopen with the same command. **Escape** closes it.
 
-## Pages
+The games run themselves and staff are actors, so the panel is only for running the carnival as a whole. It has five sections:
 
-| Page | What it is for |
+| Section | What it is for |
 |---|---|
-| Dashboard | Live state: event, registration, participants (online), round + timer, per-colour groups, attraction readiness, top 10, recent score transactions, outstanding rewards, recent staff actions, recent warnings/errors, database and dependency health, config/resource versions. Every figure comes from the server. |
-| Events & history | Create an event, edit its details, move it through its lifecycle, recovery tools, history of every past event with results versions, CSV export, state history and settings snapshots. *Use as template* creates a new event from an old one (name, description and event-specific settings). |
-| Live operations | Rotation grid and overrides, groups, attraction readiness (same tools as the staff panel). |
-| Configuration pages | Every gameplay setting, grouped: General, Registration & tickets, Colours & groups, Rotation, Scoring, Leaderboard, Prizes & results, Reward items, Audio, and one page per attraction. |
-| Participants | Search, open a participant: registration, tickets, group history, completed attractions, score breakdown + ledger, rewards; transfer, replace ticket, remove/reinstate, adjust score. |
-| Score ledger | Every transaction with filters; *Reverse* adds a correction entry; *Verify ledger* recomputes totals, per-attraction summaries and the running-total chain from the ledger. |
-| Rewards | Delivery reconciliation: approve, retry, reset to pending, mark delivered, cancel (reasons are audited). |
-| Staff & roles | Grant/revoke in-game roles (bounded by config.lua). |
-| Monitoring centre | Searchable operational + security log (date range, event, participant, staff, attraction, severity, category, text). |
-| Audit trail | Append-only administrative record. |
-| Items & health | Checks every carnival and configured reward item against ox_inventory. |
+| Overview | Is the carnival open, how many tickets are sold and who is online. The attractions, each with what is happening there and a **Close/Reopen** button. Who is playing where right now, the top of the board and the latest scores. Pause, end the night or cancel. |
+| Players | **Participants** (search, open a player: ticket, route, scores, prizes; transfer, replace ticket, remove/reinstate, adjust score), the full **Leaderboard**, the **Score ledger** (every transaction, reversals, *Verify ledger*) and **Prize deliveries** (retry, reconcile, cancel). |
+| Nights & results | Every carnival night: results (versioned), CSV export, state history and settings snapshots. *Use as template* creates a new night from an old one. |
+| Settings | **Carnival** (general, ticket booth, ticket colours, rotation, audio), **Attractions** (pick an attraction from the chips: location, NPC, rules and content), **Scoring & prizes** and **Props** (the prop placer). |
+| System | **Health & items** (database, dependencies, errors, item check), **Roles**, **Monitoring** and **Audit trail**. |
+
+What you see depends on your role (see PERMISSIONS.md); every action is checked again on the server.
+
+## Carnival mode: walk-up or scheduled
+
+*General → Carnival mode* decides how the carnival runs.
+
+**Walk-up (default): no staff needed.**
+* When no event is active, the server creates a walk-up event and moves it straight to *running* (the transitions are recorded with the actor `system`). Registration stays open while it runs.
+* A player buys a ticket at the booth and gets a colour. That colour's column of the rotation matrix is their personal order of games; the HUD and `/carnival` show the next one and set a waypoint.
+* The player targets the next game's ped and plays. When they finish, their ticket moves on to the next game. They cannot play out of order (unless *Rotation → Walk-up mode → enforce order* is off), and they cannot repeat a game.
+* Individual games (gallery, wheel, fortune) complete per player. Group games (theatre, Hall of Deception, House of Horrors) gather whoever arrives for that game during the lobby, run, then complete for everyone who took part. Nobody can join a show, maze run or mystery that is already under way.
+* An attraction that is disabled or closed from the Overview is passed over; the player plays the next one and comes back to it later.
+* A visit nobody is playing is closed after *idle seconds* without counting as played, so the player can start again.
+* Restarts do not pause a walk-up event.
+* To end the night, move the event to *Final results* and then *Completed*. Results are frozen as usual and a fresh carnival opens by itself (players buy a new ticket).
+* To stop the carnival opening again, switch the mode to *scheduled* first. While the walk-up event runs, the rotation matrix and colours may still be edited, because players progress individually.
+
+**Scheduled (timed rounds).** An admin creates the night and moves it through the lifecycle below; each colour group visits one attraction per round. The games still run themselves; a round that ends while a show, mystery or maze run is in progress waits for it to finish ("overtime").
 
 ## Event lifecycle
 
@@ -33,9 +46,9 @@ configuring → registration open ⇄ registration closed → ready → running 
 * **Pause** freezes the round timer and every attraction timer; **Resume** restores them exactly.
 * **Final results** closes open sessions, freezes the leaderboard as results version 1 and (if enabled) creates prize-tier rewards. Corrections made during final results create a new results version — old versions are kept.
 * **Completed** is permanent; results and history stay viewable forever. Starting a new event never touches old ones.
-* After a server/resource restart a running event comes back **paused**. Horror runs and shooting heats that were in progress are marked *interrupted* (never restarted automatically); rewards caught mid-delivery become *unknown* and need reconciliation. Resume when staff are ready.
+* After a server/resource restart a timed-round event comes back **paused** (walk-up carnivals stay open). Horror runs and shooting games that were in progress are marked *interrupted* (never restarted automatically); prizes caught mid-delivery become *unknown* and need reconciliation under Players → Prize deliveries.
 
-Recovery tools (Events page, active event): reload state from the database, force pause, flag interrupted reward deliveries.
+Recovery tools (Nights & results, active night): reload state from the database, force pause, flag interrupted prize deliveries.
 
 ## Configuration
 
@@ -48,17 +61,46 @@ Recovery tools (Events page, active event): reload state from the database, forc
 
 ### Attraction settings at a glance
 
-* **Shooting Gallery** — firing stand, allowed weapons, optional provided weapon/ammo (removed after the heat), heat duration, player limit, targets (position, model, kind, points, hit radius), bullseye radius/bonus, special target cadence/bonus, accuracy bonus, miss penalty, max score.
-* **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, staff approval), spins per participant, cooldown, animation length, first-spin bonus, auto-complete.
-* **Fortune Teller** — mode (automated / staff / both), questions per visit, visits, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes, roleplay award cap.
-* **Puppet Master's Theatre** — scenario library (category, difficulty, performer counts, time limit, points range, suggested roles), default length, participation bonus, max award.
-* **Hall of Deception** — mysteries (performers with public profile, statements, liar flag, private brief; clues; rules; liar count; scoring: per correct, penalty, perfect bonus, partial credit, reasoning max, tie-break), default mystery, questioning time, submissions per participant.
-* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, model, distance, respawn) and positions, performer scare points.
+* **Shooting Gallery** — aim game length, games per visit, simultaneous players (player limit), targets per game, lanes, crossing speed, points, bullseye bonus, golden target chance/points, spirit lantern chance/penalty, accuracy bonus, miss penalty, minimum time between shots, max score.
+* **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, colour), spins per participant, cooldown, animation length, first-spin bonus.
+* **Fortune Teller** — questions per reading, readings per player, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes and whether a fortune scores.
+* **Puppet Master's Theatre** — time for players to join the cast, audience vote time, solo points, scenario library (category, difficulty, performer counts, time limit, points range, roles), default length, participation bonus, max award.
+* **Hall of Deception** — clue unlock interval, questioning time, accusations per player, default mystery, mysteries (suspects with public profile, testimony and liar flag; clues; rules; liar count; scoring: per correct, penalty, perfect bonus, partial credit, tie-break).
+* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, prop model, collection distance, respawn, float height, bob, spin speed, glow colour/radius/brightness) and positions.
+
+### House of Horrors coins
+
+The bronze, silver and gold coins are bundled in `stream/props/` (`carnivalcoinbronze`, `carnivalcoinsilver`, `carnivalcoingold`) and loaded by the resource's manifest. Each coin floats above its token position, bobs, spins and glows in its type's colour. If a model cannot load, a glowing spinning ring is shown instead so tokens are never invisible.
+
+Tune them under *Settings → Attractions → House of Horrors → Token types* (float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
+
+Coins are created only within about 60 m of the player, so they are always placed after the area has streamed in.
+
+## World props (prop placer)
+
+Dress the carnival with your own props. Every placed prop is saved in the database (`carnival_props`), survives restarts and is spawned by every player's game when they are within about 150 m, so everyone sees the same thing.
+
+**Adding prop files.** Put each prop's `.ydr`, `.ytd` and `.ytyp` into `blacklist_carnival/stream/props/` next to the coins and restart the resource. Every `.ytyp` in that folder is loaded automatically (`data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'`), so there is nothing to edit — just keep the files directly in `stream/props/`, not in sub-folders. The model name is the file name without the extension.
+
+**Placing.** *Settings → Props*, type the model name (known models are suggested), optionally a name and whether it is solid, and press **Place in the world**. Or type `/carnivalprop <model> [name]`. The panel minimises and a see-through copy of the prop follows where you look:
+
+| Control | Does |
+|---|---|
+| Look around | Move the prop (it sits on whatever you are looking at) |
+| Mouse wheel | Rotate (hold Shift for 1° steps) |
+| Arrow up / down | Raise / lower (hold Shift to move faster) |
+| Arrow left / right | Tilt |
+| G | Drop it onto the ground |
+| X | Reset rotation, tilt and height |
+| Enter or left click | Place |
+| Backspace or right click | Cancel |
+
+**Moving and removing.** Target a placed prop for *Admin: move prop* / *Admin: remove prop*, or use **Move**, **Waypoint** and **Remove** on the Props list. Every placement, move and removal is in the audit trail; removed props keep their database row. Placing needs the `props.manage` permission (owners and administrators by default); up to 1,000 props can be placed.
 
 ## Prizes
 
-*Prizes & results* defines rank tiers (from/to rank, label, items). When results freeze, a reward row is created per winner and item (idempotent: re-freezing never duplicates a prize). Offline winners receive prizes when they next log in (if *retry on login* is on) or via the Rewards page.
+*Prizes & results* defines rank tiers (from/to rank, label, items). When results freeze, a reward row is created per winner and item (idempotent: re-freezing never duplicates a prize). Offline winners receive prizes when they next log in (if *retry on login* is on) or via Players → Prize deliveries.
 
 ## Group allocation
 
-*Colours & groups → Allocation*: `balanced` (fewest members first), `random`, or `manual` (players register without a colour and staff assign one; tickets are issued on assignment). Capacity is enforced per colour.
+*Settings → Carnival → Ticket colours → Allocation*: `balanced` (fewest members first), `random`, or `manual` (players register without a colour and an admin assigns one under Players; tickets are issued on assignment). Capacity is enforced per colour.

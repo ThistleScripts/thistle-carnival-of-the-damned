@@ -6,7 +6,6 @@
 --   3. active in-game staff assignment (carnival_staff_assignments), capped at
 --      Config.Security.MaxGrantableRank
 -- Extra individual permissions: ACE `carnival.perm.<permission>`.
--- Attraction scoping: ACE `carnival.attraction.<id>` or an assignment with attraction_id.
 --
 -- Every privileged API handler, command and export calls Perms.has() on the server.
 
@@ -14,7 +13,7 @@ local C = Carnival.C
 local Perms = {}
 Carnival.Perms = Perms
 
-local cache = {}         -- [src] = { at, role, perms = set, assigned = set }
+local cache = {}         -- [src] = { at, role, perms = set }
 local assignments = {}   -- [license] = list of active assignment rows
 
 local function roleRank(role)
@@ -56,25 +55,18 @@ local function resolve(src)
     for name in pairs(Config.Security.Roles) do
         if ace(src, 'role.' .. name) then consider(name) end
     end
-    local assigned = {}
     if Config.Security.AllowDatabaseGrants then
         for _, l in ipairs(licenses) do
             for _, a in ipairs(assignments[l] or {}) do
                 consider(a.role, Config.Security.MaxGrantableRank)
-                if a.attraction_id then assigned[a.attraction_id] = true end
             end
         end
-    end
-    for _, a in ipairs(C.ATTRACTIONS) do
-        if ace(src, 'attraction.' .. a) then assigned[a] = true end
     end
 
     local perms = {}
     local function grant(p)
         if p == '*' then
             for _, x in ipairs(C.PERMISSIONS) do perms[x] = true end
-        elseif p == 'attractions.operate.@assigned' then
-            for a in pairs(assigned) do perms['attractions.operate.' .. a] = true end
         elseif p:sub(-1) == '*' then
             local prefix = p:sub(1, -2)
             for _, x in ipairs(C.PERMISSIONS) do
@@ -91,18 +83,7 @@ local function resolve(src)
         if not perms[p] and ace(src, 'perm.' .. p) then perms[p] = true end
     end
 
-    -- Separate allowlist for horror controls.
-    if perms['horror.control'] and Config.Security.RequireHorrorAllowlist
-        and not (role and Config.Security.HorrorAllowlistBypassRoles[role]) then
-        local listed = false
-        local set = Carnival.U.toSet(Config.Security.HorrorControllers)
-        for _, l in ipairs(licenses) do
-            if set[l] then listed = true end
-        end
-        if not listed then perms['horror.control'] = nil end
-    end
-
-    return { at = os.time(), role = role, rank = rank, perms = perms, assigned = assigned }
+    return { at = os.time(), role = role, rank = rank, perms = perms }
 end
 
 local function get(src)
@@ -149,11 +130,7 @@ function Perms.list(src)
 end
 
 function Perms.isStaff(src)
-    return Perms.has(src, 'panel.staff') or Perms.has(src, 'panel.admin')
-end
-
-function Perms.canOperate(src, attractionId)
-    return Perms.has(src, 'attractions.operate.' .. attractionId)
+    return Perms.has(src, 'panel.admin')
 end
 
 -- Drop cached permissions (one player or everyone) and push fresh permission
@@ -184,22 +161,21 @@ function Perms.grantableRoles(src)
     return out
 end
 
-function Perms.grant(actorSrc, license, displayName, role, attractionId, eventScoped, reason)
+function Perms.grant(actorSrc, license, displayName, role, eventScoped, reason)
     if not Config.Security.AllowDatabaseGrants then return false, 'grants_disabled' end
     local r = Config.Security.Roles[role]
     if not r then return false, 'unknown_role' end
     if r.rank > Config.Security.MaxGrantableRank then return false, 'role_not_grantable' end
     if r.rank >= Perms.rank(actorSrc) then return false, 'cannot_grant_equal_or_higher_role' end
-    if attractionId and not C.ATTRACTION_INDEX[attractionId] then return false, 'invalid_attraction' end
     local actor = Carnival.Identity.actor(actorSrc)
     local id = Carnival.Db.insertRow('carnival_staff_assignments', {
-        license = license, display_name = displayName, role = role, attraction_id = attractionId,
+        license = license, display_name = displayName, role = role,
         event_id = eventScoped and Carnival.Events.activeId() or nil,
         granted_by = actor.license, reason = reason, created_at = os.time(),
     })
     if not id then return false, 'database_error' end
     Carnival.Audit.record(actor, 'staff_role_granted', { targetType = 'staff', targetId = license, reason = reason,
-        details = { role = role, attraction = attractionId, assignmentId = id, eventScoped = eventScoped } })
+        details = { role = role, assignmentId = id, eventScoped = eventScoped } })
     Perms.loadAssignments()
     return true, id
 end
@@ -213,25 +189,13 @@ function Perms.revoke(actorSrc, assignmentId, reason)
         { os.time(), actor.license, reason, assignmentId })
     if not n or n < 1 then return false, 'database_error' end
     Carnival.Audit.record(actor, 'staff_role_revoked', { targetType = 'staff', targetId = row.license, reason = reason,
-        details = { role = row.role, attraction = row.attraction_id, assignmentId = assignmentId } })
+        details = { role = row.role, assignmentId = assignmentId } })
     Perms.loadAssignments()
     return true
 end
 
 function Perms.listAssignments()
     return Carnival.Db.query('SELECT * FROM carnival_staff_assignments ORDER BY revoked_at IS NULL DESC, id DESC LIMIT 300') or {}
-end
-
--- Online staff (for performer assignment / readiness).
-function Perms.onlineStaff()
-    local out = {}
-    for _, s in ipairs(Carnival.Identity.online()) do
-        if Perms.isStaff(s) then
-            local c = get(s)
-            out[#out + 1] = { source = s, name = Carnival.Identity.characterName(s), role = c and c.role, assigned = c and Carnival.U.keys(c.assigned) or {} }
-        end
-    end
-    return out
 end
 
 AddEventHandler('playerDropped', function()

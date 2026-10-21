@@ -15,6 +15,7 @@ export function PlayerHub({ onClose }: { onClose: () => void }) {
   const myColourIdx = p?.colour ? ['red', 'blue', 'green', 'yellow', 'purple', 'orange'].indexOf(p.colour) : -1;
   const schedule: string[] = myColourIdx >= 0 && settings ? settings.rotation.matrix.map((row) => row[myColourIdx]) : [];
   const completed = new Set<string>(p?.completed ?? []);
+  const walkup = e?.mode === 'walkup';
 
   return (
     <div className="overlay-center">
@@ -22,14 +23,16 @@ export function PlayerHub({ onClose }: { onClose: () => void }) {
         <header className="frame-head">
           <div>
             <h2>{e?.name ?? settings?.general.eventName ?? 'Carnival of the Damned'}</h2>
-            <span className="muted">{e?.active ? e.stateLabel : 'No event tonight'}{e?.round ? ` · Round ${e.round}/${e.totalRounds}` : ''}
+            <span className="muted">{e?.active ? (walkup && e.state === 'running' ? 'Open — play at your own pace' : e.stateLabel) : 'No event tonight'}{e?.round ? ` · Round ${e.round}/${e.totalRounds}` : ''}
               {e?.roundEndsAt ? <> · <Countdown endsAt={e.roundEndsAt} /></> : null}</span>
           </div>
           <Button variant="ghost" onClick={onClose}>Close</Button>
         </header>
         {!p?.registered ? (
           <div className="hub-empty">
-            <p>{p?.canRegister ? 'Registration is open. Visit the ticket booth at the carnival entrance to take your ticket.' : 'You are not registered for this event.'}</p>
+            <p>{!p?.canRegister ? 'You are not registered for this event.'
+              : walkup ? 'The carnival is open. Buy a ticket at the booth by the entrance; its colour sets the order of your games.'
+              : 'Registration is open. Visit the ticket booth at the carnival entrance to take your ticket.'}</p>
             {settings ? <Button variant="gold" onClick={() => setWaypoint(settings.registration.entrance.x, settings.registration.entrance.y)}>Mark the ticket booth</Button> : null}
           </div>
         ) : (
@@ -47,8 +50,8 @@ export function PlayerHub({ onClose }: { onClose: () => void }) {
                   return (
                     <li key={a} className={`${completed.has(a) ? 'route-done' : ''} ${isCurrent ? 'route-now' : ''}`}>
                       <Icon name={a} size={16} />
-                      <span>Round {i + 1}: {attractionLabel(settings, a)}</span>
-                      {completed.has(a) ? <span className="pill pill-ok">done</span> : isCurrent ? <span className="pill pill-gold">now</span> : null}
+                      <span>{walkup ? `${i + 1}.` : `Round ${i + 1}:`} {attractionLabel(settings, a)}</span>
+                      {completed.has(a) ? <span className="pill pill-ok">done</span> : isCurrent ? <span className="pill pill-gold">{walkup ? 'next' : 'now'}</span> : null}
                       {isCurrent && settings ? <Button small onClick={() => setWaypoint(settings.attractions[a].location.x, settings.attractions[a].location.y)}>Waypoint</Button> : null}
                     </li>
                   );

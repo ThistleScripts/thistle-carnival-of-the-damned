@@ -3,7 +3,6 @@ import { closeViewState, getState, useStore } from './store';
 import { closeView, isNui } from './nui';
 import { ConfirmHost, ToastHost } from './components/ui';
 import AdminApp from './admin/AdminApp';
-import StaffApp from './staff/StaffApp';
 import { Hud } from './player/Hud';
 import { TicketCard } from './player/TicketCard';
 import { LeaderboardView } from './player/LeaderboardView';
@@ -12,12 +11,13 @@ import { FortuneGame, FortuneCard } from './player/FortuneGame';
 import { DeceptionTerminal, DeceptionReveal } from './player/DeceptionTerminal';
 import { TheatreCard } from './player/TheatreCard';
 import { HorrorHud, HorrorResult } from './player/HorrorHud';
-import { ShootingHud, ShootingResult } from './player/ShootingHud';
+import { ShootingGame } from './player/ShootingGame';
+import { TheatreVote } from './player/TheatreVote';
 import { ResultsBanner } from './player/ResultsBanner';
 import { PlayerHub } from './player/PlayerHub';
 
 // Views that hold NUI focus; Escape closes the top-most one.
-const FOCUS_ORDER = ['ticket', 'wheel', 'fortune', 'deception', 'leaderboard', 'player', 'staff', 'admin'];
+const FOCUS_ORDER = ['ticket', 'wheel', 'fortune', 'deception', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
 
 export function close(view: string) {
   closeViewState(view);
@@ -49,12 +49,10 @@ export default function App() {
   return (
     <div className={`app ${isNui ? '' : 'app-browser'}`}>
       <Hud />
-      <ShootingHud />
       <HorrorHud />
       {show('theatre') && <TheatreCard data={views.theatre} />}
       {show('fortuneCard') && <FortuneCard data={views.fortuneCard} />}
       {show('deceptionReveal') && <DeceptionReveal data={views.deceptionReveal} />}
-      {show('shootingResult') && <ShootingResult data={views.shootingResult} />}
       {show('horrorResult') && <HorrorResult data={views.horrorResult} />}
       {show('results') && <ResultsBanner data={views.results} onClose={() => close('results')} />}
 
@@ -64,13 +62,14 @@ export default function App() {
       {show('wheel') && <WheelGame data={views.wheel} onClose={() => close('wheel')} />}
       {show('fortune') && <FortuneGame data={views.fortune} onClose={() => close('fortune')} />}
       {show('deception') && <DeceptionTerminal data={views.deception} onClose={() => close('deception')} />}
-      {show('staff') && <StaffApp onClose={() => close('staff')} />}
+      {show('shootingGame') && <ShootingGame data={views.shootingGame} onClose={() => close('shootingGame')} />}
+      {show('theatreVote') && <TheatreVote data={views.theatreVote} onClose={() => close('theatreVote')} />}
       {show('admin') && <AdminApp onClose={() => close('admin')} />}
 
       {!isNui && Object.keys(views).length === 0 && (
         <div className="browser-note">
           <h1>Carnival of the Damned</h1>
-          <p>This interface runs inside FiveM. Open it in game with <code>/carnival</code>, <code>/carnivaladmin</code> or <code>/carnivalstaff</code>.</p>
+          <p>This interface runs inside FiveM. Open it in game with <code>/carnival</code> or <code>/carnivaladmin</code>.</p>
         </div>
       )}
       <ConfirmHost />

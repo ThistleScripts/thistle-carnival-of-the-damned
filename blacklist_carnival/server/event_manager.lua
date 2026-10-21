@@ -18,6 +18,10 @@ function Events.state()
     return Events.active and Events.active.state or nil
 end
 
+function Events.isWalkup()
+    return Events.active ~= nil and Events.active.mode == 'walkup'
+end
+
 function Events.isLive()
     return Events.active ~= nil and C.LIVE_STATES[Events.active.state] == true
 end
@@ -54,6 +58,7 @@ function Events.publicState()
         name = e.name,
         description = e.description,
         state = e.state,
+        mode = e.mode,
         stateLabel = C.STATE_LABELS[e.state],
         resumeState = e.resume_state,
         serverTime = os.time(),
@@ -93,6 +98,7 @@ function Events.create(src, fields)
         name = fields.name or cfg.general.eventName,
         description = fields.description or cfg.general.description,
         state = S.CONFIGURING,
+        mode = fields.mode or cfg.general.mode,
         template_of = fields.templateOf,
         registration_opens_at = fields.registrationOpensAt,
         registration_closes_at = fields.registrationClosesAt,
@@ -309,7 +315,8 @@ function Events.recover()
     Carnival.Attractions.recover(e)
     Carnival.Rewards.recover(e.id)
 
-    if (e.state == S.RUNNING or e.state == S.BETWEEN) and Config.Recovery.PauseRunningEventOnStart then
+    -- walk-up events stay open through restarts (nothing is mid-round)
+    if (e.state == S.RUNNING or e.state == S.BETWEEN) and Config.Recovery.PauseRunningEventOnStart and e.mode ~= 'walkup' then
         local ok, code, msg = Events.transition(0, S.PAUSED, 'Automatically paused after a resource/server restart', { system = true, actor = Carnival.Identity.SYSTEM })
         if not ok then
             Carnival.Monitor.log('error', 'recovery', 'auto_pause_failed', { eventId = e.id, details = { code = code, message = msg } })
@@ -337,6 +344,70 @@ function Events.recoveryAction(src, action, reason)
     Carnival.Audit.record(actor, 'event_recovery_action', { targetType = 'event', targetId = Events.activeId(), reason = reason, details = { action = action } })
     return true
 end
+
+---------------------------------------------------------------------------
+-- Walk-up mode: the carnival opens itself and stays open, no staff needed.
+-- When general.mode is 'walkup' and no event is active, a walk-up event is
+-- created and moved straight to running; registration stays open while it
+-- runs. Finalising or cancelling it ends that night: a fresh carnival opens.
+---------------------------------------------------------------------------
+local WALKUP_PATH = {
+    [S.CONFIGURING] = S.REG_OPEN,
+    [S.REG_OPEN] = S.REG_CLOSED,
+    [S.REG_CLOSED] = S.READY,
+    [S.READY] = S.RUNNING,
+}
+local walkupRetryAt = 0
+local walkupLastError = nil
+
+local function walkupFailed(step, code, msg)
+    walkupRetryAt = os.time() + 60
+    local text = ('%s: %s'):format(step, msg or code or '?')
+    if text ~= walkupLastError then
+        walkupLastError = text
+        Carnival.Monitor.log('error', 'event_state', 'walkup_open_failed', { details = { step = step, code = code, message = msg } })
+    end
+end
+
+local walkupBusy = false
+
+local function ensureWalkup()
+    if Carnival.Config.get().general.mode ~= 'walkup' then return end
+    local SYSTEM = Carnival.Identity.SYSTEM
+    if not Events.active then
+        local id, code, msg = Events.create(0, { mode = 'walkup' })
+        if not id then return walkupFailed('create', code, msg) end
+        Carnival.Monitor.log('info', 'event_state', 'walkup_event_created', { eventId = id })
+    end
+    if Events.active.mode ~= 'walkup' then return end
+    for _ = 1, 4 do
+        local to = WALKUP_PATH[Events.active.state]
+        if not to then break end
+        -- the ticket item check still applies when opening registration
+        local ok, code, msg = Events.transition(0, to, 'Walk-up carnival opens automatically',
+            { system = true, actor = SYSTEM, force = to ~= S.REG_OPEN })
+        if not ok then return walkupFailed(to, code, msg) end
+    end
+    if walkupLastError then
+        walkupLastError = nil
+        Carnival.Monitor.log('info', 'event_state', 'walkup_open_recovered', { eventId = Events.activeId() })
+    end
+end
+
+function Events.ensureWalkup()
+    if not Carnival.ready or walkupBusy or os.time() < walkupRetryAt then return end
+    walkupBusy = true
+    local ok, err = pcall(ensureWalkup)
+    walkupBusy = false
+    if not ok then walkupFailed('error', 'internal_error', tostring(err)) end
+end
+
+local walkupCheckedAt = 0
+Carnival.onTick('walkup', function(now)
+    if now - walkupCheckedAt < 5 then return end
+    walkupCheckedAt = now
+    Events.ensureWalkup()
+end)
 
 ---------------------------------------------------------------------------
 -- History

@@ -39,7 +39,6 @@ local function baseAttraction(extra)
         f('maxPlayers', { type = 'int', label = 'Player limit', min = 1, max = 64 }),
         f('maxScore', { type = 'int', label = 'Maximum points per participant', min = 0, max = 100000,
             help = '0 = no attraction cap' }),
-        f('requiresPerformer', { type = 'bool', label = 'Requires an on-duty performer to be ready' }),
         f('blip', { type = 'group', label = 'Map blip', fields = {
             f('enabled', { type = 'bool', label = 'Show blip' }),
             f('sprite', { type = 'int', label = 'Sprite', min = 1, max = 900 }),
@@ -54,6 +53,8 @@ local vec3Item = { type = 'vec3' }
 
 S.root = { type = 'group', fields = {
     f('general', { type = 'group', label = 'General', fields = {
+        f('mode', { type = 'select', label = 'Carnival mode', options = { 'walkup', 'scheduled' },
+            help = 'walkup: the carnival opens itself and stays open; players buy a ticket and play their games at their own pace, no staff needed. scheduled: staff create the event and run timed rounds.' }),
         f('eventName', { type = 'string', label = 'Default event name', max = 96 }),
         f('description', { type = 'text', label = 'Default description', max = 1000 }),
         f('blipLabel', { type = 'string', label = 'Carnival blip label', max = 64 }),
@@ -102,6 +103,12 @@ S.root = { type = 'group', fields = {
         f('autoFinalise', { type = 'bool', label = 'Move to final results automatically after the last round' }),
         f('warningSeconds', { type = 'list', label = 'Round warnings (seconds remaining)', item = { type = 'int', min = 1, max = 3600 }, max = 10 }),
         f('unavailableBehaviour', { type = 'select', label = 'When an attraction is unavailable', options = { 'hold', 'skip' } }),
+        f('walkup', { type = 'group', label = 'Walk-up mode', fields = {
+            f('enforceOrder', { type = 'bool', label = 'Players must visit attractions in their ticket colour\'s order',
+                help = 'Off: any attraction the player has not completed yet may be played.' }),
+            f('idleSeconds', { type = 'int', label = 'Close an idle attraction visit after (s)', min = 60, max = 7200,
+                help = 'A visit nobody is playing is closed (without completing it) so the next player can start fresh.' }),
+        } }),
     } }),
 
     f('scoring', { type = 'group', label = 'Scoring', fields = {
@@ -156,34 +163,21 @@ S.root = { type = 'group', fields = {
 
     f('attractions', { type = 'group', label = 'Attractions', fields = {
         f('shooting', { type = 'group', label = C.ATTRACTION_LABELS.shooting, fields = baseAttraction({
-            f('autoStart', { type = 'bool', label = 'Start heats automatically when the queue is full' }),
-            f('durationSeconds', { type = 'int', label = 'Heat duration (s)', min = 10, max = 900 }),
-            f('stand', { type = 'vec4', label = 'Firing stand position', restart = true }),
-            f('maxDistanceFromStand', { type = 'number', label = 'Max distance from stand while shooting (m)', min = 0.5, max = 30, step = 0.5 }),
-            f('weapons', { type = 'list', label = 'Allowed weapons (GTA weapon names)', max = 10, item = { type = 'string', max = 48 } }),
-            f('provideWeapon', { type = 'bool', label = 'Provide a weapon for the heat' }),
-            f('weaponItem', { type = 'item', label = 'Provided weapon item', allowEmpty = true }),
-            f('ammoItem', { type = 'item', label = 'Provided ammo item', allowEmpty = true }),
-            f('ammoCount', { type = 'int', label = 'Ammo provided', min = 1, max = 500 }),
-            f('targetRespawnMs', { type = 'int', label = 'Target reset time (ms)', min = 250, max = 30000 }),
-            f('minHitIntervalMs', { type = 'int', label = 'Minimum time between accepted hits (ms)', min = 50, max = 5000 }),
-            f('bullseyeRadius', { type = 'number', label = 'Bullseye radius (m)', min = 0.02, max = 1, step = 0.01 }),
-            f('bullseyeBonus', { type = 'int', label = 'Bullseye bonus', min = 0, max = 1000 }),
-            f('specialBonus', { type = 'int', label = 'Special target bonus', min = 0, max = 1000 }),
-            f('specialIntervalSeconds', { type = 'int', label = 'Special target appears every (s)', min = 3, max = 300 }),
-            f('specialWindowSeconds', { type = 'int', label = 'Special target visible for (s)', min = 1, max = 60 }),
+            f('durationSeconds', { type = 'int', label = 'Game length (s)', min = 15, max = 300 }),
+            f('playsPerVisit', { type = 'int', label = 'Games per participant per visit', min = 1, max = 10 }),
+            f('targetCount', { type = 'int', label = 'Targets per game', min = 5, max = 200 }),
+            f('lanes', { type = 'int', label = 'Lanes', min = 1, max = 5 }),
+            f('targetLifetimeMs', { type = 'int', label = 'Time a target takes to cross (ms)', min = 600, max = 15000 }),
+            f('targetPoints', { type = 'int', label = 'Points per target', min = 0, max = 1000 }),
+            f('bullseyeBonus', { type = 'int', label = 'Bullseye bonus (centre ring)', min = 0, max = 1000 }),
+            f('specialChance', { type = 'int', label = 'Golden target chance (%)', min = 0, max = 100 }),
+            f('specialPoints', { type = 'int', label = 'Golden target points', min = 0, max = 1000 }),
+            f('decoyChance', { type = 'int', label = 'Spirit lantern (do not shoot) chance (%)', min = 0, max = 100 }),
+            f('decoyPenalty', { type = 'int', label = 'Penalty for shooting a lantern', min = 0, max = 1000 }),
             f('accuracyScoring', { type = 'bool', label = 'Accuracy bonus' }),
             f('accuracyBonusMax', { type = 'int', label = 'Accuracy bonus at 100%', min = 0, max = 1000 }),
             f('missPenalty', { type = 'int', label = 'Penalty per missed shot', min = 0, max = 100 }),
-            f('targets', { type = 'list', label = 'Targets', max = 40, itemLabel = 'id', restart = true, item = { type = 'group', fields = {
-                f('id', { type = 'string', label = 'ID', max = 32 }),
-                f('coords', { type = 'vec3', label = 'Position' }),
-                f('heading', { type = 'number', label = 'Heading', min = 0, max = 360, step = 1 }),
-                f('model', { type = 'model', label = 'Prop model', max = 64 }),
-                f('kind', { type = 'select', label = 'Type', options = { 'normal', 'special' } }),
-                f('points', { type = 'int', label = 'Points', min = 0, max = 1000 }),
-                f('radius', { type = 'number', label = 'Hit radius (m)', min = 0.05, max = 3, step = 0.05 }),
-            } } }),
+            f('minClickIntervalMs', { type = 'int', label = 'Minimum time between shots (ms)', min = 30, max = 2000 }),
         }) }),
 
         f('wheel', { type = 'group', label = C.ATTRACTION_LABELS.wheel, fields = baseAttraction({
@@ -200,20 +194,17 @@ S.root = { type = 'group', fields = {
                 f('points', { type = 'int', label = 'Points (negative = deduction)', min = -10000, max = 10000 }),
                 f('item', { type = 'item', label = 'Reward item', allowEmpty = true }),
                 f('count', { type = 'int', label = 'Reward quantity', min = 0, max = 1000 }),
-                f('requiresApproval', { type = 'bool', label = 'Staff approval before delivery' }),
                 f('colour', { type = 'color', label = 'Segment colour' }),
             } } }),
         }) }),
 
         f('fortune', { type = 'group', label = C.ATTRACTION_LABELS.fortune, fields = baseAttraction({
-            f('mode', { type = 'select', label = 'Mode', options = { 'automated', 'staff', 'both' } }),
             f('questionsPerVisit', { type = 'int', label = 'Questions per visit', min = 1, max = 20 }),
             f('maxVisits', { type = 'int', label = 'Visits per participant', min = 1, max = 10 }),
             f('cooldownSeconds', { type = 'int', label = 'Cooldown between visits (s)', min = 0, max = 3600 }),
             f('answerTimeoutSeconds', { type = 'int', label = 'Time allowed per question (s)', min = 10, max = 600 }),
             f('scoreFortunes', { type = 'bool', label = 'Award points for a random fortune' }),
             f('fortunePoints', { type = 'int', label = 'Points for a random fortune', min = 0, max = 100 }),
-            f('roleplayMaxPoints', { type = 'int', label = 'Maximum staff roleplay award', min = 0, max = 1000 }),
             f('greeting', { type = 'text', label = 'Greeting', max = 500 }),
             f('farewell', { type = 'text', label = 'Farewell', max = 500 }),
             f('fortunes', { type = 'list', label = 'Fortunes', max = 100, item = { type = 'text', max = 300 } }),
@@ -233,6 +224,9 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('puppets', { type = 'group', label = C.ATTRACTION_LABELS.puppets, fields = baseAttraction({
+            f('lobbySeconds', { type = 'int', label = 'Time for players to join the cast (s)', min = 0, max = 120 }),
+            f('voteSeconds', { type = 'int', label = 'Audience voting time (s)', min = 10, max = 300 }),
+            f('soloPoints', { type = 'int', label = 'Points for a solo performance', min = 0, max = 10000 }),
             f('defaultDurationSeconds', { type = 'int', label = 'Default performance length (s)', min = 15, max = 1800 }),
             f('participationBonus', { type = 'int', label = 'Participation bonus', min = 0, max = 1000 }),
             f('maxPointsPerAward', { type = 'int', label = 'Maximum award per performer', min = 1, max = 10000 }),
@@ -252,6 +246,7 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('deception', { type = 'group', label = C.ATTRACTION_LABELS.deception, fields = baseAttraction({
+            f('clueIntervalSeconds', { type = 'int', label = 'Unlock a clue every (s)', min = 15, max = 3600 }),
             f('durationSeconds', { type = 'int', label = 'Questioning time (s)', min = 60, max = 7200 }),
             f('maxSubmissions', { type = 'int', label = 'Answer submissions per participant', min = 1, max = 10 }),
             f('defaultMystery', { type = 'string', label = 'Default mystery ID', max = 32 }),
@@ -265,16 +260,14 @@ S.root = { type = 'group', fields = {
                 f('penaltyPerIncorrect', { type = 'int', label = 'Penalty per wrong accusation', min = 0, max = 1000 }),
                 f('perfectBonus', { type = 'int', label = 'Bonus for a perfect answer', min = 0, max = 1000 }),
                 f('partialCredit', { type = 'bool', label = 'Partial credit' }),
-                f('reasoningMaxPoints', { type = 'int', label = 'Maximum judge award for reasoning', min = 0, max = 1000 }),
                 f('tieBreak', { type = 'select', label = 'Tie-break', options = { 'none', 'earliest_submission' } }),
                 f('tieBreakBonus', { type = 'int', label = 'Tie-break bonus', min = 0, max = 1000 }),
                 f('performers', { type = 'list', label = 'Performers', min = 2, max = 12, itemLabel = 'name', item = { type = 'group', fields = {
                     f('id', { type = 'string', label = 'ID', max = 32 }),
                     f('name', { type = 'string', label = 'Name', max = 64 }),
                     f('profile', { type = 'text', label = 'Public profile', max = 600 }),
-                    f('statements', { type = 'list', label = 'Statements to maintain', max = 10, item = { type = 'text', max = 300 }, secret = true, secretPerm = 'deception.secrets' }),
+                    f('statements', { type = 'list', label = 'Testimony (shown to investigators; liars lie here)', max = 10, item = { type = 'text', max = 300 } }),
                     f('isLiar', { type = 'bool', label = 'Is a liar', secret = true, secretPerm = 'deception.secrets' }),
-                    f('brief', { type = 'text', label = 'Private performer brief', max = 1500, secret = true, secretPerm = 'deception.secrets' }),
                 } } }),
                 f('clues', { type = 'list', label = 'Clues', max = 20, itemLabel = 'text', item = { type = 'group', fields = {
                     f('id', { type = 'string', label = 'ID', max = 32 }),
@@ -284,6 +277,7 @@ S.root = { type = 'group', fields = {
         }) }),
 
         f('horror', { type = 'group', label = C.ATTRACTION_LABELS.horror, fields = baseAttraction({
+            f('lobbySeconds', { type = 'int', label = 'Gather time before the doors open (s)', min = 0, max = 120 }),
             f('entry', { type = 'vec4', label = 'Maze entry', restart = true }),
             f('exit', { type = 'vec4', label = 'Maze exit', restart = true }),
             f('exitRadius', { type = 'number', label = 'Exit radius (m)', min = 0.5, max = 15, step = 0.5 }),
@@ -314,22 +308,21 @@ S.root = { type = 'group', fields = {
             f('tokenTypes', { type = 'map', label = 'Token types', keys = C.TOKEN_TYPES, item = { type = 'group', fields = {
                 f('points', { type = 'int', label = 'Points', min = 0, max = 10000 }),
                 f('quantity', { type = 'int', label = 'Active per run (0 = all positions)', min = 0, max = 200 }),
-                f('model', { type = 'model', label = 'Prop model', max = 64 }),
+                f('model', { type = 'model', label = 'Prop model', max = 64,
+                    help = 'The bundled coins are carnivalcoinbronze / carnivalcoinsilver / carnivalcoingold. The prop floats above the token position, spins and glows; if it cannot load, a glowing ring is shown.' }),
                 f('distance', { type = 'number', label = 'Collection distance (m)', min = 0.5, max = 10, step = 0.1 }),
+                f('floatHeight', { type = 'number', label = 'Float height above the position (m)', min = 0, max = 3, step = 0.05 }),
+                f('bobHeight', { type = 'number', label = 'Bob up and down (m, 0 = still)', min = 0, max = 1, step = 0.01 }),
+                f('spinSpeed', { type = 'int', label = 'Spin speed (degrees per second, 0 = still)', min = 0, max = 720 }),
+                f('glowColour', { type = 'color', label = 'Glow colour' }),
+                f('glowRange', { type = 'number', label = 'Glow radius (m, 0 = no glow)', min = 0, max = 15, step = 0.1 }),
+                f('glowIntensity', { type = 'number', label = 'Glow brightness', min = 0, max = 50, step = 0.5 }),
                 f('respawnSeconds', { type = 'int', label = 'Respawn after (s, once_global only; 0 = never)', min = 0, max = 3600 }),
             } } }),
             f('tokens', { type = 'list', label = 'Token positions', max = 200, itemLabel = 'id', restart = true, item = { type = 'group', fields = {
                 f('id', { type = 'string', label = 'ID', max = 32 }),
                 f('type', { type = 'select', label = 'Type', options = C.TOKEN_TYPES }),
                 f('coords', { type = 'vec3', label = 'Position' }),
-            } } }),
-            f('scares', { type = 'list', label = 'Performer scare points', max = 40, itemLabel = 'label', item = { type = 'group', fields = {
-                f('id', { type = 'string', label = 'ID', max = 32 }),
-                f('label', { type = 'string', label = 'Label', max = 64 }),
-                f('coords', { type = 'vec3', label = 'Position' }),
-                f('radius', { type = 'number', label = 'Radius (m)', min = 1, max = 50, step = 0.5 }),
-                f('sound', { type = 'sound', label = 'Sound' }),
-                f('effect', { type = 'select', label = 'Effect', options = { 'none', 'shake', 'flash', 'shake_flash' } }),
             } } }),
         }) }),
     } }),

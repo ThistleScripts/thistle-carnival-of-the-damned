@@ -64,6 +64,39 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   crown: <path d="M3 18h18l-2-10-4 4-3-6-3 6-4-4z" />,
+  home: (
+    <>
+      <path d="M3 11l9-7 9 7" />
+      <path d="M5 10v10h5v-6h4v6h5V10" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 20c.6-3.4 3-5.4 6-5.4s5.4 2 6 5.4" />
+      <circle cx="17" cy="9" r="2.4" />
+      <path d="M16.5 14.2c2.4.2 4 1.9 4.5 4.8" />
+    </>
+  ),
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6z" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+    </>
+  ),
+  coin: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="5.5" />
+      <path d="M12 8.5v7" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, className }: { name: string; size?: number; className?: string }) {

@@ -7,7 +7,6 @@ Recommended: 1920x1080, dark, low-contrast so text stays readable. **No clown im
 | File name (`.png` or `.jpg`) | Screen |
 |---|---|
 | `admin` | Owner/admin configurator |
-| `staff` | Event staff panel |
 | `hub` | Player hub (`/carnival`) |
 | `ticket` | Ticket card |
 | `leaderboard` | Leaderboard |
@@ -15,3 +14,6 @@ Recommended: 1920x1080, dark, low-contrast so text stays readable. **No clown im
 | `fortune` | Fortune Teller |
 | `deception` | Hall of Deception terminal |
 | `results` | Final results banner |
+| `shooting` | Shooting Gallery game frame |
+| `shooting_range` | Shooting Gallery play area (behind the targets) |
+| `theatre` | Theatre audience vote |

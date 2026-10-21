@@ -115,6 +115,8 @@ function P.ownState(src)
         completed = rot.completed,
         current = rot.current,
         next = rot.next,
+        walkup = rot.walkup == true,
+        finished = rot.finished == true,
         eventId = e.id,
     }
 end
@@ -204,6 +206,8 @@ function Registration.isOpen()
     local e = Carnival.Events.active
     if not e then return false end
     if e.state == S.REG_OPEN then return true end
+    -- walk-up carnivals sell tickets for as long as they are open
+    if e.mode == 'walkup' then return C.LATE_REG_STATES[e.state] == true end
     local cfg = Carnival.Config.get()
     if cfg.registration.lateRegistration.enabled and C.LATE_REG_STATES[e.state] then
         local round = Carnival.Rotation.currentRoundNumber()

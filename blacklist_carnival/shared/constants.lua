@@ -63,7 +63,6 @@ C.ATTRACTION_LABELS = {
 
 -- Attractions whose results require human judgement. Their sessions are never
 -- completed automatically when the round timer expires.
-C.STAFF_JUDGED = { puppets = true, deception = true }
 
 -- Event state machine ------------------------------------------------------
 C.STATES = {
@@ -122,20 +121,17 @@ C.SESSION_STATUS = {
 
 -- Permissions -----------------------------------------------------------------
 C.PERMISSIONS = {
-    'panel.admin', 'panel.staff',
+    'panel.admin',
     'config.view', 'config.edit',
     'events.manage', 'events.operate', 'events.history',
     'participants.view', 'participants.manage',
     'scores.view', 'scores.adjust',
     'rewards.manage',
-    'attractions.operate.shooting', 'attractions.operate.wheel', 'attractions.operate.fortune',
-    'attractions.operate.puppets', 'attractions.operate.deception', 'attractions.operate.horror',
-    'theatre.custom',
     'deception.secrets',
-    'horror.control',
     'monitoring.view', 'audit.view',
     'export.history',
     'staff.manage',
+    'props.manage',
     'leaderboard.staff',
 }
 
@@ -149,7 +145,7 @@ C.MONITOR_CATEGORIES = {
     'lifecycle', 'event_state', 'registration', 'ticket', 'ticket_validation', 'group',
     'rotation', 'attraction', 'player', 'score', 'reward', 'staff_action', 'permission',
     'invalid_request', 'duplicate', 'database', 'callback', 'countdown', 'token',
-    'config', 'recovery', 'security', 'staff_report', 'inventory',
+    'config', 'recovery', 'security', 'staff_report', 'inventory', 'props',
 }
 
 -- Bundled sound assets (web/public/sounds). Config fields that reference sounds
