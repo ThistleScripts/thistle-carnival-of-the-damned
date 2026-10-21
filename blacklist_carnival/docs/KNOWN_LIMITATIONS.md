@@ -14,7 +14,8 @@ The server logic was executed for real (integration tests run the actual server 
   * `ox_inventory` `Search(src, 'slots', item)` returns slot tables with `metadata`; `RemoveItem` matches partial metadata.
   * `oxmysql` returns `TINYINT(1)` as booleans (handled either way) and `MySQL.transaction.await` returns `false` on rollback.
 * **Discord webhooks** — code path not exercised against Discord.
-* **Default coordinates/models** — placeholders around the Del Perro pier; GTA prop names for horror tokens (`prop_ld_case_01`, `prop_money_bag_01`, `prop_ld_gold_chest`) fall back to markers/zones if a model is invalid. Capture real positions with the coordinate tool before an event.
+* **Default coordinates** are placeholders around the Del Perro pier, including the horror token positions. Capture real positions with the coordinate tool before an event; tokens left at the defaults appear at the pier, not in your maze.
+* **Horror tokens** have no prop by default and show as glowing spinning rings until you set your own coin props (see the admin manual). The float/spin/glow is client-side animation of a local prop (`DrawLightWithRange` for the glow); it has not been checked in game yet.
 
 ## Design limitations
 

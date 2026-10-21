@@ -351,7 +351,7 @@ function Cfg.publicSettings()
     end
     attractions.horror.tokenTypes = {}
     for _, t in ipairs(C.TOKEN_TYPES) do
-        attractions.horror.tokenTypes[t] = { model = h.tokenTypes[t].model, distance = h.tokenTypes[t].distance, points = h.tokenTypes[t].points }
+        attractions.horror.tokenTypes[t] = U.deepCopy(h.tokenTypes[t])
     end
     return {
         general = { mode = e.general.mode, eventName = e.general.eventName, blipLabel = e.general.blipLabel, hudEnabled = e.general.hudEnabled },

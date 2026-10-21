@@ -30,13 +30,18 @@ function Horror.info()
     lib.notify({ title = 'House of Horrors', description = 'Wait at the entrance. The doors open when the keeper is ready...', type = 'inform' })
 end
 
-local function removeToken(id)
-    local t = run and run.tokens[id]
-    if not t then return end
+local function deleteProp(t)
     if t.entity and DoesEntityExist(t.entity) then
         exports.ox_target:removeLocalEntity(t.entity)
         DeleteEntity(t.entity)
     end
+    t.entity = nil
+end
+
+local function removeToken(id)
+    local t = run and run.tokens[id]
+    if not t then return end
+    deleteProp(t)
     if t.zone then exports.ox_target:removeZone(t.zone) end
     run.tokens[id] = nil
 end
@@ -62,21 +67,54 @@ local function targetOptions(id, ttype)
     } }
 end
 
+-- Tokens float above their configured position (the coordinate tool captures
+-- feet level), bob, spin and glow. Props are created only while the player is
+-- close enough for the area to be streamed in, and dropped again when far away.
+local SPAWN_DISTANCE, DESPAWN_DISTANCE, DRAW_DISTANCE = 60.0, 80.0, 45.0
+local FALLBACK_COLOURS = { bronze = '#cd7f32', silver = '#c8d2e6', gold = '#ffc83c' }
+
+local function hexToRgb(hex)
+    local r, g, b = tostring(hex or ''):match('^#(%x%x)(%x%x)(%x%x)$')
+    if not r then return 255, 255, 255 end
+    return tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+end
+
+local function typeCfg(ttype)
+    local c = run.tokenTypes[ttype] or {}
+    local r, g, b = hexToRgb(c.glowColour or FALLBACK_COLOURS[ttype])
+    return {
+        model = (c.model and c.model ~= '') and c.model or nil,
+        float = c.floatHeight or 0.9, bob = c.bobHeight or 0.12, spin = c.spinSpeed or 90,
+        r = r, g = g, b = b, range = c.glowRange or 2.5, intensity = c.glowIntensity or 6.0,
+    }
+end
+
+local function spawnProp(entry)
+    local cfg = entry.cfg
+    local c = entry.data.coords
+    local model = joaat(cfg.model)
+    if not IsModelInCdimage(model) or not pcall(lib.requestModel, cfg.model, 5000) then
+        entry.propFailed = true
+        return
+    end
+    local obj = CreateObjectNoOffset(model, c.x, c.y, c.z + cfg.float, false, false, false)
+    SetModelAsNoLongerNeeded(model)
+    if not obj or obj == 0 then entry.propFailed = true return end
+    FreezeEntityPosition(obj, true)
+    SetEntityCollision(obj, false, false)
+    SetEntityInvincible(obj, true)
+    entry.entity = obj
+    exports.ox_target:addLocalEntity(obj, targetOptions(entry.data.id, entry.data.type))
+end
+
 local function spawnToken(t)
     if run.tokens[t.id] then return end
-    local entry = { data = t }
+    local entry = { data = t, cfg = typeCfg(t.type), phase = math.random() * 6.28 }
     run.tokens[t.id] = entry
-    local typeCfg = run.tokenTypes[t.type] or {}
-    local model = typeCfg.model and joaat(typeCfg.model)
-    if model and IsModelValid(model) and pcall(lib.requestModel, typeCfg.model, 5000) then
-        local obj = CreateObjectNoOffset(model, t.coords.x, t.coords.y, t.coords.z, false, false, false)
-        PlaceObjectOnGroundProperly(obj)
-        FreezeEntityPosition(obj, true)
-        SetModelAsNoLongerNeeded(model)
-        entry.entity = obj
-        exports.ox_target:addLocalEntity(obj, targetOptions(t.id, t.type))
-    else
-        entry.zone = exports.ox_target:addSphereZone({ coords = vector3(t.coords.x, t.coords.y, t.coords.z), radius = 0.8, options = targetOptions(t.id, t.type) })
+    if not entry.cfg.model then
+        -- no prop: a target zone where the glowing ring floats
+        local c = t.coords
+        entry.zone = exports.ox_target:addSphereZone({ coords = vector3(c.x, c.y, c.z + entry.cfg.float), radius = 0.8, options = targetOptions(t.id, t.type) })
     end
 end
 
@@ -87,21 +125,40 @@ local function clearRun()
     Carnival.nui('horror', { active = false })
 end
 
-local TOKEN_COLOURS = { bronze = { 176, 112, 58 }, silver = { 200, 200, 210 }, gold = { 230, 190, 70 } }
-
--- Draw a glow above tokens; with proximity visibility hide distant props.
 local function renderLoop()
     CreateThread(function()
         while run do
             local pos = GetEntityCoords(PlayerPedId())
+            local now = GetGameTimer() / 1000.0
             for _, t in pairs(run.tokens) do
-                local c = t.data.coords
+                local cfg, c = t.cfg, t.data.coords
                 local d = #(pos - vector3(c.x, c.y, c.z))
                 local visible = run.visibility ~= 'proximity' or d <= run.visibilityDistance
-                if t.entity and DoesEntityExist(t.entity) then SetEntityVisible(t.entity, visible, false) end
-                if visible and d < 40.0 then
-                    local col = TOKEN_COLOURS[t.data.type] or { 255, 255, 255 }
-                    DrawMarker(1, c.x, c.y, c.z - 0.95, 0, 0, 0, 0, 0, 0, 0.6, 0.6, 0.15, col[1], col[2], col[3], 90, false, false, 2, false, nil, nil, false)
+                if cfg.model and not t.entity and not t.propFailed and d <= SPAWN_DISTANCE then
+                    spawnProp(t)
+                    if t.propFailed then
+                        -- model missing from the game files: fall back to the glowing ring
+                        t.zone = exports.ox_target:addSphereZone({ coords = vector3(c.x, c.y, c.z + cfg.float), radius = 0.8, options = targetOptions(t.data.id, t.data.type) })
+                    end
+                elseif t.entity and d > DESPAWN_DISTANCE then
+                    deleteProp(t)
+                end
+                if t.entity then SetEntityVisible(t.entity, visible, false) end
+                if visible and d < DRAW_DISTANCE then
+                    local z = c.z + cfg.float + math.sin(now * 2.2 + t.phase) * cfg.bob
+                    local heading = (now * cfg.spin + t.phase * 57.3) % 360.0
+                    if t.entity then
+                        SetEntityCoordsNoOffset(t.entity, c.x, c.y, z, false, false, false)
+                        SetEntityHeading(t.entity, heading)
+                    else
+                        -- a spinning upright ring reads as a coin from any angle
+                        DrawMarker(6, c.x, c.y, z, 0.0, 0.0, 0.0, 0.0, 0.0, heading, 0.45, 0.45, 0.45, cfg.r, cfg.g, cfg.b, 220, false, false, 2, false, nil, nil, false)
+                    end
+                    if cfg.range > 0 and cfg.intensity > 0 then
+                        DrawLightWithRange(c.x, c.y, z, cfg.r, cfg.g, cfg.b, cfg.range, cfg.intensity)
+                    end
+                    -- soft halo on the floor beneath the token
+                    DrawMarker(25, c.x, c.y, c.z + 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.7, 0.7, cfg.r, cfg.g, cfg.b, 70, false, false, 2, false, nil, nil, false)
                 end
             end
             Wait(0)

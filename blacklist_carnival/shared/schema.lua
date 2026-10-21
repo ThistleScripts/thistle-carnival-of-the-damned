@@ -320,8 +320,15 @@ S.root = { type = 'group', fields = {
             f('tokenTypes', { type = 'map', label = 'Token types', keys = C.TOKEN_TYPES, item = { type = 'group', fields = {
                 f('points', { type = 'int', label = 'Points', min = 0, max = 10000 }),
                 f('quantity', { type = 'int', label = 'Active per run (0 = all positions)', min = 0, max = 200 }),
-                f('model', { type = 'model', label = 'Prop model', max = 64 }),
+                f('model', { type = 'model', label = 'Prop model (blank = glowing ring only)', max = 64, allowEmpty = true,
+                    help = 'e.g. your streamed coin prop. The prop floats above the token position, spins and glows.' }),
                 f('distance', { type = 'number', label = 'Collection distance (m)', min = 0.5, max = 10, step = 0.1 }),
+                f('floatHeight', { type = 'number', label = 'Float height above the position (m)', min = 0, max = 3, step = 0.05 }),
+                f('bobHeight', { type = 'number', label = 'Bob up and down (m, 0 = still)', min = 0, max = 1, step = 0.01 }),
+                f('spinSpeed', { type = 'int', label = 'Spin speed (degrees per second, 0 = still)', min = 0, max = 720 }),
+                f('glowColour', { type = 'color', label = 'Glow colour' }),
+                f('glowRange', { type = 'number', label = 'Glow radius (m, 0 = no glow)', min = 0, max = 15, step = 0.1 }),
+                f('glowIntensity', { type = 'number', label = 'Glow brightness', min = 0, max = 50, step = 0.5 }),
                 f('respawnSeconds', { type = 'int', label = 'Respawn after (s, once_global only; 0 = never)', min = 0, max = 3600 }),
             } } }),
             f('tokens', { type = 'list', label = 'Token positions', max = 200, itemLabel = 'id', restart = true, item = { type = 'group', fields = {

@@ -363,9 +363,13 @@ Carnival.Defaults = {
             physicalTokens = false,
             autoCompleteSession = true,
             tokenTypes = {
-                bronze = { points = 5, quantity = 0, model = 'prop_ld_case_01', distance = 2.0, respawnSeconds = 0 },
-                silver = { points = 10, quantity = 0, model = 'prop_money_bag_01', distance = 2.0, respawnSeconds = 0 },
-                gold = { points = 25, quantity = 2, model = 'prop_ld_gold_chest', distance = 2.0, respawnSeconds = 0 },
+                -- model: your streamed coin prop (blank = a glowing spinning ring until you add one)
+                bronze = { points = 5, quantity = 0, model = '', distance = 2.0, respawnSeconds = 0,
+                    floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 90, glowColour = '#cd7f32', glowRange = 2.5, glowIntensity = 6.0 },
+                silver = { points = 10, quantity = 0, model = '', distance = 2.0, respawnSeconds = 0,
+                    floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 110, glowColour = '#c8d2e6', glowRange = 2.5, glowIntensity = 7.0 },
+                gold = { points = 25, quantity = 2, model = '', distance = 2.0, respawnSeconds = 0,
+                    floatHeight = 1.0, bobHeight = 0.15, spinSpeed = 140, glowColour = '#ffc83c', glowRange = 3.5, glowIntensity = 10.0 },
             },
             tokens = {
                 { id = 'b1', type = 'bronze', coords = v3(-1607.2, -1121.4, 13.1) },

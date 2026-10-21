@@ -72,7 +72,19 @@ Recovery tools (Events page, active event): reload state from the database, forc
 * **Fortune Teller** — mode (automated / staff / both), questions per visit, visits, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes, roleplay award cap.
 * **Puppet Master's Theatre** — scenario library (category, difficulty, performer counts, time limit, points range, suggested roles), default length, participation bonus, max award.
 * **Hall of Deception** — mysteries (performers with public profile, statements, liar flag, private brief; clues; rules; liar count; scoring: per correct, penalty, perfect bonus, partial credit, reasoning max, tie-break), default mystery, questioning time, submissions per participant.
-* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, model, distance, respawn) and positions, performer scare points.
+* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, prop model, collection distance, respawn, float height, bob, spin speed, glow colour/radius/brightness) and positions, performer scare points.
+
+### House of Horrors coin props
+
+Tokens float above their position, bob, spin and glow in their type's colour. Without a prop they show as a glowing spinning ring.
+
+To use your own coins:
+1. Make one prop per type (bronze, silver, gold). Put the pivot at the centre of the coin and stand it upright so the spin (around the vertical axis) shows the face.
+2. Stream them from a resource with the `.ydr` and a `.ytyp` that declares the archetypes, and load the `.ytyp` with `data_file 'DLC_ITYP_REQUEST'` in that resource's `fxmanifest.lua`. Without the `.ytyp` the game does not know the model and the ring is shown instead.
+3. In `/carnivaladmin` → *House of Horrors* → *Token types*, enter each model name and tune the float height, bob, spin and glow. A glow radius of 0 turns the light off; an emissive material on the prop adds to the effect.
+4. Place the token positions with **Use my position** while standing where the coin should hover (the position is feet level; the coin floats *float height* above it).
+
+Props are created only within about 60 m of the player, so they are always placed after the area has streamed in.
 
 ## Prizes
 
