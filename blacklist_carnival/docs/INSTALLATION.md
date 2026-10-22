@@ -102,3 +102,11 @@ Webhook URLs live only in convars; they are never written to the database or sen
 ## 9. Backgrounds (optional artwork)
 
 Put `admin`, `hub`, `ticket`, `leaderboard`, `wheel`, `fortune`, `deception` or `results` (`.png` or `.jpg`) in `web/public/backgrounds/`, then rebuild the NUI. See `web/public/backgrounds/README.md`. Missing files fall back to the built-in gradient.
+
+## Troubleshooting: a command shows the mouse cursor but no panel
+
+1. **Reconnect.** FiveM caches interface files; after updating the resource, players must reconnect to get the new `web/dist`.
+2. **Check `fxmanifest.lua`** has the `files { ... }` block listing `web/dist/index.html`, `web/dist/assets/*`, `web/dist/sounds/*`, `web/dist/backgrounds/*` and `locales/*.json`. Without it no carnival screen can load.
+3. **Open F8.** Errors from the interface are printed there as `[blacklist_carnival] interface error: ...`; a screen that fails to draw also shows an error card in game instead of a blank screen. If the interface never loaded you will see `the carnival interface (NUI) has not loaded`.
+4. **Inspect the page:** type `nui_devtools` in F8 to open the browser developer tools for in-game interfaces; the Console tab shows anything that failed.
+5. **Permissions:** if `/carnivaladmin` says you lack permission, the server console prints your license identifiers and the exact line to put in `Config.Security.Allowlist`.

@@ -106,6 +106,14 @@ RegisterNUICallback('ready', function(_, cb)
     end
 end)
 
+-- Interface errors reported by the NUI (window errors and screens that failed to draw).
+RegisterNUICallback('nuiError', function(data, cb)
+    cb({ ok = true })
+    if type(data) ~= 'table' then return end
+    print(('^1[blacklist_carnival] interface error: %s^0'):format(tostring(data.message)))
+    if data.stack and data.stack ~= '' then print(tostring(data.stack)) end
+end)
+
 RegisterNUICallback('close', function(data, cb)
     if type(data) == 'table' and data.view then
         Carnival.closeView(data.view)

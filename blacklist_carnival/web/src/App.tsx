@@ -15,6 +15,7 @@ import { ShootingGame } from './player/ShootingGame';
 import { TheatreVote } from './player/TheatreVote';
 import { ResultsBanner } from './player/ResultsBanner';
 import { PlayerHub } from './player/PlayerHub';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ShopView } from './player/ShopView';
 
 // Views that hold NUI focus; Escape closes the top-most one.
@@ -48,6 +49,7 @@ export default function App() {
   const show = (v: string) => views[v] !== undefined && !minimised[v];
 
   return (
+    <ErrorBoundary onReset={() => { for (const v of Object.keys(getState().views)) close(v); }}>
     <div className={`app ${isNui ? '' : 'app-browser'}`}>
       <Hud />
       <HorrorHud />
@@ -77,5 +79,6 @@ export default function App() {
       <ConfirmHost />
       <ToastHost />
     </div>
+    </ErrorBoundary>
   );
 }

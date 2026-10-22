@@ -10,6 +10,11 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
+    // FiveM's NUI runs an older embedded Chromium than desktop browsers. Compile
+    // modern syntax (?. ?? etc.) and CSS shorthands (inset, ...) down so the page
+    // never fails to start or lays out wrongly in game.
+    target: ['es2019', 'chrome75'],
+    cssTarget: ['chrome75'],
     chunkSizeWarningLimit: 1200,
     sourcemap: false,
   },
