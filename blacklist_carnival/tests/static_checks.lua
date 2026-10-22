@@ -80,6 +80,28 @@ end
 -- every .ytyp shipped in stream/props is loaded too
 for _, f in ipairs(glob('stream/props/*.ytyp')) do check(loadedBy(f), 'archetype not loaded with data_file: ' .. f) end
 all[#all + 1] = m.ui
+-- the NUI page and everything it loads must be listed in files {}, or FiveM never
+-- sends them to players and no carnival screen can open
+local function shipped(path)
+    for _, f in ipairs(m.files) do
+        if f == path then return true end
+        if f:find('%*') then
+            local pat = '^' .. f:gsub('[%.%-]', '%%%0'):gsub('%*', '[^/]*') .. '$'
+            if path:match(pat) then return true end
+        end
+    end
+    return false
+end
+check(m.ui ~= nil and shipped(m.ui), 'ui_page is not listed in files {}: ' .. tostring(m.ui))
+local distFiles = {}
+do
+    local p = io.popen('find web/dist -type f')
+    for line in p:lines() do distFiles[#distFiles + 1] = line end
+    p:close()
+end
+check(#distFiles > 0, 'web/dist is empty - run npm run build in web/')
+for _, f in ipairs(distFiles) do check(shipped(f), 'NUI file not listed in files {}: ' .. f) end
+for _, f in ipairs(glob('locales/*.json')) do check(shipped(f), 'locale not listed in files {}: ' .. f) end
 for _, f in ipairs(all) do
     if not f:match('^@') then
         if f:find('%*') then

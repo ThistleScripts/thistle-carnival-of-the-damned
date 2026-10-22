@@ -205,3 +205,21 @@ end)
 Carnival.onReady(function()
     Perms.loadAssignments()
 end)
+
+-- Catch common config.lua mistakes at start: allowlist keys must be full
+-- license identifiers and values must be role names.
+CreateThread(function()
+    local n = 0
+    for key, role in pairs(Config.Security.Allowlist or {}) do
+        n = n + 1
+        if type(key) ~= 'string' or not (key:match('^license:%x+$') or key:match('^license2:%x+$')) then
+            print(('^3[blacklist_carnival] Allowlist entry %s is not a license identifier. Use the full value, e.g. [\'license:0123abcd...\'] = \'owner\'.^0'):format(tostring(key)))
+        end
+        if not Config.Security.Roles[role] then
+            print(('^3[blacklist_carnival] Allowlist entry %s has unknown role "%s". Roles: owner, administrator, event_manager, observer.^0'):format(tostring(key), tostring(role)))
+        end
+    end
+    if n == 0 then
+        print('^3[blacklist_carnival] Config.Security.Allowlist is empty: nobody can open /carnivaladmin unless an ACE grants carnival.role.<role>.^0')
+    end
+end)

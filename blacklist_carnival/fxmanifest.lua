@@ -92,3 +92,13 @@ ui_page 'web/dist/index.html'
 -- the House of Horrors coins and anything placed with the prop placer. Every
 -- .ytyp in that folder is loaded, so new props only need their files dropped in.
 data_file 'DLC_ITYP_REQUEST' 'stream/props/*.ytyp'
+
+-- NUI files sent to every player. Without these the interface never loads and
+-- no carnival screen can open.
+files {
+    'locales/*.json',
+    'web/dist/index.html',
+    'web/dist/assets/*',
+    'web/dist/sounds/*',
+    'web/dist/backgrounds/*',
+}

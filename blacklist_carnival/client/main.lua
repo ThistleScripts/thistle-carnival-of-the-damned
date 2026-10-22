@@ -67,6 +67,10 @@ end
 -- Open a NUI view. opts.focus (default true) captures keyboard+mouse.
 function Carnival.openView(view, data, opts)
     opts = opts or {}
+    if not Client.nuiReady then
+        print('^1[blacklist_carnival] the carnival interface (NUI) has not loaded. Check that web/dist exists and is listed in files {} in fxmanifest.lua, and look for errors in F8.^0')
+        lib.notify({ title = 'Carnival', description = 'The carnival interface has not loaded yet. If this keeps happening, tell an admin (see F8).', type = 'error' })
+    end
     if opts.focus ~= false then
         focusViews[view] = { cursor = opts.cursor ~= false }
     end
