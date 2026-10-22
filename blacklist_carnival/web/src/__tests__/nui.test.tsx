@@ -430,6 +430,27 @@ describe('prize counter', () => {
     await waitFor(() => expect(screen.getByText(/\+25 Prize Tickets from House of Horrors/)).toBeTruthy());
   });
 
+  it('item pictures come from ox_inventory: the item\'s own image, then the inventory image path, then an icon', () => {
+    render(<App />);
+    lua('inventory', { imagePath: 'https://cdn.example.com/items/' });
+    const items = [
+      { ...shop.items[0], image: 'nui://ox_inventory/web/images/custom_brew.png' },
+      ...shop.items.slice(1),
+    ];
+    lua('open', { view: 'shop', data: { ...shop, items } });
+    const img = () => document.querySelector('.booth-detail img') as HTMLImageElement;
+    expect(img().getAttribute('src')).toBe('nui://ox_inventory/web/images/custom_brew.png');
+    fireEvent.error(img());
+    expect(img().getAttribute('src')).toBe('https://cdn.example.com/items/carnival_witch_brew.png');
+    fireEvent.error(img());
+    expect(img().getAttribute('src')).toBe('nui://ox_inventory/web/images/carnival_witch_brew.png');
+    fireEvent.error(img());
+    expect(document.querySelector('.booth-detail .item-img-missing')).toBeTruthy();
+    // shelf cards without a resolved image use the inventory image path
+    const floss = screen.getByText('Bloodspun Candy Floss', { selector: '.booth-item-name' }).closest('button')!.querySelector('img')!;
+    expect(floss.getAttribute('src')).toBe('https://cdn.example.com/items/carnival_bloodfloss.png');
+  });
+
   it('ambient levels from Lua go to the mixer', () => {
     lua('ambient', { levels: [{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }] });
     expect(setAmbient).toHaveBeenCalledWith([{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }]);

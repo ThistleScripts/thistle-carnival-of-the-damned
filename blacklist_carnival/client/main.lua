@@ -93,6 +93,8 @@ end
 RegisterNUICallback('ready', function(_, cb)
     Client.nuiReady = true
     cb({ ok = true })
+    -- where ox_inventory keeps its item pictures (shop and admin thumbnails)
+    Carnival.nui('inventory', { imagePath = GetConvar('inventory:imagepath', 'nui://ox_inventory/web/images') })
     if Client.settings then
         Carnival.nui('push', { channel = 'bootstrap', data = Client.lastBootstrap })
     end

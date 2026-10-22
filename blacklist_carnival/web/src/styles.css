@@ -570,7 +570,10 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 .booth-item-name { font-family: var(--font-display); font-size: 13px; color: var(--gold-hi); text-align: center; line-height: 1.2; min-height: 2.4em; display: flex; align-items: center; }
 .booth-img { width: 84px; height: 84px; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55)); transition: transform 0.2s; }
 .booth-item:hover .booth-img { transform: scale(1.06) rotate(-2deg); }
-.booth-img-missing { display: flex; align-items: center; justify-content: center; color: var(--gold); border: 1px dashed var(--line); border-radius: 12px; }
+.item-img-missing { display: flex; align-items: center; justify-content: center; color: var(--gold); border: 1px dashed var(--line); border-radius: 12px; }
+.item-cell { display: inline-flex; align-items: center; gap: 8px; }
+.item-thumb { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5)); }
+.item-thumb.item-img-missing { border-radius: 6px; }
 .booth-img-lg { width: 150px; height: 150px; }
 
 .stub { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 4px; font-weight: 700; font-variant-numeric: tabular-nums; color: #fff3d6;

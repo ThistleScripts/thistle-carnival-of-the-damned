@@ -6,9 +6,9 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 
 | Suite | Result |
 |---|---|
-| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, every food has a consumables.lua entry and uses useFood, no clown content) | **1031 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, every food has a consumables.lua entry and uses useFood, no clown content) | **1032 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
 | Server integration (real server scripts, real database) | **72 tests, 72 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 27 tests passed** |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 28 tests passed** |
 | `sql/schema.sql` imported twice into an empty MariaDB database | **40 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
@@ -34,7 +34,7 @@ Roles & audit: grants bounded by rank, revocation immediate · audit covers key 
 
 ### NUI tests (web/src/__tests__/nui.test.tsx)
 
-HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · props tab lists props, starts the in-world placer (new and move) and removes after confirming · prize booth shows the ticket balance, shelves and how to win tickets, blocks unaffordable/sold-out prizes, redeems with a fresh request id and follows wallet pushes · ambient levels reach the mixer · admin prize counter adjusts a wallet with a reason · permission loss hides gated navigation.
+HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · props tab lists props, starts the in-world placer (new and move) and removes after confirming · prize booth shows the ticket balance, shelves and how to win tickets, blocks unaffordable/sold-out prizes, redeems with a fresh request id and follows wallet pushes · item pictures fall back from the item's own ox_inventory image to the inventory image path to an icon · ambient levels reach the mixer · admin prize counter adjusts a wallet with a reason · permission loss hides gated navigation.
 
 ### Visual review
 

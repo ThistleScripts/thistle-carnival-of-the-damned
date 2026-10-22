@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Async, Button, Card, Delta, Field, Modal, Stat, Table, useAction, useApi } from '../components/ui';
 import { formatTime } from '../format';
 import { requestId } from '../nui';
+import { ItemImage } from '../components/ItemImage';
 
 const KIND_LABELS: Record<string, string> = { purchase: 'Bought', refund: 'Refund', adjust: 'Adjusted', earned: 'Earned' };
 
@@ -57,7 +58,7 @@ export function ShopPage() {
                 <Card title="Best sellers">
                   {d.popular.length === 0 ? <p className="muted">Nothing sold yet.</p> : (
                     <Table compact head={['Item', 'Sold', d.currency]}>
-                      {d.popular.map((p: any) => <tr key={p.item}><td>{p.item}</td><td>{p.sold}</td><td>{p.points}</td></tr>)}
+                      {d.popular.map((p: any) => <tr key={p.item}><td><span className="item-cell"><ItemImage item={p.item} className="item-thumb" size={14} />{p.item}</span></td><td>{p.sold}</td><td>{p.points}</td></tr>)}
                     </Table>
                   )}
                 </Card>
@@ -68,7 +69,7 @@ export function ShopPage() {
                         <tr key={r.id}>
                           <td className="small">{formatTime(r.created_at)}</td>
                           <td>{r.display_name ?? r.citizenid}</td>
-                          <td className="small">{KIND_LABELS[r.kind] ?? r.kind}{r.item ? ` · ${r.item_count} × ${r.item}` : ''}{r.kind === 'adjust' ? ` · ${r.staff_name ?? ''}: ${r.reason ?? ''}` : ''}</td>
+                          <td className="small"><span className="item-cell">{r.item ? <ItemImage item={r.item} className="item-thumb" size={14} /> : null}<span>{KIND_LABELS[r.kind] ?? r.kind}{r.item ? ` · ${r.item_count} × ${r.item}` : ''}{r.kind === 'adjust' ? ` · ${r.staff_name ?? ''}: ${r.reason ?? ''}` : ''}</span></span></td>
                           <td><Delta value={r.delta} /></td>
                         </tr>
                       ))}

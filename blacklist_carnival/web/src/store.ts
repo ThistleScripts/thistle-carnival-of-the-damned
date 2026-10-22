@@ -54,6 +54,7 @@ export interface State {
   leaderboard: any;
   lastScore: any;
   wallet: Wallet | null;
+  inventoryImagePath: string | null;
   invalidations: Record<string, number>;
 }
 
@@ -73,6 +74,7 @@ let state: State = {
   leaderboard: null,
   lastScore: null,
   wallet: null,
+  inventoryImagePath: null,
   invalidations: {},
 };
 

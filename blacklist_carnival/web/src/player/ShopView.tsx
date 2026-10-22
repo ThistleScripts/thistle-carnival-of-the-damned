@@ -3,9 +3,10 @@ import { useStore } from '../store';
 import { api, requestId } from '../nui';
 import { playSound } from '../audio';
 import { Backdrop, Icon } from '../components/Art';
+import { ItemImage } from '../components/ItemImage';
 import { Button, toast } from '../components/ui';
 
-export interface ShopItem { item: string; label: string; description?: string; price: number; category?: string; dailyLimit: number; remainingToday?: number }
+export interface ShopItem { item: string; image?: string; label: string; description?: string; price: number; category?: string; dailyLimit: number; remainingToday?: number }
 export interface EarningRule { attraction: string; label: string; perPlay: number; per100Points: number; maxPerNight: number; wonTonight: number }
 export interface ShopData { label: string; currency: string; earning?: EarningRule[]; wallet: { balance: number; earned: number; spent: number }; items: ShopItem[] }
 
@@ -16,15 +17,6 @@ const SHELVES: { id: string; label: string }[] = [
   { id: 'prize', label: 'Prizes' },
   { id: 'other', label: 'Curiosities' },
 ];
-
-// Item artwork comes from ox_inventory's image folder (the same PNGs players see
-// in their inventory); a missing image falls back to an icon.
-function ItemImage({ item, className }: { item: string; className?: string }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [item]);
-  if (failed) return <div className={`booth-img booth-img-missing ${className ?? ''}`}><Icon name="gift" size={40} /></div>;
-  return <img className={`booth-img ${className ?? ''}`} src={`nui://ox_inventory/web/images/${item}.png`} alt="" onError={() => setFailed(true)} draggable={false} />;
-}
 
 // A ticket stub with the price / balance on it.
 function Stub({ value, small, dim }: { value: ReactNode; small?: boolean; dim?: boolean }) {
@@ -60,7 +52,7 @@ function Detail({ it, balance, currency, onBought }: { it: ShopItem; balance: nu
   };
   return (
     <aside className="booth-detail">
-      <div className="booth-spot"><ItemImage item={it.item} className="booth-img-lg" /></div>
+      <div className="booth-spot"><ItemImage item={it.item} src={it.image} className="booth-img booth-img-lg" size={56} /></div>
       <h3 className="booth-detail-name">{it.label}</h3>
       {it.description ? <p className="booth-detail-desc">{it.description}</p> : null}
       <div className="booth-detail-meta">
@@ -168,7 +160,7 @@ export function ShopView({ data, onClose }: { data: ShopData; onClose: () => voi
                   return (
                     <button key={it.item} className={`booth-item ${current?.item === it.item ? 'booth-item-on' : ''} ${can ? '' : 'booth-item-dim'}`}
                       onClick={() => setPicked(it.item)} aria-pressed={current?.item === it.item}>
-                      <ItemImage item={it.item} />
+                      <ItemImage item={it.item} src={it.image} className="booth-img" />
                       <span className="booth-item-name">{it.label}</span>
                       <Stub value={it.price} small dim={!can} />
                     </button>

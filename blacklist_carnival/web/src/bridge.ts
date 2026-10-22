@@ -93,6 +93,9 @@ export function onLuaMessage(ev: MessageEvent) {
       else if (data.action === 'stop') stopSound(data.sound);
       else if (data.action === 'stopAll') stopAll();
       break;
+    case 'inventory':
+      if (typeof data.imagePath === 'string' && data.imagePath) setState({ inventoryImagePath: data.imagePath.replace(/\/+$/, '') });
+      break;
     case 'ambient':
       setAmbient(Array.isArray(data.levels) ? data.levels : []);
       break;
