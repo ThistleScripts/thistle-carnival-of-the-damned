@@ -22,7 +22,7 @@ local function updateHud()
     local p = Carnival.Client.participant
     local e = Carnival.Client.event
     local show = s and s.general.hudEnabled and p and p.registered and e and e.active
-        and e.state ~= 'completed' and e.state ~= 'cancelled'
+        and e.state ~= 'completed' and e.state ~= 'cancelled' and e.state ~= 'final_results'
     Carnival.nui('hud', { visible = show and true or false })
 end
 Carnival.onPush('participant', updateHud)

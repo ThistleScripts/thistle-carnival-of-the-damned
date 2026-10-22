@@ -89,10 +89,29 @@ describe('player screens', () => {
     lua('push', { channel: 'participant', data: { registered: true, id: 5, colour: 'red', status: 'active', total: 7, walkup: true,
       sequence: ['shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror'], completed: ['shooting'], current: { attraction: 'wheel', status: 'active' }, next: 'fortune' } });
     lua('hud', { visible: true });
-    expect(screen.getByText(/1\/6 played/)).toBeTruthy();
+    expect(screen.getByText('1/6')).toBeTruthy();
+    expect(document.querySelectorAll('.hud-step').length).toBe(6);
+    expect(document.querySelectorAll('.hud-step-done').length).toBe(1);
+    expect(document.querySelector('.hud-step-now')).toBeTruthy();
     expect(screen.queryByText(/Round \d/)).toBeNull();
     expect(screen.getByText('The Wheel of Misfortune')).toBeTruthy();
-    expect(screen.getByText(/target the attendant to play/)).toBeTruthy();
+    expect(screen.getByText(/talk to the attendant/)).toBeTruthy();
+  });
+
+  it('the HUD disappears once the night is over, and the results banner closes by itself', () => {
+    vi.useFakeTimers();
+    render(<App />);
+    lua('push', { channel: 'event', data: { active: true, id: 2, name: 'Open Night', state: 'running', stateLabel: 'Running', mode: 'walkup' } });
+    lua('push', { channel: 'participant', data: { registered: true, id: 5, colour: 'red', status: 'active', total: 7, sequence: ['shooting'], completed: [] } });
+    lua('hud', { visible: true });
+    expect(document.querySelector('.hud')).toBeTruthy();
+    lua('push', { channel: 'event', data: { active: true, id: 2, name: 'Open Night', state: 'final_results', stateLabel: 'Final results', mode: 'walkup' } });
+    expect(document.querySelector('.hud')).toBeNull();
+    lua('open', { view: 'results', data: { eventId: 2, top: [{ rank: 1, name: 'Ada', total: 42 }] } });
+    expect(screen.getByText('The final bell has rung')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(31000); });
+    expect(screen.queryByText('The final bell has rung')).toBeNull();
+    vi.useRealTimers();
   });
 
   it('opens and closes the ticket card with Escape (focus released)', () => {

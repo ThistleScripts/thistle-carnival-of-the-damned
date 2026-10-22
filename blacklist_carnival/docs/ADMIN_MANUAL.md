@@ -26,7 +26,7 @@ What you see depends on your role (see PERMISSIONS.md); every action is checked 
 * An attraction that is disabled or closed from the Overview is passed over; the player plays the next one and comes back to it later.
 * A visit nobody is playing is closed after *idle seconds* without counting as played, so the player can start again.
 * Restarts do not pause a walk-up event.
-* To end the night, move the event to *Final results* and then *Completed*. Results are frozen as usual and a fresh carnival opens by itself (players buy a new ticket).
+* To end the night, press **End the night** on the Overview. The results are frozen and every player sees the final results banner for 30 seconds (it closes by itself); the HUD disappears. After *Rotation → Walk-up mode → open a fresh carnival after* (default 120 s) the books close by themselves and a fresh carnival opens (players buy a new ticket). Set it to 0 to keep the results up until an admin presses *Close the books*.
 * To stop the carnival opening again, switch the mode to *scheduled* first. While the walk-up event runs, the rotation matrix and colours may still be edited, because players progress individually.
 
 **Scheduled (timed rounds).** An admin creates the night and moves it through the lifecycle below; each colour group visits one attraction per round. The games still run themselves; a round that ends while a show, mystery or maze run is in progress waits for it to finish ("overtime").
