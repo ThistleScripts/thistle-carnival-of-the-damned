@@ -114,6 +114,57 @@ Carnival.Defaults = {
         roundSound = 'round_bell',
     },
 
+    -- Prize counter: players spend the prize tickets the games pay out.
+    shop = {
+        enabled = true,
+        label = 'The Prize Counter',
+        currency = 'Prize Tickets',
+        -- Tickets each game pays out, separate from leaderboard points:
+        -- perPlay for finishing the game, per100Points for how well you did
+        -- (tickets per 100 points scored there), maxPerNight caps one game.
+        earning = {
+            shooting = { perPlay = 5, per100Points = 20, maxPerNight = 60 },
+            wheel = { perPlay = 3, per100Points = 20, maxPerNight = 40 },
+            fortune = { perPlay = 5, per100Points = 25, maxPerNight = 60 },
+            puppets = { perPlay = 8, per100Points = 20, maxPerNight = 60 },
+            deception = { perPlay = 8, per100Points = 20, maxPerNight = 60 },
+            horror = { perPlay = 10, per100Points = 25, maxPerNight = 80 },
+        },
+        location = v4(-1641.2, -1061.8, 13.15, 230.0),
+        npcModel = 's_f_y_shop_mid',
+        interactDistance = 2.5,
+        validationDistance = 8.0,
+        blip = { enabled = true, sprite = 52, colour = 1 },
+        items = {
+            { item = 'carnival_bloodfloss', price = 15, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_eyeball_pop', price = 10, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_grave_popcorn', price = 15, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_poison_apple', price = 20, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_bone_pretzel', price = 20, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_finger_dog', price = 25, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_web_cake', price = 30, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, category = 'prize', enabled = true },
+            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, category = 'prize', enabled = true },
+            { item = 'carnival_prize_box', price = 250, dailyLimit = 2, category = 'prize', enabled = true },
+        },
+    },
+
+    -- Ambient sound zones: looping sounds every player hears near each zone,
+    -- fading with distance.
+    ambience = {
+        enabled = true,
+        volume = 0.5,
+        zones = {
+            { id = 'midway_organ', label = 'Midway organ', coords = v3(-1645.0, -1070.0, 13.15), radius = 45.0, sound = 'ambient_organ', volume = 0.55, enabled = true },
+            { id = 'crowd', label = 'Crowd murmur', coords = v3(-1652.0, -1078.0, 13.15), radius = 55.0, sound = 'ambient_crowd', volume = 0.4, enabled = true },
+            { id = 'fortune_chimes', label = 'Fortune Teller chimes', coords = v3(-1630.0, -1090.0, 13.15), radius = 18.0, sound = 'ambient_chimes', volume = 0.5, enabled = true },
+            { id = 'horror_wind', label = 'House of Horrors wind', coords = v3(-1676.0, -1104.0, 13.15), radius = 35.0, sound = 'ambient_wind', volume = 0.6, enabled = true },
+        },
+    },
+
     attractions = {
         shooting = {
             enabled = true,
@@ -123,18 +174,23 @@ Carnival.Defaults = {
             interactDistance = 2.5,
             validationDistance = 15.0,
             maxPlayers = 4,
-            maxScore = 250,
+            maxScore = 500,
             blip = { enabled = true, sprite = 313, colour = 1 },
-            durationSeconds = 45,
             playsPerVisit = 1,
-            targetCount = 40,
-            lanes = 3,
-            targetLifetimeMs = 2800,
+            -- A game is several rounds, each harder than the last; points in a
+            -- round are multiplied by its pointsPercent.
+            roundBreakSeconds = 4,
+            rounds = {
+                { label = 'Warm-up', durationSeconds = 20, targetCount = 14, lanes = 2, targetLifetimeMs = 3400, targetSize = 100,
+                    specialChance = 8, decoyChance = 6, motion = 'straight', pointsPercent = 100 },
+                { label = 'Quickfire', durationSeconds = 20, targetCount = 20, lanes = 3, targetLifetimeMs = 2500, targetSize = 85,
+                    specialChance = 10, decoyChance = 14, motion = 'straight', pointsPercent = 150 },
+                { label = 'Dead Eye', durationSeconds = 20, targetCount = 24, lanes = 3, targetLifetimeMs = 1900, targetSize = 70,
+                    specialChance = 12, decoyChance = 22, motion = 'wave', pointsPercent = 200 },
+            },
             targetPoints = 5,
             bullseyeBonus = 3,
-            specialChance = 10,
             specialPoints = 15,
-            decoyChance = 12,
             decoyPenalty = 10,
             accuracyScoring = true,
             accuracyBonusMax = 20,

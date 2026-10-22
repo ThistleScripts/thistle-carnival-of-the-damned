@@ -97,7 +97,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -105,7 +105,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -230,8 +230,11 @@ test('apply test configuration (short timers, everyone ready)', function()
     doc.attractions.horror.tokenTypes.gold.quantity = 0
     doc.attractions.fortune.questionsPerVisit = 2
     doc.attractions.horror.lobbySeconds = 5
-    doc.attractions.shooting.durationSeconds = 20
-    doc.attractions.shooting.targetCount = 10
+    doc.attractions.shooting.roundBreakSeconds = 2
+    for i, r in ipairs(doc.attractions.shooting.rounds) do
+        r.durationSeconds = 8
+        r.targetCount = 3 + i
+    end
     local r = okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, note = 'test', confirm = true }))
     eq(r.saved, true)
 end)
@@ -380,6 +383,7 @@ test('registration closes, event becomes ready and starts round 1 with six sessi
     eq(count('SELECT COUNT(*) AS n FROM carnival_event_settings WHERE event_id = ? AND reason = ?', { eventId, 'start' }), 1, 'settings snapshot')
 end)
 
+
 ---------------------------------------------------------------------------
 section('Attraction: Wheel of Misfortune')
 ---------------------------------------------------------------------------
@@ -498,7 +502,10 @@ test('aim game: the server owns the schedule, validates every click and scores o
     at(s, cfg.location)
     errRes(H.api(membersOf(colourAt('wheel'))[1], 'shooting.start'), 'wrong_attraction')
     local g = okRes(H.api(s, 'shooting.start'))
-    eq(#g.plan, cfg.targetCount, 'schedule sent')
+    local targets = 0
+    for _, r in ipairs(cfg.rounds) do targets = targets + r.targetCount end
+    eq(#g.plan, targets, 'schedule for every round sent')
+    eq(#g.rounds, #cfg.rounds)
     truthy(g.elapsedMs < 0, 'countdown first')
     -- resuming returns the same game
     eq(okRes(H.api(s, 'shooting.start')).gameId, g.gameId)
@@ -529,12 +536,54 @@ test('aim game: the server owns the schedule, validates every click and scores o
     errRes(H.api(shooters[2], 'shooting.shot', { gameId = g.gameId, targetId = 2 }), 'stale')
     -- finishing early is refused; the server timer ends the game
     errRes(H.api(s, 'shooting.finish', { gameId = g.gameId }), 'too_early')
-    H.advance(cfg.durationSeconds + 6)
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
     local res = H.sql('SELECT * FROM carnival_shooting_results WHERE heat_id = ?', { g.gameId })
     eq(#res, 1)
     local pid = Carnival.Participants.idOfSource(s)
     eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?', { ('shooting:%d:%d'):format(g.gameId, pid) }), res[1].points ~= 0 and 1 or 0)
     errRes(H.api(s, 'shooting.start'), 'already_shot')
+end)
+
+test('three rounds, each harder and worth more; the break between rounds ignores clicks', function()
+    local sc = colourAt('shooting')
+    local s = membersOf(sc)[2]
+    local cfg = settings().attractions.shooting
+    at(s, cfg.location)
+    local g = okRes(H.api(s, 'shooting.start'))
+    eq(#g.rounds, 3)
+    for i = 2, 3 do
+        local prev, r = cfg.rounds[i - 1], cfg.rounds[i]
+        truthy(r.targetLifetimeMs < prev.targetLifetimeMs, 'round ' .. i .. ' targets are faster')
+        truthy(r.targetSize < prev.targetSize, 'round ' .. i .. ' targets are smaller')
+        truthy(r.decoyChance > prev.decoyChance, 'round ' .. i .. ' has more lanterns')
+        truthy(r.pointsPercent > prev.pointsPercent, 'round ' .. i .. ' is worth more')
+        eq(g.rounds[i].startMs, g.rounds[i - 1].endMs + cfg.roundBreakSeconds * 1000, 'break between rounds')
+    end
+    for _, t in ipairs(g.plan) do
+        local r = g.rounds[t.round]
+        truthy(t.t >= r.startMs and t.t + t.life <= r.endMs, 'target inside its round')
+        truthy(t.lane >= 1 and t.lane <= r.lanes, 'lane inside its round')
+    end
+    local start = H.ms
+    -- a click during the first break is ignored
+    H.ms = start + 3000 + g.rounds[1].endMs + 500
+    errRes(H.api(s, 'shooting.shot', { gameId = g.gameId }), 'between_rounds')
+    -- a normal target in round 3 is worth pointsPercent of the base
+    local t3
+    for _, t in ipairs(g.plan) do if t.round == 3 and t.kind == 'normal' then t3 = t break end end
+    if t3 then
+        H.ms = start + 3000 + t3.t + 50
+        local hit = okRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = t3.id, ring = 'outer' }))
+        eq(hit.round, 3)
+        eq(hit.points, math.floor(cfg.targetPoints * cfg.rounds[3].pointsPercent / 100 + 0.5), 'round 3 multiplier')
+    end
+    H.pushes = {}
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
+    local pushed = H.pushesFor(s, 'shooting')
+    local result = pushed[#pushed].result
+    eq(#result.rounds, 3, 'result has every round')
+    if t3 then eq(result.rounds[3].hits, 1) end
+    eq(result.rounds[1].points + result.rounds[2].points + result.rounds[3].points, result.targetPoints, 'rounds add up')
 end)
 
 ---------------------------------------------------------------------------
@@ -981,7 +1030,7 @@ test('shooting gallery: walk up, play the aim game, move on', function()
     at(s, settings().attractions.shooting.location)
     local g = okRes(H.api(s, 'shooting.start'))
     truthy(g.gameId and #g.plan > 0, 'game started')
-    H.advance(settings().attractions.shooting.durationSeconds + 6)
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
     truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'shooting'), 'completed')
     eq(nextOf(s).attraction, 'wheel')
 end)
@@ -1147,6 +1196,206 @@ test('props persist across a restart', function()
     eq(all[1].rz, 180)
     eq(all[1].collision, false)
     eq(Carnival.Push.bootstrapData(PLAYERS[1]).props[1].model, 'carnival_gate')
+end)
+
+---------------------------------------------------------------------------
+section('Prize counter')
+---------------------------------------------------------------------------
+local BUYER
+local function balanceOf(src)
+    local w = Carnival.Shop.wallet(H.players[src].citizenid)
+    return w and w.balance or 0
+end
+local function shopItem(name)
+    for _, it in ipairs(settings().shop.items) do if it.item == name then return it end end
+end
+
+test('games pay prize tickets for playing and scoring, capped per night; staff changes and replays pay nothing', function()
+    BUYER = WALKERS[1]
+    if not Carnival.Participants.getBySource(BUYER) then
+        at(BUYER, settings().registration.entrance)
+        okRes(H.api(BUYER, 'registration.register'), 'buy a ticket')
+    end
+    local p = Carnival.Participants.getBySource(BUYER)
+    truthy(p and p.status == 'active', 'walk-up participant')
+    local cid = H.players[BUYER].citizenid
+    local rule = settings().shop.earning.fortune
+    local saved = { perPlay = rule.perPlay, per100Points = rule.per100Points, maxPerNight = rule.maxPerNight }
+    rule.perPlay, rule.per100Points, rule.maxPerNight = 5, 50, 30
+    local before = balanceOf(BUYER)
+    H.pushes = {}
+    local ok, tx = H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
+    truthy(ok and tx.delta > 0, 'scored')
+    local fromScore = math.floor(tx.delta * 50 / 100)
+    eq(balanceOf(BUYER), before + fromScore, 'tickets for points scored, at the game\'s rate')
+    local pushed = H.pushesFor(BUYER, 'wallet')
+    eq(pushed[#pushed].delta, fromScore, 'wallet pushed')
+    eq(pushed[#pushed].attraction, 'fortune')
+    local mid = balanceOf(BUYER)
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
+    eq(balanceOf(BUYER), mid, 'replayed score pays nothing')
+    okRes(H.api(ADMIN, 'scores.adjust', { participantId = p.id, delta = 30, reason = 'testing the counter', requestId = 'shopadj000001', attractionId = 'fortune' }))
+    eq(balanceOf(BUYER), mid, 'staff adjustments pay nothing')
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 10, key = 'shoptest:2', source = 'participation_bonus', txType = 'participation', attractionId = 'fortune' })
+    eq(balanceOf(BUYER), mid, 'participation bonus points pay nothing (finishing pays perPlay)')
+
+    local eventId = Carnival.Events.activeId()
+    H.call(Carnival.Shop.played, p, 'fortune', 9001, eventId)
+    eq(balanceOf(BUYER), mid + 5, 'tickets for finishing the game')
+    H.call(Carnival.Shop.played, p, 'fortune', 9001, eventId)
+    eq(balanceOf(BUYER), mid + 5, 'finishing pays once per visit')
+    -- the cap: fortune may pay at most 30 tonight
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 100, key = 'shoptest:3', source = 'test', attractionId = 'fortune', skipAttractionCap = true })
+    eq(tonumber(H.sql([[SELECT SUM(delta) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND event_id = ? AND attraction_id = 'fortune' AND kind = 'earned']], { cid, eventId })[1].n), 30, 'capped per night')
+    local capped = balanceOf(BUYER)
+    H.call(Carnival.Shop.played, p, 'fortune', 9002, eventId)
+    eq(balanceOf(BUYER), capped, 'nothing more once the cap is reached')
+
+    local open = okRes(H.api(BUYER, 'shop.open'))
+    local fortune
+    for _, r in ipairs(open.earning) do if r.attraction == 'fortune' then fortune = r end end
+    eq(fortune.wonTonight, 30, 'shop shows what this game has paid tonight')
+    eq(fortune.perPlay, 5)
+    truthy(open.items[1].category, 'items carry their shelf')
+    rule.perPlay, rule.per100Points, rule.maxPerNight = saved.perPlay, saved.per100Points, saved.maxPerNight
+end)
+
+test('buying checks distance, stock rules and balance, and retries never charge twice', function()
+    local cid = H.players[BUYER].citizenid
+    H.moveTo(BUYER, { x = 0, y = 0, z = 0 })
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = 100, reason = 'float for testing', requestId = 'shopadj000002' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 1, requestId = 'buy000000001' }), 'too_far')
+    at(BUYER, settings().shop.location)
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_ticket_red', count = 1, requestId = 'buy000000002' }), 'not_for_sale')
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000003' }), 'insufficient')
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 0, requestId = 'buy000000004' }), 'invalid')
+
+    local before = balanceOf(BUYER)
+    local price = shopItem('carnival_witch_brew').price
+    local r = okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 2, requestId = 'buy000000005' }))
+    eq(r.balance, before - price * 2)
+    eq(#H.itemsOf(BUYER, 'carnival_witch_brew'), 1, 'item handed over')
+    local again = okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 2, requestId = 'buy000000005' }))
+    truthy(again.duplicate, 'retry recognised')
+    eq(balanceOf(BUYER), before - price * 2, 'charged once')
+    eq(#H.itemsOf(BUYER, 'carnival_witch_brew'), 1, 'delivered once')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = 'prize_purchase'"), 1)
+
+    local open = okRes(H.api(BUYER, 'shop.open'))
+    eq(open.wallet.balance, balanceOf(BUYER))
+    for _, it in ipairs(open.items) do truthy(not C.TICKET_ITEM_COLOUR[it.item], 'no tickets listed') end
+
+    -- daily limit
+    local limited = shopItem('carnival_trick_token')
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = limited.price * (limited.dailyLimit + 1), reason = 'limit test', requestId = 'shopadj000003' }))
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = limited.dailyLimit, requestId = 'buy000000006' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000007' }), 'limit')
+    H.advance(86401)
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
+end)
+
+test('a failed hand-over refunds the points; wallets are admin-only to change', function()
+    local cid = H.players[BUYER].citizenid
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = 200, reason = 'refund test', requestId = 'shopadj000004' }))
+    local before = balanceOf(BUYER)
+    local saved = H.itemRegistry.carnival_web_cake
+    H.itemRegistry.carnival_web_cake = nil
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_web_cake', count = 1, requestId = 'buy000000009' }), 'delivery_failed')
+    H.itemRegistry.carnival_web_cake = saved
+    eq(balanceOf(BUYER), before, 'refunded')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND kind = 'refund'", { cid }), 1)
+
+    errRes(H.api(BUYER, 'shop.adjust', { citizenid = cid, delta = 1000, reason = 'free points', requestId = 'shopadj000005' }), 'forbidden')
+    errRes(H.api(MANAGER, 'shop.overview'), 'forbidden')
+    errRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = -1000000, reason = 'too much', requestId = 'shopadj000006' }), 'insufficient')
+    errRes(H.api(ADMIN, 'shop.adjust', { citizenid = 'NOBODY', delta = 5, reason = 'no wallet', requestId = 'shopadj000007' }), 'not_found')
+    local ov = okRes(H.api(ADMIN, 'shop.overview'))
+    truthy(ov.totals.wallets >= 1 and ov.totals.purchasesToday >= 1, 'overview totals')
+    eq(ov.popular[1] ~= nil, true, 'best sellers listed')
+    eq(#okRes(H.api(ADMIN, 'shop.search', { query = 'WALK' })).wallets >= 1, true, 'search by citizen id')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = 'prize_points_adjusted'"), 3, 'only applied adjustments')
+
+    -- wallet totals always match the ledger
+    local w = Carnival.Shop.wallet(cid)
+    eq(w.balance, tonumber(H.sql('SELECT SUM(delta) AS n FROM carnival_prize_ledger WHERE citizenid = ?', { cid })[1].n), 'ledger balances')
+end)
+
+test('food effects come from consumables.lua and eating is checked by the server', function()
+    local src = BUYER
+    local p = H.players[src]
+    p.metadata.hunger, p.metadata.thirst, p.metadata.stress = 50, 50, 20
+    local useFood = H.ownExports.useFood
+    truthy(useFood, 'useFood export registered')
+    local function give(item) table.insert(H.inventories[src].items, { name = item, count = 1, metadata = {}, slot = #H.inventories[src].items + 1 }) end
+    local function use(item)
+        H.pushes = {}
+        local r = H.call(useFood, 'usingItem', { name = item, label = item }, { id = src, items = H.inventories[src].items }, 1)
+        eq(r, false, 'ox_inventory is told not to consume it itself')
+        local pushed = H.pushesFor(src, 'consume')
+        return pushed[#pushed]
+    end
+
+    give('carnival_finger_dog')
+    local cfg = Config.Consumables.carnival_finger_dog
+    local job = use('carnival_finger_dog')
+    truthy(job and job.token, 'eating started')
+    eq(job.time, cfg.time)
+    eq(job.anim.dict, Config.ConsumableAnims.eat.dict, 'named animation resolved')
+    eq(job.prop.model, cfg.prop.model)
+    eq(use('carnival_finger_dog'), nil, 'cannot start a second one while eating')
+    errRes(H.api(src, 'food.finish', { token = job.token }), 'too_fast', 'finishing instantly is refused')
+
+    job = (function() H.advance(30) return use('carnival_finger_dog') end)()
+    truthy(job, 'restarted after the last one expired')
+    H.ms = H.ms + cfg.time
+    local res = okRes(H.api(src, 'food.finish', { token = job.token }))
+    eq(p.metadata.hunger, 50 + cfg.hunger, 'hunger added')
+    eq(p.metadata.thirst, 50 + cfg.thirst, 'thirst changed')
+    eq(H.stateBags[src].hunger, 50 + cfg.hunger, 'state bag replicated')
+    eq(res.armour, cfg.armour)
+    eq(#H.itemsOf(src, 'carnival_finger_dog'), 0, 'item removed')
+    errRes(H.api(src, 'food.finish', { token = job.token }), 'invalid', 'a token works once')
+
+    -- values are clamped to 0-100 and armour/health are passed to the client
+    give('carnival_grave_shake')
+    Config.Consumables.carnival_grave_shake = { hunger = 500, thirst = 10, stress = -100, armour = 40, health = 25, time = 1000, anim = 'drink' }
+    Carnival.Consumables.load()
+    job = use('carnival_grave_shake')
+    H.ms = H.ms + 1000
+    res = okRes(H.api(src, 'food.finish', { token = job.token }))
+    eq(p.metadata.hunger, 100, 'capped at 100')
+    eq(p.metadata.stress, 0, 'stress cannot go below 0')
+    eq(res.armour, 40)
+    eq(res.health, 25)
+    eq(job.prop, nil, 'no prop configured')
+
+    -- bad entries are skipped with a warning, unconfigured items are refused
+    Config.Consumables.carnival_web_cake = { hunger = 10, anim = 'dance' }
+    local _, bad = Carnival.Consumables.load()
+    eq(#bad, 1, 'invalid anim reported')
+    give('carnival_web_cake')
+    eq(use('carnival_web_cake'), nil, 'unconfigured treat does nothing')
+    eq(#H.itemsOf(src, 'carnival_web_cake'), 1, 'and is not taken')
+end)
+
+test('tickets cannot be put on sale and ambient zones are validated', function()
+    local function errorPaths(mutate)
+        local tree = Carnival.U.deepCopy(settings())
+        mutate(tree)
+        local _, errors = Carnival.Validate.config(tree)
+        local paths = {}
+        for _, e in ipairs(errors or {}) do paths[e.path] = e.message end
+        return paths, tree
+    end
+    local paths, tree = errorPaths(function(t)
+        t.shop.items[#t.shop.items + 1] = { item = 'carnival_ticket_red', price = 1, dailyLimit = 0, category = 'prize', enabled = true }
+    end)
+    truthy(paths['shop.items.' .. #tree.shop.items .. '.item'], 'ticket rejected')
+    paths = errorPaths(function(t) t.ambience.zones[1].sound = 'not_a_sound' end)
+    truthy(paths['ambience.zones.1.sound'], 'unknown sound rejected')
+    local pub = Carnival.Config.publicSettings()
+    truthy(pub.shop and pub.shop.currency and pub.shop.items == nil, 'public shop settings omit prices')
+    eq(#pub.ambience.zones, #settings().ambience.zones)
 end)
 
 ---------------------------------------------------------------------------

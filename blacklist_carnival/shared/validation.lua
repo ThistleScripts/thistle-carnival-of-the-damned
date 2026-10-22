@@ -300,7 +300,25 @@ local function crossValidate(cfg, errors)
         if merr then err('rotation.matrix', merr) end
     end
 
+    if cfg.shop and cfg.shop.items then
+        local seen = {}
+        for i, it in ipairs(cfg.shop.items) do
+            if C.TICKET_ITEM_COLOUR[it.item] then
+                err(('shop.items.%d.item'):format(i), 'carnival tickets cannot be sold at the prize counter')
+            end
+            if seen[it.item] then err(('shop.items.%d.item'):format(i), ('"%s" is listed twice'):format(it.item)) end
+            seen[it.item] = true
+        end
+    end
+
     local a = cfg.attractions or {}
+    if a.shooting and a.shooting.rounds then
+        for i, r in ipairs(a.shooting.rounds) do
+            local path = ('attractions.shooting.rounds.%d'):format(i)
+            if (r.specialChance or 0) + (r.decoyChance or 0) > 100 then err(path, 'golden and lantern chances add up to more than 100%') end
+            if (r.targetLifetimeMs or 0) >= (r.durationSeconds or 0) * 1000 then err(path, 'a target must take less time to cross than the round lasts') end
+        end
+    end
     if a.wheel and a.wheel.outcomes then
         local total = 0
         for _, o in ipairs(a.wheel.outcomes) do

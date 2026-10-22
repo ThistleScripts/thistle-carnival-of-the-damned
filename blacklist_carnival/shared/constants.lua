@@ -40,6 +40,14 @@ C.PRIZE_ITEMS = {
     box = 'carnival_prize_box',
 }
 
+-- Carnival food sold at the prize counter (plain ox_inventory consumables).
+C.FOOD_ITEMS = {
+    'carnival_bloodfloss', 'carnival_poison_apple', 'carnival_finger_dog',
+    'carnival_grave_popcorn', 'carnival_bone_pretzel', 'carnival_web_cake',
+    'carnival_eyeball_pop', 'carnival_witch_brew', 'carnival_blood_slushie',
+    'carnival_grave_shake',
+}
+
 -- Every custom item shipped by this resource (used by validation tooling).
 C.CUSTOM_ITEMS = {
     'carnival_ticket_red', 'carnival_ticket_blue', 'carnival_ticket_green',
@@ -47,6 +55,7 @@ C.CUSTOM_ITEMS = {
     'carnival_token_bronze', 'carnival_token_silver', 'carnival_token_gold',
     'carnival_trick_token', 'carnival_treat_token', 'carnival_prize_box',
 }
+for _, item in ipairs(C.FOOD_ITEMS) do C.CUSTOM_ITEMS[#C.CUSTOM_ITEMS + 1] = item end
 
 C.ATTRACTIONS = { 'shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror' }
 C.ATTRACTION_INDEX = {}
@@ -132,6 +141,7 @@ C.PERMISSIONS = {
     'export.history',
     'staff.manage',
     'props.manage',
+    'shop.manage',
     'leaderboard.staff',
 }
 
@@ -145,7 +155,7 @@ C.MONITOR_CATEGORIES = {
     'lifecycle', 'event_state', 'registration', 'ticket', 'ticket_validation', 'group',
     'rotation', 'attraction', 'player', 'score', 'reward', 'staff_action', 'permission',
     'invalid_request', 'duplicate', 'database', 'callback', 'countdown', 'token',
-    'config', 'recovery', 'security', 'staff_report', 'inventory', 'props',
+    'config', 'recovery', 'security', 'staff_report', 'inventory', 'props', 'shop',
 }
 
 -- Bundled sound assets (web/public/sounds). Config fields that reference sounds
@@ -154,6 +164,7 @@ C.SOUNDS = {
     'horror_ambient', 'horror_warning', 'horror_final', 'horror_end', 'horror_scare',
     'wheel_tick', 'wheel_win', 'wheel_lose', 'carnival_chime', 'round_bell',
     'shooting_hit', 'shooting_bullseye', 'trick_laugh', 'treat_sparkle',
+    'ambient_organ', 'ambient_crowd', 'ambient_chimes', 'ambient_wind', 'shop_purchase',
 }
 C.SOUND_SET = {}
 for _, s in ipairs(C.SOUNDS) do C.SOUND_SET[s] = true end

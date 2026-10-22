@@ -2,6 +2,9 @@
 --
 -- A player targets the gallery ped and the NUI opens a shooting game: targets
 -- slide across lanes and the player aims with the mouse and clicks to shoot.
+-- A game is several rounds (attractions.shooting.rounds), each harder than the
+-- last (faster, smaller, more lanterns, more lanes or weaving targets) and
+-- worth more (pointsPercent), with a short break between rounds.
 --
 -- The server owns the game:
 --   * it generates the target schedule (spawn time, lane, direction, kind) and
@@ -43,34 +46,67 @@ local function elapsed(g)
     return now - g.startMs - COUNTDOWN_MS
 end
 
+-- One timeline for the whole game: round r runs from rounds[r].startMs to
+-- rounds[r].endMs (game time), followed by the break before the next round.
+-- Target ids are unique across rounds and every target knows its round.
 local function buildPlan(c)
-    local duration = c.durationSeconds * 1000
-    local plan, byId = {}, {}
-    local span = math.max(1, duration - c.targetLifetimeMs)
-    for i = 1, c.targetCount do
-        local roll = math.random(100)
-        local kind = 'normal'
-        if roll <= c.specialChance then
-            kind = 'special'
-        elseif roll <= c.specialChance + c.decoyChance then
-            kind = 'decoy'
+    local plan, byId, rounds = {}, {}, {}
+    local offset, id = 0, 0
+    for r, rc in ipairs(c.rounds) do
+        local duration = rc.durationSeconds * 1000
+        local span = math.max(1, duration - rc.targetLifetimeMs)
+        for i = 1, rc.targetCount do
+            local roll = math.random(100)
+            local kind = 'normal'
+            if roll <= rc.specialChance then
+                kind = 'special'
+            elseif roll <= rc.specialChance + rc.decoyChance then
+                kind = 'decoy'
+            end
+            local life = kind == 'special' and math.floor(rc.targetLifetimeMs * 0.65) or rc.targetLifetimeMs
+            local base = math.floor((i - 1) * span / rc.targetCount)
+            local jitter = math.random(0, math.max(1, math.floor(span / rc.targetCount)))
+            id = id + 1
+            local t = {
+                id = id, round = r, t = offset + math.max(0, math.min(base + jitter, duration - life)), life = life, kind = kind,
+                lane = math.random(rc.lanes), dir = math.random(2) == 1 and 1 or -1,
+            }
+            plan[#plan + 1] = t
+            byId[id] = t
         end
-        local life = kind == 'special' and math.floor(c.targetLifetimeMs * 0.65) or c.targetLifetimeMs
-        local base = math.floor((i - 1) * span / c.targetCount)
-        local jitter = math.random(0, math.max(1, math.floor(span / c.targetCount)))
-        local t = {
-            id = i, t = math.max(0, math.min(base + jitter, duration - life)), life = life, kind = kind,
-            lane = math.random(c.lanes), dir = math.random(2) == 1 and 1 or -1,
+        rounds[r] = {
+            number = r, label = rc.label, startMs = offset, endMs = offset + duration, lanes = rc.lanes, size = rc.targetSize,
+            motion = rc.motion, pointsPercent = rc.pointsPercent, life = rc.targetLifetimeMs, decoyChance = rc.decoyChance,
+            targets = rc.targetCount,
         }
-        plan[#plan + 1] = t
-        byId[i] = t
+        offset = offset + duration + (r < #c.rounds and c.roundBreakSeconds * 1000 or 0)
     end
-    return plan, byId
+    return plan, byId, rounds, rounds[#rounds].endMs
+end
+
+-- Total game length in ms (all rounds and the breaks between them).
+local function gameLengthMs(c)
+    local total = 0
+    for _, rc in ipairs(c.rounds) do total = total + rc.durationSeconds * 1000 end
+    return total + math.max(0, #c.rounds - 1) * c.roundBreakSeconds * 1000
+end
+Carnival.ShootingGameLengthMs = function() return gameLengthMs(cfg()) end
+
+-- The round being played (or about to start) at game time `at`.
+local function roundAt(g, at)
+    for _, r in ipairs(g.rounds) do
+        if at < r.endMs then return r end
+    end
+    return g.rounds[#g.rounds]
+end
+
+local function scaled(points, pct)
+    return math.floor(points * pct / 100 + 0.5)
 end
 
 local function publicGame(g)
     return {
-        gameId = g.id, duration = g.duration, lanes = g.lanes, countdownMs = COUNTDOWN_MS,
+        gameId = g.id, duration = g.duration, lanes = g.rounds[1].lanes, rounds = g.rounds, countdownMs = COUNTDOWN_MS,
         elapsedMs = elapsed(g), plan = g.plan, total = g.points, hits = g.hits, shots = g.shots,
         hitIds = U.keys(g.hit), label = cfg().label,
     }
@@ -110,7 +146,9 @@ local function finishGame(g, reason)
         local session = Carnival.Rotation.sessionById(g.sessionId)
         local ok, tx = Carnival.Scoring.award({
             participantId = g.pid, delta = total, key = ('shooting:%d:%d'):format(g.id, g.pid), txType = total > 0 and 'award' or 'penalty',
-            source = 'shooting_game', reason = ('%d hits / %d shots, %d bullseyes, %d golden, %d lanterns'):format(g.hits, g.shots, g.bullseyes, g.specials, g.decoys),
+            source = 'shooting_game', reason = ('%d hits / %d shots, %d bullseyes, %d golden, %d lanterns; rounds %s'):format(
+                g.hits, g.shots, g.bullseyes, g.specials, g.decoys,
+                table.concat(U.map(g.perRound, function(r) return tostring(r.points) end), ' / ')),
             attractionId = ID, sessionId = g.sessionId, roundNumber = session and session.round_number or nil, publicReason = 'Shooting Gallery',
         })
         if ok then applied = tx.delta end
@@ -118,6 +156,10 @@ local function finishGame(g, reason)
     g.result = {
         gameId = g.id, points = applied, targetPoints = g.points, hits = g.hits, shots = g.shots, bullseyes = g.bullseyes,
         specials = g.specials, decoys = g.decoys, accuracy = math.floor(accuracy * 100), accuracyBonus = accBonus, penalty = penalty,
+        rounds = U.map(g.rounds, function(r)
+            local pr = g.perRound[r.number]
+            return { number = r.number, label = r.label, points = pr.points, hits = pr.hits, shots = pr.shots, targets = r.targets, pointsPercent = r.pointsPercent }
+        end),
     }
     Carnival.Monitor.log('info', 'attraction', 'shooting_game_finished', { participantId = g.pid, attractionId = ID, result = reason, details = g.result })
     if games[g.pid] == g then games[g.pid] = nil end
@@ -153,18 +195,20 @@ local function start(src)
         end
         if liveCount() >= c.maxPlayers then return nil, 'busy', 'Every stall is taken. Try again in a moment.' end
         local id = Carnival.Db.insertRow('carnival_shooting_heats', {
-            event_id = p.event_id, session_id = session.id, status = 'running', duration_seconds = c.durationSeconds,
+            event_id = p.event_id, session_id = session.id, status = 'running', duration_seconds = math.ceil(gameLengthMs(c) / 1000),
             started_by = Carnival.Identity.license(src), started_at = os.time(),
         })
         if not id then return nil, 'database_error', 'The gallery is jammed. Try again.' end
-        local plan, byId = buildPlan(c)
+        local plan, byId, rounds, length = buildPlan(c)
+        local perRound = {}
+        for r in ipairs(rounds) do perRound[r] = { points = 0, hits = 0, shots = 0 } end
         g = {
-            id = id, pid = p.id, eventId = p.event_id, sessionId = session.id, startMs = nowMs(), duration = c.durationSeconds * 1000,
-            lanes = c.lanes, plan = plan, byId = byId, hit = {}, shots = 0, hits = 0, bullseyes = 0, specials = 0, decoys = 0,
+            id = id, pid = p.id, eventId = p.event_id, sessionId = session.id, startMs = nowMs(), duration = length,
+            rounds = rounds, perRound = perRound, plan = plan, byId = byId, hit = {}, shots = 0, hits = 0, bullseyes = 0, specials = 0, decoys = 0,
             points = 0, rejected = 0, lastShotMs = nil,
         }
         games[p.id] = g
-        Carnival.Monitor.log('info', 'attraction', 'shooting_game_started', { participantId = p.id, attractionId = ID, details = { gameId = id, targets = #plan } })
+        Carnival.Monitor.log('info', 'attraction', 'shooting_game_started', { participantId = p.id, attractionId = ID, details = { gameId = id, targets = #plan, rounds = #rounds } })
         Carnival.Push.invalidate('shooting')
         return publicGame(g)
     end)
@@ -189,32 +233,44 @@ local function shot(src, payload)
     local ms = nowMs()
     if g.lastShotMs and ms - g.lastShotMs < c.minClickIntervalMs then return reject(g, pid, 'too_fast') end
     g.lastShotMs = ms
-    if g.shots >= c.targetCount * 4 then return reject(g, pid, 'shot_cap') end
-    g.shots = g.shots + 1
-
-    local tid = payload.targetId ~= nil and V.int(payload.targetId, 1, c.targetCount) or nil
-    if not tid then return { hit = false, total = g.points, shots = g.shots, hits = g.hits } end -- a miss
+    if g.shots >= #g.plan * 4 then return reject(g, pid, 'shot_cap') end
+    local tid = payload.targetId ~= nil and V.int(payload.targetId, 1, #g.plan) or nil
+    if not tid then
+        -- a miss; clicks during the break between rounds are simply ignored
+        local current = roundAt(g, at)
+        if at < current.startMs then return nil, 'between_rounds', 'The next round has not started.' end
+        g.shots = g.shots + 1
+        g.perRound[current.number].shots = g.perRound[current.number].shots + 1
+        return { hit = false, total = g.points, shots = g.shots, hits = g.hits, round = current.number }
+    end
     local t = g.byId[tid]
     if not t then return reject(g, pid, 'unknown_target') end
+    g.shots = g.shots + 1
+    g.perRound[t.round].shots = g.perRound[t.round].shots + 1
     if g.hit[tid] then return reject(g, pid, 'already_hit') end
     if at < t.t - EARLY_MS or at > t.t + t.life + LATENCY_MS then return reject(g, pid, 'off_screen') end
     g.hit[tid] = true
+    local pct = g.rounds[t.round].pointsPercent
+    local pr = g.perRound[t.round]
     local points
     if t.kind == 'decoy' then
-        points = -c.decoyPenalty
+        points = -scaled(c.decoyPenalty, pct)
         g.decoys = g.decoys + 1
     elseif t.kind == 'special' then
-        points = c.specialPoints
+        points = scaled(c.specialPoints, pct)
         g.specials = g.specials + 1
         g.hits = g.hits + 1
+        pr.hits = pr.hits + 1
     else
         local bull = payload.ring == 'inner'
-        points = c.targetPoints + (bull and c.bullseyeBonus or 0)
+        points = scaled(c.targetPoints + (bull and c.bullseyeBonus or 0), pct)
         if bull then g.bullseyes = g.bullseyes + 1 end
         g.hits = g.hits + 1
+        pr.hits = pr.hits + 1
     end
     g.points = g.points + points
-    return { hit = true, targetId = tid, kind = t.kind, points = points, total = g.points, shots = g.shots, hits = g.hits }
+    pr.points = pr.points + points
+    return { hit = true, targetId = tid, kind = t.kind, points = points, total = g.points, shots = g.shots, hits = g.hits, round = t.round }
 end
 
 ---------------------------------------------------------------------------

@@ -242,6 +242,14 @@ function H.triggerFrom(src, name, ...)
     end
 end
 
+-- Player(src).state:set(...) records replicated state bags
+H.stateBags = {}
+function Player(src)
+    local bag = H.stateBags[src] or {}
+    H.stateBags[src] = bag
+    return { state = setmetatable({ set = function(_, k, v) bag[k] = v end }, { __index = bag }) }
+end
+
 H.pushes = {}
 function TriggerClientEvent(name, target, channel, data)
     local list = H.pushes
@@ -288,6 +296,7 @@ function H.addPlayer(src, opts)
         coords = opts.coords or { x = 0, y = 0, z = 0 },
         weapon = opts.weapon,
         aces = opts.aces or {},
+        metadata = opts.metadata or { hunger = 50, thirst = 50, stress = 20 },
     }
     H.inventories[src] = H.inventories[src] or { items = {}, maxWeight = opts.maxWeight or 100000 }
 end
@@ -383,7 +392,8 @@ local qbx = {
     GetPlayer = function(_, src)
         local p = H.players[tonumber(src)]
         if not p then return nil end
-        return { PlayerData = { source = tonumber(src), citizenid = p.citizenid, license = p.license, charinfo = { firstname = p.firstname, lastname = p.lastname } } }
+        return { PlayerData = { source = tonumber(src), citizenid = p.citizenid, license = p.license, charinfo = { firstname = p.firstname, lastname = p.lastname }, metadata = p.metadata },
+            Functions = { SetMetaData = function(key, value) p.metadata[key] = value end } }
     end,
     GetPlayerByCitizenId = function(self, cid)
         for s, p in pairs(H.players) do

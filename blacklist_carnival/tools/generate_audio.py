@@ -169,6 +169,68 @@ def main():
     sparkle = sum(np.sin(2 * np.pi * (1500 + 1500 * st_ + k * 210) * st_) * np.exp(-st_ * (3 + k)) for k in range(4))
     write('treat_sparkle', sparkle)
 
+    # ---- Ambient zone loops (seamless: every component completes whole cycles) ----
+    # Midway organ (16 s): a slow, slightly detuned minor waltz on a reedy organ.
+    bpm_beat = 16.0 / 48  # 48 beats (16 bars of 3/4)
+    def organ(freq, seconds):
+        x = t(seconds)
+        vib = 1 + 0.004 * np.sin(2 * np.pi * 5.5 * x)
+        sig = sum(a * np.sin(2 * np.pi * freq * h * vib * x) for h, a in ((1, 1.0), (2, 0.5), (3, 0.3), (4, 0.15), (6, 0.08)))
+        return sig * env(len(x), 0.02, min(0.15, seconds * 0.4))
+    A, C5, D, E, F, G = 220.0, 261.63, 293.66, 329.63, 349.23, 392.0
+    melody = [E * 2, D * 2, C5 * 2, A * 2, None, E * 2, F * 2, E * 2, D * 2, C5 * 2, None, None,
+              D * 2, C5 * 2, A * 2, G, None, A * 2, C5 * 2, A * 2, G, E, None, None,
+              E * 2, D * 2, C5 * 2, A * 2, None, E * 2, F * 2, A * 2, G * 2, F * 2, E * 2, None,
+              D * 2, E * 2, C5 * 2, A * 2, None, G, A * 2, None, None, A, None, None]
+    bass = [A / 2, A / 2, F / 2, F / 2, D / 2, D / 2, E / 2, E / 2, A / 2, A / 2, F / 2, F / 2, D / 2, E / 2, A / 2, A / 2]
+    mel = concat(*[(organ(f, bpm_beat) if f else silence(bpm_beat)) for f in melody])
+    oom = []
+    for b in bass:
+        oom += [organ(b, bpm_beat) * 0.9, organ(b * 3, bpm_beat) * 0.35, organ(b * 3, bpm_beat) * 0.35]
+    pah = concat(*oom)
+    n = min(len(mel), len(pah))
+    organ_loop = mel[:n] * 0.55 + pah[:n] * 0.45
+    organ_loop = lowpass(organ_loop, 2600)
+    write('ambient_organ', organ_loop)
+
+    # Crowd murmur (12 s): band-limited noise with slow, overlapping swells of "voices".
+    x = t(12.0)
+    murmur = lowpass(rng.normal(0, 1, len(x)), 900) - lowpass(rng.normal(0, 1, len(x)), 180) * 0.6
+    swell = 0.6 + 0.25 * np.sin(2 * np.pi * x / 12.0) + 0.15 * np.sin(2 * np.pi * x * 3 / 12.0 + 1.0)
+    voices = np.zeros(len(x))
+    for k in range(18):
+        start = rng.uniform(0, 11.0)
+        dur = rng.uniform(0.25, 0.7)
+        seg = t(dur)
+        f0 = rng.uniform(110, 240)
+        v = np.sin(2 * np.pi * (f0 + 25 * np.sin(2 * np.pi * 4 * seg)) * seg) * np.sin(np.pi * seg / dur) ** 2
+        i = int(start * SR)
+        voices[i:i + len(v)] += lowpass(v, 700)[:len(voices) - i] * 0.25
+    fade = np.minimum(1, np.minimum(x, 12.0 - x) / 0.5)  # soften the loop seam
+    write('ambient_crowd', (murmur * swell + voices) * (0.7 + 0.3 * fade))
+
+    # Fortune chimes (12 s): sparse glassy bells over a soft pad.
+    x = t(12.0)
+    pad = sum(np.sin(2 * np.pi * f * x) for f in (220.0, 261.63, 329.63)) / 3 * (0.5 + 0.5 * np.sin(2 * np.pi * x / 12.0 - np.pi / 2)) * 0.3
+    chimes = np.zeros(len(x))
+    for start, f in ((0.4, 1318.5), (1.9, 1567.98), (3.1, 1174.66), (5.2, 1760.0), (6.0, 1318.5), (8.3, 1975.5), (9.7, 1567.98)):
+        b = bell(f, 2.2, decay=2.2) * 0.35
+        i = int(start * SR)
+        chimes[i:i + len(b)] += b[:len(chimes) - i]
+    write('ambient_chimes', pad + chimes)
+
+    # Wind (16 s): howling filtered noise with moaning resonant gusts.
+    x = t(16.0)
+    base = lowpass(rng.normal(0, 1, len(x)), 500)
+    gust = 0.45 + 0.35 * np.sin(2 * np.pi * x / 16.0) + 0.2 * np.sin(2 * np.pi * x * 2 / 16.0 + 0.7)
+    howl = np.sin(2 * np.pi * (180 + 60 * np.sin(2 * np.pi * x / 8.0)) * x) * (0.5 + 0.5 * np.sin(2 * np.pi * x / 16.0 + 2.0)) * 0.25
+    write('ambient_wind', base * gust + howl)
+
+    # Prize counter purchase: coin clink + little bell.
+    c = t(0.08)
+    clink = np.sin(2 * np.pi * 3200 * c) * np.exp(-c * 60) + np.sin(2 * np.pi * 4700 * c) * np.exp(-c * 80) * 0.6
+    write('shop_purchase', mix(concat(clink, silence(0.05), clink * 0.7), concat(silence(0.12), bell(1046.5, 0.9, 5) * 0.6)))
+
 
 if __name__ == '__main__':
     main()

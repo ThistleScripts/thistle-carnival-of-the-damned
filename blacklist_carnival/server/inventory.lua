@@ -52,8 +52,8 @@ function Inv.addItem(src, item, count, metadata)
     return false, response or 'add_failed'
 end
 
-function Inv.removeItem(src, item, count, metadata)
-    local ok, success = call('RemoveItem', src, item, count, metadata)
+function Inv.removeItem(src, item, count, metadata, slot)
+    local ok, success = call('RemoveItem', src, item, count, metadata, slot)
     return ok and success == true
 end
 
@@ -162,4 +162,16 @@ exports('usePrizeBox', function(event, item, inventory, slot)
     elseif event == 'usedItem' then
         Carnival.Prizes.openBox(src)
     end
+end)
+
+-- Carnival food (and any item pointed here): effects come from consumables.lua.
+-- 'usingItem' starts the eating progress on the client and returns false, so
+-- ox_inventory neither consumes the item nor plays its own animation; the item
+-- is removed when the client reports the progress finished (food.finish).
+exports('useFood', function(event, item, inventory, slot)
+    if event ~= 'usingItem' then return end
+    local src = sourceOfInventory(inventory)
+    if not src then return false end
+    Carnival.Consumables.begin(src, item and item.name, slot, item and item.label)
+    return false
 end)

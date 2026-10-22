@@ -75,8 +75,7 @@ end
 SCREENS.shooting = function(s)
     local a = s.attractions.shooting
     Carnival.openView('shootingGame', {
-        preview = true, label = a.label, duration = (a.durationSeconds or 45) * 1000, lanes = a.lanes or 3,
-        lifetime = a.targetLifetimeMs or 2800, countdownMs = 3000,
+        preview = true, label = a.label, rounds = a.rounds, roundBreakSeconds = a.roundBreakSeconds or 4, countdownMs = 3000,
     })
 end
 

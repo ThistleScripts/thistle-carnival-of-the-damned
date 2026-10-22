@@ -5,6 +5,22 @@ import { Button, Countdown, StatusPill, useApi } from '../components/ui';
 import { LeaderboardTable } from './LeaderboardView';
 import { setWaypoint } from '../nui';
 
+function PrizeStrip() {
+  const settings = useStore((s) => s.settings);
+  const pushed = useStore((s) => s.wallet);
+  const w = useApi<{ balance: number; currency: string }>('shop.wallet', {}, [], ['shop']);
+  const shop = settings?.shop;
+  if (!shop?.enabled) return null;
+  const balance = pushed?.balance ?? w.data?.balance ?? 0;
+  return (
+    <div className="prize-strip">
+      <Icon name="gift" size={18} />
+      <span><strong className="gold">{balance}</strong> {shop.currency} to spend at {shop.label}</span>
+      <Button small onClick={() => setWaypoint(shop.location.x, shop.location.y)}>Waypoint</Button>
+    </div>
+  );
+}
+
 // /carnival for players: their ticket, schedule, score breakdown and the board.
 export function PlayerHub({ onClose }: { onClose: () => void }) {
   const p = useStore((s) => s.participant);
@@ -28,6 +44,7 @@ export function PlayerHub({ onClose }: { onClose: () => void }) {
           </div>
           <Button variant="ghost" onClick={onClose}>Close</Button>
         </header>
+        <PrizeStrip />
         {!p?.registered ? (
           <div className="hub-empty">
             <p>{!p?.canRegister ? 'You are not registered for this event.'

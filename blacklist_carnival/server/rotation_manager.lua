@@ -380,6 +380,10 @@ local function recordOne(s, p, status)
     if id and status == SS.COMPLETED then
         completedByPid[p.id] = completedByPid[p.id] or {}
         table.insert(completedByPid[p.id], s.attraction_id)
+        if Carnival.Shop then
+            local ok, err = pcall(Carnival.Shop.played, p, s.attraction_id, s.id, s.event_id)
+            if not ok then Carnival.Monitor.log('error', 'shop', 'play_tickets_failed', { participantId = p.id, details = { error = tostring(err) } }) end
+        end
         if bonus > 0 then
             Carnival.Scoring.award({
                 participantId = p.id, delta = bonus, key = ('participation:%d:%d'):format(s.id, p.id),

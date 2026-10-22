@@ -74,6 +74,66 @@
       "image": "carnival_prize_box.png",
       "size": "256x256",
       "transparent": true
+    },
+    {
+      "name": "carnival_bloodfloss",
+      "image": "carnival_bloodfloss.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_poison_apple",
+      "image": "carnival_poison_apple.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_finger_dog",
+      "image": "carnival_finger_dog.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_grave_popcorn",
+      "image": "carnival_grave_popcorn.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_bone_pretzel",
+      "image": "carnival_bone_pretzel.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_web_cake",
+      "image": "carnival_web_cake.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_eyeball_pop",
+      "image": "carnival_eyeball_pop.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_witch_brew",
+      "image": "carnival_witch_brew.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_blood_slushie",
+      "image": "carnival_blood_slushie.png",
+      "size": "256x256",
+      "transparent": true
+    },
+    {
+      "name": "carnival_grave_shake",
+      "image": "carnival_grave_shake.png",
+      "size": "256x256",
+      "transparent": true
     }
   ]
 }

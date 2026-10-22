@@ -129,6 +129,23 @@ for _, name in ipairs(C.CUSTOM_ITEMS) do
     end
 end
 for name in pairs(defs) do check(manifestNames[name], 'definition not in manifest: ' .. name) end
+-- every carnival food has its effects in consumables.lua and is routed to useFood
+do
+    Config = {}
+    dofile('consumables.lua')
+    for _, name in ipairs(C.FOOD_ITEMS) do
+        local e = Config.Consumables[name]
+        check(e ~= nil, 'consumables.lua has no entry for ' .. name)
+        check(defs[name] and defs[name].server and defs[name].server.export == 'blacklist_carnival.useFood', name .. ' must use blacklist_carnival.useFood')
+        if e then
+            check(type(e.anim) ~= 'string' or Config.ConsumableAnims[e.anim] ~= nil, name .. ': unknown anim ' .. tostring(e.anim))
+            for _, k in ipairs({ 'hunger', 'thirst', 'stress', 'armour', 'health' }) do
+                check(e[k] == nil or type(e[k]) == 'number', name .. ': ' .. k .. ' must be a number')
+            end
+        end
+    end
+    Config = nil
+end
 local snippet = read('../ox_inventory_additions/data/carnival_items.lua')
 check(snippet ~= nil, 'ox_inventory snippet missing')
 for _, name in ipairs(C.CUSTOM_ITEMS) do check(snippet and snippet:find("%['" .. name .. "'%]"), 'snippet missing ' .. name) end

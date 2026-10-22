@@ -162,6 +162,16 @@ function Interactions.build()
         end
     end
 
+    -- Prize counter (anyone may browse; points come from playing the games).
+    local shop = s.shop
+    if shop and shop.enabled then
+        place('shop', shop.location, shop.npcModel, shop.interactDistance, {
+            { name = 'carnival_shop', icon = 'fa-solid fa-gift', label = ('Browse %s'):format(shop.label),
+                onSelect = function() Carnival.Shop.open() end },
+        })
+        addBlip(shop.location, shop.blip, shop.label)
+    end
+
     -- House of Horrors exit point (escape is validated by the server).
     local h = s.attractions.horror
     if h.enabled then

@@ -27,7 +27,8 @@ const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(req.url.split('?')[0]);
   try {
-    const file = join(dist, path === '/' ? 'index.html' : path);
+    // ox_inventory item images (nui://ox_inventory/web/images/...) are served from images/inventory
+    const file = path.startsWith('/inv/') ? join(root, '..', 'images', 'inventory', path.slice(5)) : join(dist, path === '/' ? 'index.html' : path);
     const body = await readFile(file);
     res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' });
     res.end(body);
@@ -47,7 +48,23 @@ const participant = { registered: true, id: 1, name: 'Ada Lovelace', colour: 're
   breakdown: { shooting: 64, wheel: 25, fortune: 0, puppets: 0, deception: 0, horror: 0 } };
 const event = { active: true, id: 3, name: 'Carnival of the Damned', state: 'running', stateLabel: 'Running', mode: 'walkup', round: 0, totalRounds: 6, participantCount: 37, maxParticipants: 120, registrationOpen: true };
 
-const plan = Array.from({ length: 40 }, (_, i) => ({ id: i + 1, t: i * 900, life: 2800, kind: i % 9 === 4 ? 'special' : i % 7 === 3 ? 'decoy' : 'normal', lane: i % 3, dir: i % 2 ? 1 : -1 }));
+// the configured rounds as the server would send them (deterministic layout)
+const sh = settings.attractions.shooting;
+const sgRounds = []; const plan = [];
+{
+  let offset = 0, id = 0;
+  sh.rounds.forEach((rc, i) => {
+    const duration = rc.durationSeconds * 1000;
+    for (let k = 0; k < rc.targetCount; k++) {
+      id++;
+      const kind = k % 9 === 4 ? 'special' : k % 5 === 3 && rc.decoyChance > 10 ? 'decoy' : 'normal';
+      plan.push({ id, round: i + 1, t: offset + Math.floor(k * (duration - rc.targetLifetimeMs) / rc.targetCount), life: rc.targetLifetimeMs, kind, lane: 1 + (k % rc.lanes), dir: k % 2 ? 1 : -1 });
+    }
+    sgRounds.push({ number: i + 1, label: rc.label, startMs: offset, endMs: offset + duration, lanes: rc.lanes, size: rc.targetSize, motion: rc.motion, pointsPercent: rc.pointsPercent, life: rc.targetLifetimeMs, decoyChance: rc.decoyChance, targets: rc.targetCount });
+    offset += duration + (i < sh.rounds.length - 1 ? sh.roundBreakSeconds * 1000 : 0);
+  });
+}
+const sgDuration = sgRounds[sgRounds.length - 1].endMs;
 const mystery = settings.attractions.deception.mysteries[0];
 const deceptionState = { active: true, roundId: 4, status: 'questioning', endsAt: now() + 412, serverTime: now(), submissionsUsed: 0, maxSubmissions: 2,
   mystery: { id: mystery.id, title: mystery.title, description: mystery.description, rules: mystery.rules, liarCount: mystery.liarCount,
@@ -88,9 +105,23 @@ const responses = {
     { id: 2, model: 'carnival_lamp', label: 'Lamp by the booth', x: -1636.1, y: -1055.8, z: 13.15, rx: 0, ry: 0, rz: 45, collision: true, createdBy: 'Owner', createdAt: now() - 1800 },
     { id: 3, model: 'carnivalcoingold', label: null, x: -1604.0, y: -1115.5, z: 14.1, rx: 0, ry: 0, rz: 0, collision: false, createdBy: 'Admin', createdAt: now() - 120 },
   ] } },
+  'shop.wallet': { ok: true, data: { balance: 85, earned: 140, spent: 55, currency: 'Prize Tickets' } },
+  'shop.overview': { ok: true, data: { currency: 'Prize Tickets', totals: { wallets: 31, outstanding: 2140, earned: 5260, spent: 3120, purchasesToday: 18, spentToday: 410 },
+    popular: [['carnival_finger_dog', 22, 550], ['carnival_blood_slushie', 19, 285], ['carnival_bloodfloss', 15, 225], ['carnival_prize_box', 3, 750]].map(([item, sold, points]) => ({ item, sold, points })),
+    recent: names.slice(0, 7).map((n, i) => ({ id: 90 - i, citizenid: 'CID' + i, display_name: n, kind: i === 3 ? 'adjust' : 'purchase', delta: i === 3 ? 50 : -[25, 15, 30, 0, 250, 10, 15][i], balance_after: 40 + i * 7,
+      item: i === 3 ? null : ['carnival_finger_dog', 'carnival_witch_brew', 'carnival_web_cake', null, 'carnival_prize_box', 'carnival_eyeball_pop', 'carnival_grave_popcorn'][i], item_count: 1, staff_name: i === 3 ? 'Owner' : null, reason: i === 3 ? 'Points lost in a crash' : null, created_at: now() - i * 400 })),
+    wallets: board.entries.map((e, i) => ({ citizenid: 'CID' + i, display_name: e.name, balance: 320 - i * 27, earned_total: 520 - i * 30, spent_total: 200 - i * 3, updated_at: now() - i * 600 })) } },
   'participants.search': { ok: true, data: { page: 1, pageSize: 25, total: 10, rows: board.entries.map((e) => ({ id: e.participantId, display_name: e.name, colour: e.colour, status: 'active', total_score: e.total, online: e.rank % 3 !== 0, last_seen_at: now() - e.rank * 60 })) } },
 };
-const perms = ['panel.admin', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history', 'props.manage'];
+const perms = ['panel.admin', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history', 'props.manage', 'shop.manage'];
+
+const shopItems = { carnival_bloodfloss: 'Bloodspun Candy Floss', carnival_eyeball_pop: 'Eyeball Cake Pop', carnival_grave_popcorn: 'Graveyard Popcorn', carnival_poison_apple: 'Poisoned Toffee Apple',
+  carnival_bone_pretzel: 'Bone-Knot Pretzel', carnival_finger_dog: 'Severed Finger Corn Dog', carnival_web_cake: 'Cobweb Funnel Cake', carnival_witch_brew: "Witch's Brew Lemonade",
+  carnival_blood_slushie: 'Blood Moon Slushie', carnival_grave_shake: 'Grave Dirt Shake', carnival_treat_token: 'Treat Token', carnival_trick_token: 'Trick Token', carnival_prize_box: 'Carnival Prize Box' };
+const shopData = { label: settings.shop.label, currency: settings.shop.currency, wallet: { balance: 85, earned: 140, spent: 55 },
+  earning: ['shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror'].map((id, i) => ({ attraction: id, label: settings.attractions[id].label, ...settings.shop.earning[id], wonTonight: [42, 40, 12, 0, 0, 0][i] })),
+  items: settings.shop.items.filter((it) => shopItems[it.item]).map((it, i) => ({ item: it.item, label: shopItems[it.item], price: it.price, category: it.category, dailyLimit: it.dailyLimit,
+    remainingToday: it.dailyLimit > 0 ? it.dailyLimit - (i % 2) : undefined, description: ['Spun from sugar and something darker. It leaves your lips red.', 'A cake pop that watches you eat it. Raspberry glaze.', 'Buttered and charcoal-black kernels in a coffin-striped box.', 'Black toffee over a green apple. The skull on the stick is only a joke. Probably.'][i % 4] })) };
 
 const scenes = {
   hud: [['hud', { visible: true }]],
@@ -99,7 +130,11 @@ const scenes = {
   leaderboard: [['open', { view: 'leaderboard', data: board }]],
   wheel: [['open', { view: 'wheel', data: { outcomes: settings.attractions.wheel.outcomes, spinsUsed: 0, maxSpins: 2, cooldownRemaining: 0, animationMs: 4000, label: settings.attractions.wheel.label } }]],
   fortune: [['open', { view: 'fortune', data: fortuneVisit }]],
-  shooting: [['open', { view: 'shootingGame', data: { gameId: 1, duration: 45000, lanes: 3, countdownMs: 3000, elapsedMs: 9000, plan, total: 35, hits: 6, shots: 8, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shooting: [['open', { view: 'shootingGame', data: { gameId: 1, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgRounds[2].startMs + 5200, plan, total: 95, hits: 19, shots: 24, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shootingbreak: [['open', { view: 'shootingGame', data: { gameId: 2, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgRounds[1].endMs + 1200, plan, total: 70, hits: 14, shots: 17, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shootingresult: [['open', { view: 'shootingGame', data: { gameId: 3, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgDuration - 300, plan, total: 186, hits: 41, shots: 49, hitIds: [], label: 'The Shooting Gallery' } }],
+    ['push', { channel: 'shooting', data: { action: 'result', result: { gameId: 3, points: 202, targetPoints: 186, hits: 41, shots: 49, bullseyes: 9, specials: 5, decoys: 1, accuracy: 83, accuracyBonus: 16,
+      rounds: sgRounds.map((r, i) => ({ number: r.number, label: r.label, points: [62, 72, 52][i], hits: [12, 15, 14][i], targets: r.targets, pointsPercent: r.pointsPercent })) } } }]],
   deception: [['open', { view: 'deception', data: deceptionState }]],
   vote: [['open', { view: 'theatreVote', data: { performanceId: 2, title: 'The Lion Tamer\'s Last Bow', endsAt: now() + 20, serverTime: now(), self: 1, candidates: [{ participantId: 2, name: 'Marlo Vance', role: 'Lion Tamer' }, { participantId: 3, name: 'Juno Reyes', role: 'Unionised Lion' }] } }]],
   theatre: [['open', { view: 'theatre', data: { scenario: { title: 'The Lion Tamer\'s Last Bow', difficulty: 'absurd', description: 'The lion has unionised and refuses to perform until its demands are met.' }, role: 'Unionised Lion', performer: true, status: 'running', endsAt: now() + 120, serverTime: now(), performers: [{ name: 'Marlo Vance', role: 'Lion Tamer' }, { name: 'Ada Lovelace', role: 'Unionised Lion' }] } }]],
@@ -109,6 +144,9 @@ const scenes = {
   horrorsettings: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(2)'], ['click', '.chip:nth-child(6)']],
   props: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(4)']],
   players: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(2)']],
+  shop: [['open', { view: 'shop', data: shopData }]],
+  shopprizes: [['open', { view: 'shop', data: shopData }], ['click', '.chips .chip:nth-child(4)'], ['click', '.booth-item:nth-child(3)']],
+  shopadmin: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(2)'], ['click', '.tab:nth-child(5)']],
 };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -122,6 +160,12 @@ for (const [name, msgs] of Object.entries(scenes)) {
     let data = { ok: true };
     if (route.request().url().endsWith('/api')) data = responses[body.endpoint] ?? { ok: false, error: 'not_mocked', message: 'No preview data for ' + body.endpoint };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+  });
+  // stand-in for the nui:// scheme: point ox_inventory item images at the local copies
+  await page.addInitScript(() => {
+    new MutationObserver(() => document.querySelectorAll('img[src^="nui://ox_inventory/web/images/"]').forEach((img) => {
+      img.src = '/inv/' + img.getAttribute('src').split('/').pop();
+    })).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
   });
   await page.goto(base);
   // a dim street scene stands in for the game world behind the UI

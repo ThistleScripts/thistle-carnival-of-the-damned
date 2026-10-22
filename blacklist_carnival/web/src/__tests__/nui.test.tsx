@@ -25,7 +25,7 @@ vi.mock('../nui', async () => {
     captureCoords: vi.fn(async () => ({ x: 1, y: 2, z: 3, w: 90 })),
   };
 });
-vi.mock('../audio', () => ({ playSound: vi.fn(), stopSound: vi.fn(), stopAll: vi.fn() }));
+vi.mock('../audio', () => ({ playSound: vi.fn(), stopSound: vi.fn(), stopAll: vi.fn(), setAmbient: vi.fn() }));
 
 import App from '../App';
 import { installBridge } from '../bridge';
@@ -33,6 +33,7 @@ installBridge();
 import { getState, setState } from '../store';
 import { formatDuration, signed, colourHex } from '../format';
 import { placeProp } from '../nui';
+import { playSound, setAmbient } from '../audio';
 
 const settings: any = {
   ...(fixture as any).defaults,
@@ -56,7 +57,7 @@ beforeEach(() => {
       settings,
       event: { active: true, id: 1, name: 'Test Night', state: 'running', stateLabel: 'Running', round: 2, totalRounds: 6, roundEndsAt: Math.floor(Date.now() / 1000) + 300, participantCount: 12, maxParticipants: 120 },
       participant: { registered: true, id: 5, name: 'Ada Lovelace', colour: 'red', status: 'active', total: 42, rank: 3, ticket: { serial: 'CTD-ABCDE-FGHIJ', status: 'active' }, completed: ['shooting'], current: { attraction: 'wheel', status: 'active', sessionId: 9 }, next: 'fortune', breakdown: { shooting: 30 } },
-      permissions: ['panel.admin', 'panel.staff', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.wheel', 'attractions.operate.horror', 'horror.control', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history'],
+      permissions: ['panel.admin', 'panel.staff', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.wheel', 'attractions.operate.horror', 'horror.control', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history', 'shop.manage'],
       role: 'owner',
     },
   });
@@ -357,6 +358,31 @@ describe('shooting gallery aim game', () => {
     await waitFor(() => expect(screen.getByText('42 points')).toBeTruthy(), { timeout: 3000 });
   });
 
+  it('plays harder rounds: a break card names the next round and the result lists every round', async () => {
+    const rounds = [
+      { number: 1, label: 'Warm-up', startMs: 0, endMs: 2000, lanes: 2, size: 100, motion: 'straight', pointsPercent: 100, life: 1500, decoyChance: 5, targets: 2 },
+      { number: 2, label: 'Dead Eye', startMs: 6000, endMs: 8000, lanes: 3, size: 70, motion: 'wave', pointsPercent: 200, life: 1000, decoyChance: 20, targets: 2 },
+    ];
+    const plan2 = [{ id: 1, round: 1, t: 0, life: 1500, kind: 'normal', lane: 1, dir: 1 }, { id: 2, round: 2, t: 6000, life: 1000, kind: 'normal', lane: 3, dir: -1 }];
+    render(<App />);
+    // 3 s into the game: the break before round 2
+    lua('open', { view: 'shootingGame', data: { gameId: 90, duration: 8000, rounds, countdownMs: 3000, elapsedMs: 3000, plan: plan2, total: 5 } });
+    expect(screen.getByText('Dead Eye')).toBeTruthy();
+    expect(screen.getByText('Faster targets')).toBeTruthy();
+    expect(screen.getByText('Smaller targets')).toBeTruthy();
+    expect(screen.getByText('Targets weave')).toBeTruthy();
+    expect(screen.getByText('Points ×2')).toBeTruthy();
+    expect(screen.getByText('Round', { exact: false, selector: '.sg-stats span' })).toBeTruthy();
+    // clicking the range during the break sends nothing
+    fireEvent.mouseDown(document.querySelector('.sg-area')!);
+    expect(calls.filter((c) => c.endpoint === 'shooting.shot').length).toBe(0);
+    lua('push', { channel: 'shooting', data: { action: 'result', result: { gameId: 90, points: 35, hits: 2, shots: 3, accuracy: 66, targetPoints: 35,
+      rounds: [{ number: 1, label: 'Warm-up', points: 5, hits: 1, targets: 2, pointsPercent: 100 }, { number: 2, label: 'Dead Eye', points: 30, hits: 1, targets: 2, pointsPercent: 200 }] } } });
+    await waitFor(() => expect(screen.getByText('35 points')).toBeTruthy());
+    expect(screen.getByText('+30')).toBeTruthy();
+    expect(screen.getByText('Round 2 · Dead Eye', { exact: false })).toBeTruthy();
+  });
+
   it('preview mode plays locally', () => {
     render(<App />);
     lua('open', { view: 'shootingGame', data: { preview: true, duration: 30000, lanes: 3, lifetime: 2800, countdownMs: 3000 } });
@@ -376,5 +402,104 @@ describe('theatre audience vote', () => {
     fireEvent.click(screen.getByText('Grace'));
     await waitFor(() => expect(screen.getByText(/Vote cast/)).toBeTruthy());
     expect(calls.find((c) => c.endpoint === 'theatre.vote')!.payload).toMatchObject({ performanceId: 5, participantId: 11 });
+  });
+});
+
+describe('prize counter', () => {
+  const shop = {
+    label: 'The Prize Counter', currency: 'Prize Tickets',
+    wallet: { balance: 40, earned: 60, spent: 20 },
+    earning: [{ attraction: 'shooting', label: 'The Shooting Gallery', perPlay: 5, per100Points: 20, maxPerNight: 60, wonTonight: 30 }],
+    items: [
+      { item: 'carnival_witch_brew', label: "Witch's Brew Lemonade", description: 'Sour green lemonade.', price: 15, category: 'drink', dailyLimit: 0 },
+      { item: 'carnival_prize_box', label: 'Carnival Prize Box', price: 250, category: 'prize', dailyLimit: 2, remainingToday: 2 },
+      { item: 'carnival_trick_token', label: 'Trick Token', price: 5, category: 'prize', dailyLimit: 5, remainingToday: 0 },
+      { item: 'carnival_bloodfloss', label: 'Bloodspun Candy Floss', price: 10, category: 'food', dailyLimit: 0 },
+    ],
+  };
+
+  it('shows the ticket balance, shelves and how to win tickets, and redeems with a fresh request id', async () => {
+    responses['shop.buy'] = { ok: true, data: { balance: 10, item: 'carnival_witch_brew', count: 2, cost: 30 } };
+    responses['shop.open'] = { ok: true, data: { ...shop, wallet: { ...shop.wallet, balance: 10 } } };
+    render(<App />);
+    lua('open', { view: 'shop', data: shop });
+    expect(screen.getByText('40')).toBeTruthy();
+    expect(screen.getByText('+5 for playing')).toBeTruthy();
+    expect(screen.getByText('30/60 tonight')).toBeTruthy();
+    // shelves filter the items
+    fireEvent.click(screen.getByText('Prizes'));
+    expect(screen.queryByText('Bloodspun Candy Floss')).toBeNull();
+    // unaffordable and sold-out prizes cannot be redeemed
+    fireEvent.click(screen.getByText('Carnival Prize Box', { selector: '.booth-item-name' }));
+    expect((screen.getByText('210 more prize tickets needed').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText('Trick Token', { selector: '.booth-item-name' }));
+    expect((screen.getByText('Come back tomorrow').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    // buy two drinks
+    fireEvent.click(screen.getByText('Everything'));
+    fireEvent.click(screen.getByText("Witch's Brew Lemonade", { selector: '.booth-item-name' }));
+    fireEvent.click(document.querySelector('.booth-detail .stepper button:last-child')!);
+    fireEvent.click(screen.getByText('Redeem 2 for 30'));
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shop.buy')).toBeTruthy());
+    const buy = calls.find((c) => c.endpoint === 'shop.buy')!.payload;
+    expect(buy).toMatchObject({ item: 'carnival_witch_brew', count: 2 });
+    expect(buy.requestId).toMatch(/^[0-9a-f]{24}$/);
+    await waitFor(() => expect(document.querySelector('.booth-balance-value')!.textContent).toBe('10'));
+    expect(playSound).toHaveBeenCalledWith('shop_purchase', 0.7);
+  });
+
+  it('wallet pushes update the balance and announce the tickets won', async () => {
+    render(<App />);
+    lua('open', { view: 'shop', data: shop });
+    lua('push', { channel: 'wallet', data: { balance: 65, earned: 85, spent: 20, currency: 'Prize Tickets', delta: 25, attraction: 'horror' } });
+    expect(document.querySelector('.booth-balance-value')!.textContent).toBe('65');
+    await waitFor(() => expect(screen.getByText(/\+25 Prize Tickets from House of Horrors/)).toBeTruthy());
+  });
+
+  it('item pictures come from ox_inventory: the item\'s own image, then the inventory image path, then an icon', () => {
+    render(<App />);
+    lua('inventory', { imagePath: 'https://cdn.example.com/items/' });
+    const items = [
+      { ...shop.items[0], image: 'nui://ox_inventory/web/images/custom_brew.png' },
+      ...shop.items.slice(1),
+    ];
+    lua('open', { view: 'shop', data: { ...shop, items } });
+    const img = () => document.querySelector('.booth-detail img') as HTMLImageElement;
+    expect(img().getAttribute('src')).toBe('nui://ox_inventory/web/images/custom_brew.png');
+    fireEvent.error(img());
+    expect(img().getAttribute('src')).toBe('https://cdn.example.com/items/carnival_witch_brew.png');
+    fireEvent.error(img());
+    expect(img().getAttribute('src')).toBe('nui://ox_inventory/web/images/carnival_witch_brew.png');
+    fireEvent.error(img());
+    expect(document.querySelector('.booth-detail .item-img-missing')).toBeTruthy();
+    // shelf cards without a resolved image use the inventory image path
+    const floss = screen.getByText('Bloodspun Candy Floss', { selector: '.booth-item-name' }).closest('button')!.querySelector('img')!;
+    expect(floss.getAttribute('src')).toBe('https://cdn.example.com/items/carnival_bloodfloss.png');
+  });
+
+  it('ambient levels from Lua go to the mixer', () => {
+    lua('ambient', { levels: [{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }] });
+    expect(setAmbient).toHaveBeenCalledWith([{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }]);
+  });
+
+  it('admin prize counter page lists wallets and adjusts with a reason', async () => {
+    responses['shop.overview'] = { ok: true, data: {
+      currency: 'Prize Tickets',
+      totals: { wallets: 1, outstanding: 40, earned: 60, spent: 20, purchasesToday: 1, spentToday: 20 },
+      popular: [{ item: 'carnival_witch_brew', sold: 2, points: 30 }],
+      recent: [{ id: 3, citizenid: 'ABC123', display_name: 'Ada Lovelace', kind: 'purchase', delta: -30, balance_after: 40, item: 'carnival_witch_brew', item_count: 2, created_at: 1760000000 }],
+      wallets: [{ citizenid: 'ABC123', display_name: 'Ada Lovelace', balance: 40, earned_total: 60, spent_total: 20, updated_at: 1760000000 }],
+    } };
+    responses['shop.adjust'] = { ok: true, data: { balance: 90 } };
+    render(<App />);
+    lua('open', { view: 'admin', data: {} });
+    fireEvent.click(screen.getByText('Players'));
+    fireEvent.click(screen.getByText('Prize counter'));
+    await waitFor(() => expect(screen.getByText('Best sellers')).toBeTruthy());
+    fireEvent.click(screen.getByText('Adjust'));
+    fireEvent.change(screen.getByPlaceholderText('e.g. 50 or -20'), { target: { value: '50' } });
+    fireEvent.change(document.querySelector('.modal textarea')!, { target: { value: 'Lost points in a crash' } });
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shop.adjust')).toBeTruthy());
+    expect(calls.find((c) => c.endpoint === 'shop.adjust')!.payload).toMatchObject({ citizenid: 'ABC123', delta: 50, reason: 'Lost points in a crash' });
   });
 });

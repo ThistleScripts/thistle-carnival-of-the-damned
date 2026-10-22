@@ -2,7 +2,7 @@
 
 A self-running, roleplay-focused carnival for **Blacklist RP** (QBX/Qbox · ox_lib · ox_target · ox_inventory · oxmysql · React/TypeScript NUI).
 
-Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup, including a **prop placer** that saves props to the database so every player sees them and they survive restarts.
+Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup, including a **prop placer** that saves props to the database so every player sees them and they survive restarts. The games also pay out **prize tickets** (for playing and for how well you score) to spend at the **prize counter** on ten horror-carnival treats (candy floss, a severed-finger corn dog, a blood moon slushie…), and **ambient sound zones** fill the grounds with an organ waltz, crowd murmur, chimes and wind.
 
 **Two carnival modes** (*General → Carnival mode*):
 
@@ -11,7 +11,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 
 | Attraction | Type | Highlights |
 |---|---|---|
-| The Shooting Gallery | solo | Mouse-aim NUI game: targets slide across lanes, golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
+| The Shooting Gallery | solo | Mouse-aim NUI game in three rounds that get harder (faster, smaller, weaving targets, more lanterns, bigger multipliers); golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
 | The Wheel of Misfortune | solo | Marquee wheel with weighted server-side outcomes, points ±, prizes, trick/treat. |
 | The Fortune Teller's Curse | solo | A reading with riddles and multiple choice marked on the server, and a fortune. |
 | The Puppet Master's Theatre | group | Players take the stage, get a random scenario and roles, perform on a timer, the audience votes the winner. |
@@ -38,6 +38,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 
 ```
 config.lua                bootstrap security (roles, allowlists, webhooks via convars, logging) — server only
+consumables.lua           what each carnival food/drink gives (hunger, thirst, stress, armour, health, anim, prop) — server only
 shared/                   constants, utils, config schema, factory defaults, validation
 server/                   bootstrap, persistence, monitoring, audit, discord, identity, permissions,
                           api router, push, config manager, inventory, prizes, events, registration,

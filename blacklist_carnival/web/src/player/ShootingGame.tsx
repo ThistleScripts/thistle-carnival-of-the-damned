@@ -12,20 +12,47 @@ import { signed } from '../format';
 // the server, and the server decides whether it hit and how many points it is
 // worth. In preview mode everything is local and nothing is sent.
 
-interface PlanTarget { id: number; t: number; life: number; kind: 'normal' | 'special' | 'decoy'; lane: number; dir: number }
+interface PlanTarget { id: number; t: number; life: number; kind: 'normal' | 'special' | 'decoy'; lane: number; dir: number; round?: number }
+interface Round { number: number; label: string; startMs: number; endMs: number; lanes: number; size: number; motion: string; pointsPercent: number; life: number; decoyChance: number; targets: number }
 interface Popup { id: number; x: number; y: number; text: string; good: boolean }
 
-function previewPlan(duration: number, lanes: number, life: number): PlanTarget[] {
-  const out: PlanTarget[] = [];
-  const count = 40;
-  for (let i = 0; i < count; i++) {
-    const r = Math.random();
-    const kind = r < 0.1 ? 'special' : r < 0.22 ? 'decoy' : 'normal';
-    const l = kind === 'special' ? life * 0.65 : life;
-    out.push({ id: i + 1, t: Math.min((i * (duration - life)) / count + Math.random() * 400, duration - l), life: l, kind, lane: 1 + Math.floor(Math.random() * lanes), dir: Math.random() < 0.5 ? 1 : -1 });
-  }
+// Round settings as configured (attractions.shooting.rounds) -> local timeline + plan for preview mode.
+export function previewGame(cfgRounds: any[] | undefined, breakSeconds: number, fallback: { duration: number; lanes: number; life: number }) {
+  const list = cfgRounds?.length ? cfgRounds : [{ label: 'Round', durationSeconds: fallback.duration / 1000, targetCount: 40, lanes: fallback.lanes, targetLifetimeMs: fallback.life, targetSize: 100, specialChance: 10, decoyChance: 12, motion: 'straight', pointsPercent: 100 }];
+  const rounds: Round[] = [];
+  const plan: PlanTarget[] = [];
+  let offset = 0;
+  let id = 0;
+  list.forEach((rc, i) => {
+    const duration = rc.durationSeconds * 1000;
+    const span = Math.max(1, duration - rc.targetLifetimeMs);
+    for (let k = 0; k < rc.targetCount; k++) {
+      const roll = Math.random() * 100;
+      const kind = roll < rc.specialChance ? 'special' : roll < rc.specialChance + rc.decoyChance ? 'decoy' : 'normal';
+      const life = kind === 'special' ? rc.targetLifetimeMs * 0.65 : rc.targetLifetimeMs;
+      const local = Math.min((k * span) / rc.targetCount + Math.random() * (span / rc.targetCount), duration - life);
+      plan.push({ id: ++id, round: i + 1, t: offset + Math.max(0, local), life, kind, lane: 1 + Math.floor(Math.random() * rc.lanes), dir: Math.random() < 0.5 ? 1 : -1 });
+    }
+    rounds.push({ number: i + 1, label: rc.label, startMs: offset, endMs: offset + duration, lanes: rc.lanes, size: rc.targetSize, motion: rc.motion,
+      pointsPercent: rc.pointsPercent, life: rc.targetLifetimeMs, decoyChance: rc.decoyChance, targets: rc.targetCount });
+    offset += duration + (i < list.length - 1 ? breakSeconds * 1000 : 0);
+  });
+  return { rounds, plan, duration: rounds[rounds.length - 1].endMs };
+}
+
+// What makes a round harder than the one before, for the break card.
+function changes(r: Round, prev?: Round): string[] {
+  if (!prev) return [];
+  const out: string[] = [];
+  if (r.life < prev.life) out.push('Faster targets');
+  if (r.size < prev.size) out.push('Smaller targets');
+  if (r.lanes > prev.lanes) out.push('More lanes');
+  if (r.decoyChance > prev.decoyChance) out.push('More spirit lanterns');
+  if (r.motion === 'wave' && prev.motion !== 'wave') out.push('Targets weave');
   return out;
 }
+
+const multiplier = (pct: number) => `×${(pct / 100).toFixed(pct % 100 === 0 ? 0 : pct % 10 === 0 ? 1 : 2)}`;
 
 const PREVIEW_POINTS = { normal: 5, bull: 3, special: 15, decoy: -10 };
 
@@ -53,9 +80,16 @@ function TargetArt({ kind }: { kind: string }) {
 
 export function ShootingGame({ data, onClose }: { data: any; onClose: () => void }) {
   const preview = !!data.preview;
-  const duration: number = data.duration ?? 45000;
-  const lanes: number = data.lanes ?? 3;
-  const plan: PlanTarget[] = useMemo(() => data.plan ?? previewPlan(duration, lanes, data.lifetime ?? 2800), [data.gameId, preview]);
+  const game = useMemo(() => {
+    if (data.plan && data.rounds) return { plan: data.plan as PlanTarget[], rounds: data.rounds as Round[], duration: data.duration as number };
+    if (data.plan) {
+      // single-round game from an older server
+      const d = data.duration ?? 45000;
+      return { plan: data.plan as PlanTarget[], duration: d, rounds: [{ number: 1, label: '', startMs: 0, endMs: d, lanes: data.lanes ?? 3, size: 100, motion: 'straight', pointsPercent: 100, life: 2800, decoyChance: 0, targets: data.plan.length }] };
+    }
+    return previewGame(data.rounds, data.roundBreakSeconds ?? 4, { duration: data.duration ?? 45000, lanes: data.lanes ?? 3, life: data.lifetime ?? 2800 });
+  }, [data.gameId, preview]);
+  const { plan, rounds, duration } = game;
   const countdown: number = data.countdownMs ?? 3000;
   const startRef = useRef(performance.now() - (data.elapsedMs ?? -countdown) - countdown);
   const hitRef = useRef<Set<number>>(new Set((data.hitIds ?? []).map(Number)));
@@ -88,6 +122,10 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
 
   const gt = performance.now() - startRef.current - countdown; // game time in ms
   const over = gt > duration;
+  const roundIdx = rounds.findIndex((r) => Math.max(0, gt) < r.endMs);
+  const round = rounds[roundIdx === -1 ? rounds.length - 1 : roundIdx];
+  const between = gt >= 0 && gt < round.startMs; // break before this round
+  const lanes = round.lanes;
 
   useEffect(() => {
     if (!over || finishing.current || result) return;
@@ -113,12 +151,14 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
   };
 
   const shoot = async (target: PlanTarget | null, ring: 'inner' | 'outer', x: number, y: number) => {
-    if (gt < 0 || over || result) return;
+    if (gt < 0 || over || result || (!target && between)) return;
     if (target) hitRef.current.add(target.id);
     if (preview) {
       setShots((s) => s + 1);
       if (!target) return;
-      const pts = target.kind === 'decoy' ? PREVIEW_POINTS.decoy : target.kind === 'special' ? PREVIEW_POINTS.special : PREVIEW_POINTS.normal + (ring === 'inner' ? PREVIEW_POINTS.bull : 0);
+      const pct = rounds[(target.round ?? 1) - 1]?.pointsPercent ?? 100;
+      const base = target.kind === 'decoy' ? PREVIEW_POINTS.decoy : target.kind === 'special' ? PREVIEW_POINTS.special : PREVIEW_POINTS.normal + (ring === 'inner' ? PREVIEW_POINTS.bull : 0);
+      const pts = Math.round((base * pct) / 100);
       if (target.kind !== 'decoy') setHits((h) => h + 1);
       setTotal((t) => t + pts);
       addPopup(x, y, signed(pts), pts > 0);
@@ -149,7 +189,6 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
   const rect = areaRef.current?.getBoundingClientRect();
   const W = rect?.width ?? 1000;
   const H = rect?.height ?? 500;
-  const size = Math.max(40, Math.min(110, (H / lanes) * 0.7));
   const visible = gt >= 0 && !over ? plan.filter((t) => !hitRef.current.has(t.id) && gt >= t.t && gt < t.t + t.life) : [];
 
   return (
@@ -162,7 +201,8 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
             <span className="muted">Hit the targets · golden targets are worth more · <strong>never shoot the spirit lanterns</strong></span>
           </div>
           <div className="sg-stats">
-            <span>Time <strong>{Math.max(0, Math.ceil((duration - Math.max(0, gt)) / 1000))}s</strong></span>
+            {rounds.length > 1 ? <span>Round <strong>{round.number}</strong>/{rounds.length}</span> : null}
+            <span>Time <strong>{between ? '—' : `${Math.max(0, Math.ceil((round.endMs - Math.max(round.startMs, gt)) / 1000))}s`}</strong></span>
             <span>Hits <strong>{hits}</strong>/{shots}</span>
             <span className="gold">Score <strong>{total}</strong></span>
             <Button variant="ghost" onClick={onClose}>{result ? 'Close' : 'Leave'}</Button>
@@ -173,10 +213,14 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
           onMouseLeave={() => setMouse(null)}>
           {Array.from({ length: lanes }, (_, i) => <div key={i} className="sg-lane" style={{ top: `${(i / lanes) * 100}%`, height: `${100 / lanes}%` }} />)}
           {visible.map((t) => {
+            const tr = rounds[(t.round ?? 1) - 1] ?? round;
+            const laneH = H / tr.lanes;
+            const size = Math.max(30, Math.min(120, laneH * 0.7 * (tr.size / 100)));
             const p = (gt - t.t) / t.life;
             const xr = t.dir > 0 ? p : 1 - p;
             const x = -size + xr * (W + size);
-            const y = ((t.lane - 0.5) / lanes) * H - size / 2;
+            const wave = tr.motion === 'wave' ? Math.sin(p * Math.PI * 3 + t.id) * laneH * 0.22 : 0;
+            const y = ((t.lane - 0.5) / tr.lanes) * H - size / 2 + wave;
             return (
               <div key={t.id} className={`sg-target sg-${t.kind}`} style={{ left: x, top: y, width: size, height: size }}
                 onMouseDown={(e) => {
@@ -194,7 +238,23 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
           })}
           {popups.map((p) => <div key={p.id} className={`sg-popup ${p.good ? 'good' : 'bad'}`} style={{ left: p.x, top: p.y }}>{p.text}</div>)}
           {mouse && !result ? <div className="sg-crosshair" style={{ left: mouse.x, top: mouse.y }} /> : null}
-          {gt < 0 ? <div className="sg-countdown">{Math.ceil(-gt / 1000)}</div> : null}
+          {gt < 0 ? (
+            <div className="sg-countdown sg-roundcard">
+              {rounds.length > 1 ? <div className="sg-round-kicker">Round 1 of {rounds.length}{round.label ? ` · ${round.label}` : ''}</div> : null}
+              <div>{Math.ceil(-gt / 1000)}</div>
+            </div>
+          ) : null}
+          {between && !over ? (
+            <div className="sg-countdown sg-roundcard sg-break">
+              <div className="sg-round-kicker">Round {round.number} of {rounds.length}</div>
+              <div className="sg-round-name">{round.label}</div>
+              <div className="sg-round-changes">
+                {changes(round, rounds[round.number - 2]).map((c) => <span key={c} className="pill">{c}</span>)}
+                {round.pointsPercent !== 100 ? <span className="pill pill-gold">Points {multiplier(round.pointsPercent)}</span> : null}
+              </div>
+              <div className="sg-round-count">{Math.ceil((round.startMs - gt) / 1000)}</div>
+            </div>
+          ) : null}
           {over && !result && !error ? <div className="sg-countdown small">Tallying…</div> : null}
           {result ? (
             <div className="sg-result">
@@ -203,6 +263,17 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
               <div className="muted">{result.hits} hits from {result.shots} shots ({result.accuracy}%)
                 {result.bullseyes ? ` · ${result.bullseyes} bullseyes` : ''}{result.specials ? ` · ${result.specials} golden` : ''}
                 {result.decoys ? ` · ${result.decoys} lanterns shot` : ''}{result.accuracyBonus ? ` · accuracy +${result.accuracyBonus}` : ''}</div>
+              {result.rounds && result.rounds.length > 1 ? (
+                <div className="sg-rounds">
+                  {result.rounds.map((r: any) => (
+                    <div key={r.number} className="sg-round-row">
+                      <span>Round {r.number}{r.label ? ` · ${r.label}` : ''}{r.pointsPercent !== 100 ? <em> {multiplier(r.pointsPercent)}</em> : null}</span>
+                      <span className="muted">{r.hits}/{r.targets} hit</span>
+                      <strong>{signed(r.points)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <Button variant="gold" onClick={onClose}>Close</Button>
             </div>
           ) : null}

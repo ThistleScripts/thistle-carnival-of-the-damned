@@ -61,7 +61,15 @@ Recovery tools (Nights & results, active night): reload state from the database,
 
 ### Attraction settings at a glance
 
-* **Shooting Gallery** — aim game length, games per visit, simultaneous players (player limit), targets per game, lanes, crossing speed, points, bullseye bonus, golden target chance/points, spirit lantern chance/penalty, accuracy bonus, miss penalty, minimum time between shots, max score.
+* **Shooting Gallery** — a game is **several rounds, each harder than the last** (*Rounds*, 1-5, plus *break between rounds*). Each round has its own name, length, number of targets, lanes, crossing speed, target size, golden target and spirit lantern chances, movement (`straight`, or `wave` where targets bob as they cross) and a *points multiplier*. The factory game is three 20-second rounds:
+
+  | Round | Targets | Lanes | Cross time | Size | Lanterns | Movement | Points |
+  |---|---|---|---|---|---|---|---|
+  | 1 · Warm-up | 14 | 2 | 3.4 s | 100 % | 6 % | straight | ×1 |
+  | 2 · Quickfire | 20 | 3 | 2.5 s | 85 % | 14 % | straight | ×1.5 |
+  | 3 · Dead Eye | 24 | 3 | 1.9 s | 70 % | 22 % | wave | ×2 |
+
+  Between rounds the screen shows the next round's name, what got harder and its multiplier, with a countdown; clicks during the break are ignored. The result lists the points and hits of every round. Also: games per visit, simultaneous players (player limit), base points per target, bullseye bonus, golden target points, lantern penalty (all multiplied by the round), accuracy bonus, miss penalty, minimum time between shots, max score (default 500).
 * **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, colour), spins per participant, cooldown, animation length, first-spin bonus.
 * **Fortune Teller** — questions per reading, readings per player, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes and whether a fortune scores.
 * **Puppet Master's Theatre** — time for players to join the cast, audience vote time, solo points, scenario library (category, difficulty, performer counts, time limit, points range, roles), default length, participation bonus, max award.
@@ -96,6 +104,63 @@ Dress the carnival with your own props. Every placed prop is saved in the databa
 | Backspace or right click | Cancel |
 
 **Moving and removing.** Target a placed prop for *Admin: move prop* / *Admin: remove prop*, or use **Move**, **Waypoint** and **Remove** on the Props list. Every placement, move and removal is in the audit trail; removed props keep their database row. Placing needs the `props.manage` permission (owners and administrators by default); up to 1,000 props can be placed.
+
+## Prize counter and prize tickets
+
+The games pay out **prize tickets**, a currency separate from leaderboard points (like arcade tickets). Set what each game pays under *Settings → Scoring & prizes → Prize counter → Tickets each game pays out*:
+
+| Setting | Meaning | Default |
+|---|---|---|
+| *Tickets for finishing the game* | Paid once each time a player completes that game. | 3-10 |
+| *Tickets per 100 points scored in it* | Paid as points are scored there, so better play wins more tickets. | 20-25 |
+| *Most tickets one player can win here per night* | Cap per game per player per night (0 = no cap). | 40-80 |
+
+Staff score adjustments, corrections and the participation bonus never pay tickets, and a replayed score never pays twice. Tickets belong to the character (citizen ID) and **carry over between nights**. Players get a toast ("+12 Prize Tickets from House of Horrors") whenever they win some. The currency name is a setting too.
+
+Players spend tickets at the **prize counter** NPC (location, NPC model and blip in the same settings section). Targeting it opens the prize booth: the ticket balance on a ticket stub, shelves (*Treats*, *Drinks*, *Prizes*, *Curiosities*), the item pictures from ox_inventory, a detail panel with quantity, cost and tickets left after, and a *Win tickets at the games* strip showing what each game pays and how much of tonight's cap the player has already won. `/prizetickets` tells a player their balance, and the player hub (`/carnival`) shows it with a waypoint to the counter.
+
+**Item pictures** are taken from ox_inventory, exactly as the inventory shows them: an item's own `client.image` in `ox_inventory/data/items.lua` (a file name in the image folder or a full URL) if it has one, otherwise `<inventory:imagepath>/<item>.png` (the `inventory:imagepath` convar, default `nui://ox_inventory/web/images`). So any item you sell shows the picture you already gave it in ox_inventory, including images hosted on a CDN; if none loads, a gift icon is shown. The admin *Prize counter* page uses the same pictures.
+
+**Items for sale** are a list of `item`, optional shop name and description (blank = the item's own), *shelf*, price in tickets, *limit per player per day* (0 = none) and *for sale*. Any registered ox_inventory item can be sold, except the carnival tickets. The factory list sells the ten carnival foods plus trick/treat tokens and the prize box.
+
+**Redeeming** is decided by the server: the player must be at the counter, have the tickets and room in their inventory; the tickets are taken and the item handed over, and if the hand-over fails the tickets are refunded straight away. Every win, purchase, refund and adjustment is a row in the prize ledger, and a double-clicked or retried purchase is only charged once.
+
+*Players → Prize counter* (`shop.manage`) shows tickets held, won and spent, purchases in the last 24 hours, best sellers, recent purchases and every wallet. **Adjust** adds or removes tickets with a reason (audited).
+
+### Carnival food (`consumables.lua`)
+
+Ten foods and drinks ship with the resource (images in `images/inventory`, definitions in the ox_inventory snippet). **What each one does is set in `blacklist_carnival/consumables.lua`**, one entry per item:
+
+```lua
+carnival_finger_dog = {
+    hunger = 35, thirst = -5, stress = 0, armour = 0, health = 0,
+    time = 4000, anim = 'eat', prop = prop('prop_cs_hotdog_01', 0.13, 0.05, 0.02, -50.0, 16.0, 60.0),
+    message = 'Surprisingly good, considering.',
+},
+```
+
+| Field | Meaning |
+|---|---|
+| `hunger`, `thirst` | Points added to the QBX hunger / thirst, 0-100 scale (100 = full). Negative takes some away (salty food makes you thirsty). |
+| `stress` | Points added to QBX stress; negative calms the player down. |
+| `armour` | Body armour added (capped at 100). |
+| `health` | Health restored, as a percentage of a full bar. |
+| `time` | How long eating takes, in milliseconds (the progress bar can be cancelled). |
+| `anim` | `'eat'`, `'drink'` (defined in `Config.ConsumableAnims` at the bottom of the file) or your own `{ dict = '...', clip = '...', flag = 49 }`. |
+| `prop` | Hand prop: model, position and rotation offsets, bone. Leave it out for none. |
+| `label` / `message` | Progress bar text (default "Eating <item>") / notification afterwards. |
+
+Restart the resource after editing. Values are clamped to sensible ranges, and an entry with a mistake (for example an unknown `anim`) is skipped with a warning in the server console and the monitoring log, so a typo never breaks the other items. The ox_inventory definitions only point at the resource (`server = { export = 'blacklist_carnival.useFood' }`), so nothing in ox_inventory needs changing when you rebalance.
+
+Eating is checked by the server: using the item starts the progress bar, and the item is only removed and the effects applied when the bar finishes (it cannot be skipped or repeated). Hunger, thirst and stress are written to the QBX character's metadata and state bags; armour and health are applied on the player's ped.
+
+**Your own items** can use the same system: give the item `server = { export = 'blacklist_carnival.useFood' }` in `ox_inventory/data/items.lua` and add an entry with its name to `consumables.lua`.
+
+The food pictures are your own artwork (256×256 transparent PNGs in `images/inventory/`, copied to `ox_inventory_additions/web/images/`). To replace one, save the new PNG under the item name in both folders (and in `ox_inventory/web/images/`). `tools/generate_item_images.py` leaves them alone unless run with `--food-placeholders`.
+
+## Ambient sound
+
+*Settings → Carnival → Ambient sound* holds the **sound zones**: each has a centre (use **Use my position**), a radius, a looping sound and a volume. Players hear a zone at full volume at its centre, fading to silence at its edge; zones overlap and fade smoothly as players walk. The factory zones (midway organ waltz, crowd murmur, Fortune Teller chimes, House of Horrors wind) sit at the default pier positions — move them with your attractions. The loops are original and bundled (`tools/generate_audio.py`); the master volume in *Audio* also applies. Any player can mute the ambience for themselves with `/carnivalambience`.
 
 ## Prizes
 
