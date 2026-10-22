@@ -52,7 +52,7 @@ export function ShopPage() {
                 <Stat label="Earned all time" value={d.totals.earned} />
                 <Stat label="Spent all time" value={d.totals.spent} />
                 <Stat label="Purchases (24 h)" value={d.totals.purchasesToday} tone="ok" />
-                <Stat label="Players with points" value={d.totals.wallets} />
+                <Stat label="Players with tickets" value={d.totals.wallets} />
               </div>
               <div className="grid-2">
                 <Card title="Best sellers">
@@ -84,7 +84,7 @@ export function ShopPage() {
                   {submitted ? <Button small variant="ghost" type="button" onClick={() => { setQuery(''); setSubmitted(''); }}>Clear</Button> : null}
                 </form>
               }>
-                {wallets.length === 0 ? <p className="muted">{submitted ? 'No wallets match.' : 'Nobody has earned any points yet.'}</p> : (
+                {wallets.length === 0 ? <p className="muted">{submitted ? 'No wallets match.' : 'Nobody has won any tickets yet.'}</p> : (
                   <Table head={['Player', 'Balance', 'Earned', 'Spent', 'Last change', '']}>
                     {wallets.map((w: any) => (
                       <tr key={w.citizenid}>
