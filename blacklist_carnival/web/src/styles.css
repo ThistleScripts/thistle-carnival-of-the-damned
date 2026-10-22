@@ -77,8 +77,15 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .backdrop { background-size: cover; background-position: center; background-repeat: no-repeat; }
 
 /* Overlays */
-.overlay-center { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(8, 4, 6, 0.45), rgba(4, 2, 3, 0.82)); animation: fade-in 0.25s ease; }
-.overlay-full { position: fixed; inset: 0; display: flex; padding: 3vh 3vw; background: rgba(4, 2, 3, 0.72); animation: fade-in 0.25s ease; }
+/* Panels float over the game world: no full-screen dimming, and every panel is
+   scaled by --ui-zoom (set from the screen size in main.tsx, about 0.8 at
+   1080p) so it covers roughly half the screen. The shooting gallery measures
+   mouse positions in screen pixels, so it is sized instead of scaled. */
+:root { --ui-zoom: 0.8; }
+.overlay-center { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: transparent; pointer-events: none; animation: fade-in 0.25s ease; }
+.overlay-full { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: transparent; pointer-events: none; animation: fade-in 0.25s ease; }
+.overlay-center > *, .overlay-full > * { pointer-events: auto; }
+.overlay-center > :not(.shooting-frame), .overlay-full > *, .app > .modal-backdrop > .modal, .hud, .side-card, .horror-hud, .results-banner, .toasts { zoom: var(--ui-zoom); }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
 
@@ -106,7 +113,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .kicker { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--blood-hi); }
 
 /* App shell (admin) */
-.app-shell { flex: 1; display: flex; flex-direction: row; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background-color: var(--velvet); box-shadow: var(--shadow-lg); min-width: 0; animation: rise-in 0.3s ease; }
+.app-shell { flex: none; width: min(1320px, 96vw); height: min(880px, 92vh); display: flex; flex-direction: row; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background-color: var(--velvet); box-shadow: var(--shadow-lg); min-width: 0; animation: rise-in 0.3s ease; }
 .sidebar { width: 248px; flex-shrink: 0; background: linear-gradient(180deg, rgba(30, 14, 21, 0.96), rgba(12, 7, 10, 0.98)); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 12px; }
 .brand { display: flex; gap: 12px; align-items: center; padding: 4px 8px 20px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
 .brand-mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #1a0d10; background: var(--foil-flat); box-shadow: var(--glow-gold); flex-shrink: 0; }
@@ -275,7 +282,7 @@ select option { background: #1a1116; }
 .health-bad .health-mark { background: rgba(236, 83, 103, 0.18); color: var(--bad); }
 
 /* Modal */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(3, 1, 2, 0.75); display: flex; align-items: center; justify-content: center; z-index: 50; animation: fade-in 0.15s; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(3, 1, 2, 0.35); display: flex; align-items: center; justify-content: center; z-index: 50; animation: fade-in 0.15s; }
 .modal { width: min(540px, 94vw); max-height: 90vh; display: flex; flex-direction: column; background: var(--velvet); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: var(--shadow-lg); animation: rise-in 0.2s ease; }
 .modal-wide { width: min(1100px, 96vw); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--line); }
@@ -495,10 +502,10 @@ select option { background: #1a1116; }
 .preview-banner { background: rgba(214, 174, 96, 0.1); border: 1px dashed var(--gold); color: var(--gold-hi); text-align: center; padding: 6px 10px; border-radius: 10px; margin-bottom: 12px; font-size: 12px; letter-spacing: 0.1em; }
 
 /* Shooting Gallery mini-game */
-.shooting-frame { width: min(1200px, 96vw); }
+.shooting-frame { width: min(980px, 56vw); }
 .sg-stats { display: flex; gap: 18px; align-items: center; font-size: 15px; }
 .sg-stats strong { font-family: var(--font-display); color: var(--gold-hi); font-size: 18px; }
-.sg-area { position: relative; height: min(580px, 62vh); overflow: hidden; border-radius: 14px; cursor: none;
+.sg-area { position: relative; height: min(460px, 50vh); overflow: hidden; border-radius: 14px; cursor: none;
   border: 1px solid var(--line-strong); box-shadow: inset 0 0 0 4px #0c0609, inset 0 0 0 5px rgba(214, 174, 96, 0.3), inset 0 0 120px rgba(0, 0, 0, 0.85);
   background: radial-gradient(ellipse at center, rgba(142, 22, 38, 0.25), rgba(0, 0, 0, 0.85)), url(backgrounds/shooting_range.png), url(backgrounds/shooting_range.jpg), repeating-linear-gradient(90deg, #1a0d10 0 60px, #150a0d 60px 120px); background-size: cover; }
 .sg-area::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 38px; z-index: 1; pointer-events: none;

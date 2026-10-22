@@ -93,6 +93,8 @@ end
 RegisterNUICallback('ready', function(_, cb)
     Client.nuiReady = true
     cb({ ok = true })
+    -- the player's own panel size (/carnivalui)
+    Carnival.nui('uiScale', { scale = (GetResourceKvpInt('blacklist_carnival:uiScale') > 0 and GetResourceKvpInt('blacklist_carnival:uiScale') or 100) / 100 })
     -- where ox_inventory keeps its item pictures (shop and admin thumbnails)
     Carnival.nui('inventory', { imagePath = GetConvar('inventory:imagepath', 'nui://ox_inventory/web/images') })
     if Client.settings then
@@ -276,6 +278,22 @@ Carnival.cleanup = Carnival.cleanup or {}
 function Carnival.onCleanup(fn)
     table.insert(Carnival.cleanup, fn)
 end
+
+-- Panel size for this player, 50-150 % of the automatic size (remembered).
+RegisterCommand('carnivalui', function(_, args)
+    local pct = tonumber(args[1])
+    if not pct then
+        local cur = GetResourceKvpInt('blacklist_carnival:uiScale')
+        return lib.notify({ title = 'Carnival', description = ('Panel size is %d%%. Use /carnivalui 50-150 (100 = default).'):format(cur > 0 and cur or 100), type = 'inform' })
+    end
+    pct = math.floor(math.max(50, math.min(150, pct)))
+    SetResourceKvpInt('blacklist_carnival:uiScale', pct)
+    Carnival.nui('uiScale', { scale = pct / 100 })
+    lib.notify({ title = 'Carnival', description = ('Panel size set to %d%%.'):format(pct), type = 'success' })
+end, false)
+TriggerEvent('chat:addSuggestion', '/carnivalui', 'Make the carnival panels bigger or smaller (just for you)', {
+    { name = 'percent', help = '50-150, 100 = default' },
+})
 
 RegisterCommand('carnivalclose', function()
     Carnival.closeAllViews()

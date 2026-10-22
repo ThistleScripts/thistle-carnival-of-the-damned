@@ -21,4 +21,5 @@ All commands are checked on the server with the same permission as the equivalen
 | `/carnivalprop` | `<model> [name]` | `props.manage` | Starts the prop placer with that model (see the admin manual's *World props*). |
 | `/prizetickets` | – | anyone | Shows your prize tickets (spent at the prize counter). `/prizepoints` still works. |
 | `/carnivalambience` | – | anyone | Turns the carnival ambient sounds off or on, just for you (remembered). |
+| `/carnivalui` | `[50-150]` | anyone | Makes the carnival panels bigger or smaller, just for you (remembered; 100 = default). Without a number it shows the current size. |
 | `/carnivalclose` | – | anyone | Closes every carnival interface and releases NUI focus (safety valve). |
