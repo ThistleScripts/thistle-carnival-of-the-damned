@@ -114,31 +114,41 @@ Carnival.Defaults = {
         roundSound = 'round_bell',
     },
 
-    -- Prize counter: players spend prize points earned from their game scores.
+    -- Prize counter: players spend the prize tickets the games pay out.
     shop = {
         enabled = true,
         label = 'The Prize Counter',
-        currency = 'Prize Points',
-        earnPercent = 100,
+        currency = 'Prize Tickets',
+        -- Tickets each game pays out, separate from leaderboard points:
+        -- perPlay for finishing the game, per100Points for how well you did
+        -- (tickets per 100 points scored there), maxPerNight caps one game.
+        earning = {
+            shooting = { perPlay = 5, per100Points = 20, maxPerNight = 60 },
+            wheel = { perPlay = 3, per100Points = 20, maxPerNight = 40 },
+            fortune = { perPlay = 5, per100Points = 25, maxPerNight = 60 },
+            puppets = { perPlay = 8, per100Points = 20, maxPerNight = 60 },
+            deception = { perPlay = 8, per100Points = 20, maxPerNight = 60 },
+            horror = { perPlay = 10, per100Points = 25, maxPerNight = 80 },
+        },
         location = v4(-1641.2, -1061.8, 13.15, 230.0),
         npcModel = 's_f_y_shop_mid',
         interactDistance = 2.5,
         validationDistance = 8.0,
         blip = { enabled = true, sprite = 52, colour = 1 },
         items = {
-            { item = 'carnival_bloodfloss', price = 15, dailyLimit = 0, enabled = true },
-            { item = 'carnival_eyeball_pop', price = 10, dailyLimit = 0, enabled = true },
-            { item = 'carnival_grave_popcorn', price = 15, dailyLimit = 0, enabled = true },
-            { item = 'carnival_poison_apple', price = 20, dailyLimit = 0, enabled = true },
-            { item = 'carnival_bone_pretzel', price = 20, dailyLimit = 0, enabled = true },
-            { item = 'carnival_finger_dog', price = 25, dailyLimit = 0, enabled = true },
-            { item = 'carnival_web_cake', price = 30, dailyLimit = 0, enabled = true },
-            { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, enabled = true },
-            { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, enabled = true },
-            { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, enabled = true },
-            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, enabled = true },
-            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, enabled = true },
-            { item = 'carnival_prize_box', price = 250, dailyLimit = 2, enabled = true },
+            { item = 'carnival_bloodfloss', price = 15, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_eyeball_pop', price = 10, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_grave_popcorn', price = 15, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_poison_apple', price = 20, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_bone_pretzel', price = 20, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_finger_dog', price = 25, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_web_cake', price = 30, dailyLimit = 0, category = 'food', enabled = true },
+            { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, category = 'drink', enabled = true },
+            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, category = 'prize', enabled = true },
+            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, category = 'prize', enabled = true },
+            { item = 'carnival_prize_box', price = 250, dailyLimit = 2, category = 'prize', enabled = true },
         },
     },
 

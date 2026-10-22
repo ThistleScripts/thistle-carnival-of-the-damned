@@ -47,8 +47,8 @@ function handlePush(channel: string, data: any) {
       setState({ shooting: { ...data, receivedAt: Date.now() } });
       break;
     case 'wallet':
-      setState({ wallet: { balance: data.balance ?? 0, earned: data.earned ?? 0, spent: data.spent ?? 0, currency: data.currency ?? 'Prize Points' } });
-      if (data.delta > 0) toast(`+${data.delta} ${data.currency ?? 'prize points'} to spend at the prize counter`, 'success');
+      setState({ wallet: { balance: data.balance ?? 0, earned: data.earned ?? 0, spent: data.spent ?? 0, currency: data.currency ?? 'Prize Tickets' } });
+      if (data.delta > 0) toast(`+${data.delta} ${data.currency ?? 'prize tickets'}${data.attraction ? ` from ${ATTRACTION_SHORT[data.attraction] ?? data.attraction}` : ''}`, 'success');
       break;
     case 'invalidate':
       if (Array.isArray(data)) invalidate(data);

@@ -2,7 +2,7 @@
 
 * Engine InnoDB, charset utf8mb4. All tables are prefixed `carnival_`.
 * **Timestamps are UTC unix epoch seconds** (`BIGINT UNSIGNED`) — unambiguous regardless of server/database time zone; the NUI formats them in the viewer's local time.
-* Migrations: `sql/migrations/NNN_name.sql`, applied in order at start and recorded in `carnival_schema_migrations` (with a checksum; edited migrations raise a warning). Statements are idempotent. Add new migrations as new files and list them in `Db.MIGRATIONS` (`server/persistence.lua`). Current migrations: 001 initial schema, 002 attraction seed, 003 theatre timer columns, 004 walk-up mode (`carnival_events.mode`, session `kind`, optional round/colour, `carnival_session_members`), 005 world props (`carnival_props`), 006 prize counter (`carnival_prize_wallets`, `carnival_prize_ledger`).
+* Migrations: `sql/migrations/NNN_name.sql`, applied in order at start and recorded in `carnival_schema_migrations` (with a checksum; edited migrations raise a warning). Statements are idempotent. Add new migrations as new files and list them in `Db.MIGRATIONS` (`server/persistence.lua`). Current migrations: 001 initial schema, 002 attraction seed, 003 theatre timer columns, 004 walk-up mode (`carnival_events.mode`, session `kind`, optional round/colour, `carnival_session_members`), 005 world props (`carnival_props`), 006 prize counter (`carnival_prize_wallets`, `carnival_prize_ledger`), 007 prize tickets per game (`carnival_prize_ledger.attraction_id`).
 * All queries are parameterised. Related writes (score ledger + summary + total, state change + transition row, config deactivate + insert, group change + history) use `MySQL.transaction`.
 * Nothing is deleted except monitoring records past their retention (`Config.Retention`). The audit log is insert-only.
 
@@ -39,8 +39,8 @@
 | `carnival_staff_assignments` | In-game role grants (license, role, event scope, granted/revoked by + reasons). `attraction_id` is unused since games have no staff. |
 | `carnival_event_results` / `carnival_event_result_rows` | Frozen results, versioned per event, with tie-break order and prize tiers. |
 | `carnival_props` | World props from the prop placer: model, name, position, rotation, solid flag, who placed/moved it; `deleted_at` marks removed props (rows are kept). |
-| `carnival_prize_wallets` | Prize points per character (**citizenid** primary key): balance, earned and spent totals. Kept between nights. |
-| `carnival_prize_ledger` | Every prize-point change: `kind` (`earned` from a score transaction, `purchase`, `refund`, `adjust`), delta, balance after, item/count/unit price, staff and reason. Unique `idempotency_key` (`score:<tx>`, `buy:<citizenid>:<request>`, `refund:<row>`, `adjust:<request>`). Written in one transaction with the wallet. |
+| `carnival_prize_wallets` | Prize tickets per character (**citizenid** primary key): balance, earned and spent totals. Kept between nights. |
+| `carnival_prize_ledger` | Every prize-ticket change: `kind` (`earned` for finishing a game or scoring in it, with `attraction_id` for the per-night cap; `purchase`, `refund`, `adjust`), delta, balance after, item/count/unit price, staff and reason. Unique `idempotency_key` (`score:<tx>`, `play:<session>:<participant>`, `buy:<citizenid>:<request>`, `refund:<row>`, `adjust:<request>`). Written in one transaction with the wallet. |
 | `carnival_audit_log` | Administrative audit trail (insert-only). |
 | `carnival_monitor_log` | Operational + security monitoring (pruned by retention). |
 

@@ -382,42 +382,52 @@ describe('theatre audience vote', () => {
 
 describe('prize counter', () => {
   const shop = {
-    label: 'The Prize Counter', currency: 'Prize Points', earnPercent: 100,
+    label: 'The Prize Counter', currency: 'Prize Tickets',
     wallet: { balance: 40, earned: 60, spent: 20 },
+    earning: [{ attraction: 'shooting', label: 'The Shooting Gallery', perPlay: 5, per100Points: 20, maxPerNight: 60, wonTonight: 30 }],
     items: [
-      { item: 'carnival_witch_brew', label: "Witch's Brew Lemonade", description: 'Sour green lemonade.', price: 15, dailyLimit: 0 },
-      { item: 'carnival_prize_box', label: 'Carnival Prize Box', price: 250, dailyLimit: 2, remainingToday: 2 },
-      { item: 'carnival_trick_token', label: 'Trick Token', price: 5, dailyLimit: 5, remainingToday: 0 },
+      { item: 'carnival_witch_brew', label: "Witch's Brew Lemonade", description: 'Sour green lemonade.', price: 15, category: 'drink', dailyLimit: 0 },
+      { item: 'carnival_prize_box', label: 'Carnival Prize Box', price: 250, category: 'prize', dailyLimit: 2, remainingToday: 2 },
+      { item: 'carnival_trick_token', label: 'Trick Token', price: 5, category: 'prize', dailyLimit: 5, remainingToday: 0 },
+      { item: 'carnival_bloodfloss', label: 'Bloodspun Candy Floss', price: 10, category: 'food', dailyLimit: 0 },
     ],
   };
 
-  it('shows the wallet and items, and buys with a fresh request id', async () => {
+  it('shows the ticket balance, shelves and how to win tickets, and redeems with a fresh request id', async () => {
     responses['shop.buy'] = { ok: true, data: { balance: 10, item: 'carnival_witch_brew', count: 2, cost: 30 } };
     responses['shop.open'] = { ok: true, data: { ...shop, wallet: { ...shop.wallet, balance: 10 } } };
     render(<App />);
     lua('open', { view: 'shop', data: shop });
     expect(screen.getByText('40')).toBeTruthy();
-    expect(screen.getByText("Witch's Brew Lemonade")).toBeTruthy();
-    // unaffordable and sold-out items cannot be bought
-    expect((screen.getByText('Buy · 250').closest('button') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByText('Sold out').closest('button') as HTMLButtonElement).disabled).toBe(true);
-    const card = screen.getByText("Witch's Brew Lemonade").closest('.shop-card') as HTMLElement;
-    fireEvent.click(card.querySelector('.stepper button:last-child')!);
-    fireEvent.click(screen.getByText('Buy · 30'));
+    expect(screen.getByText('+5 for playing')).toBeTruthy();
+    expect(screen.getByText('30/60 tonight')).toBeTruthy();
+    // shelves filter the items
+    fireEvent.click(screen.getByText('Prizes'));
+    expect(screen.queryByText('Bloodspun Candy Floss')).toBeNull();
+    // unaffordable and sold-out prizes cannot be redeemed
+    fireEvent.click(screen.getByText('Carnival Prize Box', { selector: '.booth-item-name' }));
+    expect((screen.getByText('210 more prize tickets needed').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText('Trick Token', { selector: '.booth-item-name' }));
+    expect((screen.getByText('Come back tomorrow').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    // buy two drinks
+    fireEvent.click(screen.getByText('Everything'));
+    fireEvent.click(screen.getByText("Witch's Brew Lemonade", { selector: '.booth-item-name' }));
+    fireEvent.click(document.querySelector('.booth-detail .stepper button:last-child')!);
+    fireEvent.click(screen.getByText('Redeem 2 for 30'));
     await waitFor(() => expect(calls.find((c) => c.endpoint === 'shop.buy')).toBeTruthy());
     const buy = calls.find((c) => c.endpoint === 'shop.buy')!.payload;
     expect(buy).toMatchObject({ item: 'carnival_witch_brew', count: 2 });
     expect(buy.requestId).toMatch(/^[0-9a-f]{24}$/);
-    await waitFor(() => expect(screen.getByText('10')).toBeTruthy());
+    await waitFor(() => expect(document.querySelector('.booth-balance-value')!.textContent).toBe('10'));
     expect(playSound).toHaveBeenCalledWith('shop_purchase', 0.7);
   });
 
-  it('wallet pushes update the balance and announce earned points', async () => {
+  it('wallet pushes update the balance and announce the tickets won', async () => {
     render(<App />);
     lua('open', { view: 'shop', data: shop });
-    lua('push', { channel: 'wallet', data: { balance: 65, earned: 85, spent: 20, currency: 'Prize Points', delta: 25 } });
-    expect(screen.getByText('65')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/\+25 Prize Points/)).toBeTruthy());
+    lua('push', { channel: 'wallet', data: { balance: 65, earned: 85, spent: 20, currency: 'Prize Tickets', delta: 25, attraction: 'horror' } });
+    expect(document.querySelector('.booth-balance-value')!.textContent).toBe('65');
+    await waitFor(() => expect(screen.getByText(/\+25 Prize Tickets from House of Horrors/)).toBeTruthy());
   });
 
   it('ambient levels from Lua go to the mixer', () => {
@@ -427,7 +437,7 @@ describe('prize counter', () => {
 
   it('admin prize counter page lists wallets and adjusts with a reason', async () => {
     responses['shop.overview'] = { ok: true, data: {
-      currency: 'Prize Points',
+      currency: 'Prize Tickets',
       totals: { wallets: 1, outstanding: 40, earned: 60, spent: 20, purchasesToday: 1, spentToday: 20 },
       popular: [{ item: 'carnival_witch_brew', sold: 2, points: 30 }],
       recent: [{ id: 3, citizenid: 'ABC123', display_name: 'Ada Lovelace', kind: 'purchase', delta: -30, balance_after: 40, item: 'carnival_witch_brew', item_count: 2, created_at: 1760000000 }],

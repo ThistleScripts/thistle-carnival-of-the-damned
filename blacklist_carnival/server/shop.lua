@@ -1,15 +1,17 @@
--- Prize counter: a per-character wallet of prize points and a shop to spend them.
+-- Prize counter: a per-character wallet of prize tickets and a shop to spend them.
 --
--- Points are credited automatically from game scores (Scoring.award calls
--- Shop.credit for every positive, non-staff transaction), at `shop.earnPercent`
--- prize points per 100 game points. Staff adjustments and corrections never
--- earn prize points. Wallets are keyed by citizenid and carry over between
--- nights.
+-- Tickets are a separate currency from leaderboard points. Each game pays out
+-- (`shop.earning.<attraction>`): `perPlay` tickets for finishing it (from
+-- Rotation's participation record) and `per100Points` tickets per 100 points
+-- scored there (Scoring.award calls Shop.credit for every positive game score;
+-- staff adjustments, corrections and participation bonuses never pay), capped
+-- at `maxPerNight` per game per player. Wallets are keyed by citizenid and
+-- carry over between nights.
 --
 -- Every balance change is a row in carnival_prize_ledger with a unique
 -- idempotency key (score:<txId>, buy:<citizenid>:<requestId>, ...), written in
 -- one transaction with the wallet update, so a replayed credit or a retried
--- purchase can never apply twice. Purchases take the points first and refund
+-- purchase can never apply twice. Purchases take the tickets first and refund
 -- them if the item cannot be handed over.
 
 local C, U, V = Carnival.C, Carnival.U, Carnival.Validate
@@ -57,13 +59,19 @@ local function apply(cid, name, entry)
         if existing then return true, { id = existing.id, balance = existing.balance_after, duplicate = true } end
         local w = Shop.wallet(cid)
         if not w then return false, 'database_error', 'Your wallet could not be loaded.' end
+        if entry.maxPerNight and entry.maxPerNight > 0 then
+            local so_far = tonumber(Carnival.Db.scalar([[SELECT COALESCE(SUM(delta), 0) FROM carnival_prize_ledger
+                WHERE citizenid = ? AND event_id = ? AND attraction_id = ? AND kind = 'earned']], { cid, entry.eventId, entry.attractionId })) or 0
+            entry.delta = math.min(entry.delta, entry.maxPerNight - so_far)
+            if entry.delta <= 0 then return true, { balance = w.balance, delta = 0, capped = true } end
+        end
         local balance = w.balance + entry.delta
-        if balance < 0 then return false, 'insufficient', 'You do not have enough points.' end
+        if balance < 0 then return false, 'insufficient', ('You do not have enough %s.'):format(cfg().currency) end
         local now = os.time()
         local actor = entry.actor
         local insSql, insParams = Carnival.Db.buildInsert('carnival_prize_ledger', {
             citizenid = cid, kind = entry.kind, delta = entry.delta, balance_after = balance,
-            event_id = entry.eventId, score_tx_id = entry.scoreTxId, item = entry.item, item_count = entry.count,
+            event_id = entry.eventId, attraction_id = entry.attractionId, score_tx_id = entry.scoreTxId, item = entry.item, item_count = entry.count,
             unit_price = entry.unitPrice, reason = entry.reason and U.sanitizeText(entry.reason, 500) or nil,
             staff_license = actor and actor.license ~= 'system' and actor.license or nil,
             staff_name = actor and actor.license ~= 'system' and actor.name or nil,
@@ -80,28 +88,64 @@ local function apply(cid, name, entry)
         if not ok then
             local dup = Carnival.Db.single('SELECT id, balance_after FROM carnival_prize_ledger WHERE idempotency_key = ?', { entry.key })
             if dup then return true, { id = dup.id, balance = dup.balance_after, duplicate = true } end
-            return false, 'database_error', 'The points could not be saved.'
+            return false, 'database_error', 'The tickets could not be saved.'
         end
         local id = Carnival.Db.scalar('SELECT id FROM carnival_prize_ledger WHERE idempotency_key = ?', { entry.key })
-        return true, { id = id, balance = balance, duplicate = false }
+        return true, { id = id, balance = balance, delta = entry.delta, duplicate = false }
     end)
 end
 
--- Called by Scoring.award after a positive game score was written.
--- p: participant row, tx: { id, delta }
-function Shop.credit(p, tx, eventId)
-    local c = cfg()
-    if not p or not p.citizenid or not tx or not tx.id or (tx.delta or 0) <= 0 then return end
-    local amount = math.floor(tx.delta * c.earnPercent / 100)
-    if amount <= 0 then return end
+local function earn(p, attractionId, eventId, amount, key, scoreTxId, reason)
+    local rule = attractionId and cfg().earning[attractionId]
+    if not rule or amount <= 0 or not p.citizenid then return end
     local ok, res = apply(p.citizenid, p.display_name, {
-        kind = 'earned', delta = amount, key = 'score:' .. tx.id, eventId = eventId, scoreTxId = tx.id,
+        kind = 'earned', delta = amount, key = key, eventId = eventId, attractionId = attractionId,
+        scoreTxId = scoreTxId, reason = reason, maxPerNight = rule.maxPerNight,
     })
-    if ok and not res.duplicate then
+    if ok and not res.duplicate and (res.delta or 0) > 0 then
         local src = Carnival.Participants.sourceOf(p.id)
         if src then sourceByCitizen[p.citizenid] = src end
-        pushWallet(p.citizenid, { delta = amount })
+        pushWallet(p.citizenid, { delta = res.delta, attraction = attractionId })
     end
+end
+
+-- Called by Scoring.award after a positive game score was written.
+-- p: participant row, tx: { id, delta, attractionId, txType }
+function Shop.credit(p, tx, eventId)
+    if not p or not tx or not tx.id or (tx.delta or 0) <= 0 or not tx.attractionId then return end
+    if tx.txType == 'participation' then return end -- finishing a game pays perPlay instead
+    local rule = cfg().earning[tx.attractionId]
+    if not rule then return end
+    earn(p, tx.attractionId, eventId, math.floor(tx.delta * rule.per100Points / 100), 'score:' .. tx.id, tx.id)
+end
+
+-- Called by Rotation when a participant finishes a game (completed visit).
+function Shop.played(p, attractionId, sessionId, eventId)
+    local rule = cfg().earning[attractionId]
+    if not p or not rule or rule.perPlay <= 0 then return end
+    earn(p, attractionId, eventId, rule.perPlay, ('play:%d:%d'):format(sessionId, p.id), nil, 'finished the game')
+end
+
+-- How each game pays out, and what this player has won there tonight.
+function Shop.earningRules(cid)
+    local eventId = Carnival.Events.activeId()
+    local won = {}
+    if cid and eventId then
+        for _, r in ipairs(Carnival.Db.query([[SELECT attraction_id, SUM(delta) AS n FROM carnival_prize_ledger
+            WHERE citizenid = ? AND event_id = ? AND kind = 'earned' GROUP BY attraction_id]], { cid, eventId }) or {}) do
+            if r.attraction_id then won[r.attraction_id] = tonumber(r.n) or 0 end
+        end
+    end
+    local out = {}
+    for _, id in ipairs(C.ATTRACTIONS) do
+        local rule = cfg().earning[id]
+        local a = Carnival.Config.get().attractions[id]
+        if rule and a and a.enabled then
+            out[#out + 1] = { attraction = id, label = a.label, perPlay = rule.perPlay, per100Points = rule.per100Points,
+                maxPerNight = rule.maxPerNight, wonTonight = won[id] or 0 }
+        end
+    end
+    return out
 end
 
 -- Admin correction of a wallet. requestId keeps UI retries idempotent.
@@ -160,6 +204,7 @@ function Shop.catalogue(cid)
                 label = (it.label and it.label ~= '') and it.label or (info and info.label) or it.item,
                 description = (it.description and it.description ~= '') and it.description or (info and info.description) or nil,
                 price = it.price,
+                category = it.category or 'other',
                 dailyLimit = it.dailyLimit,
             }
             if cid and it.dailyLimit > 0 then entry.remainingToday = math.max(0, it.dailyLimit - usedToday(cid, it.item)) end
@@ -214,7 +259,7 @@ function Shop.buy(src, item, count, requestId)
         })
         Carnival.Monitor.log('warning', 'shop', 'purchase_refunded', { details = { citizenid = cid, item = item, count = count, error = tostring(err), refunded = rok } })
         pushWallet(cid)
-        return nil, 'delivery_failed', rok and 'The item could not be handed over; your points were refunded.'
+        return nil, 'delivery_failed', rok and 'The item could not be handed over; your tickets were refunded.'
             or 'The item could not be handed over and the refund failed. Please contact staff.'
     end
 
@@ -282,7 +327,7 @@ Api.register('shop.open', {
         local cid = Carnival.Identity.citizenid(ctx.source)
         if not cid then return nil, 'no_character', 'Load a character first.' end
         sourceByCitizen[cid] = ctx.source
-        return { label = c.label, currency = c.currency, earnPercent = c.earnPercent, wallet = publicWallet(Shop.wallet(cid), c.currency), items = Shop.catalogue(cid) }
+        return { label = c.label, currency = c.currency, earning = Shop.earningRules(cid), wallet = publicWallet(Shop.wallet(cid), c.currency), items = Shop.catalogue(cid) }
     end,
 })
 

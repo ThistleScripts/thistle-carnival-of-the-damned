@@ -177,9 +177,9 @@ function Scoring.award(opts)
         end
         Carnival.Leaderboard.markDirty()
         Carnival.Push.invalidate('scores')
-        -- prize points for the prize counter (game scores only, never staff changes)
+        -- prize tickets for the prize counter (game scores only, never staff changes)
         if delta > 0 and not isStaff and txId and Carnival.Shop then
-            local cok, cerr = pcall(Carnival.Shop.credit, p, { id = txId, delta = delta }, e.id)
+            local cok, cerr = pcall(Carnival.Shop.credit, p, { id = txId, delta = delta, attractionId = opts.attractionId, txType = txType }, e.id)
             if not cok then Carnival.Monitor.log('error', 'shop', 'prize_credit_failed', { participantId = p.id, details = { error = tostring(cerr), txId = txId } }) end
         end
         return true, { id = txId, delta = delta, requested = requested, previous = total, total = resulting, clamped = clampNote, duplicate = false }

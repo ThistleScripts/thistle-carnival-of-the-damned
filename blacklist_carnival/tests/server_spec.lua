@@ -97,7 +97,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 6, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -105,7 +105,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 6, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -1161,7 +1161,7 @@ local function shopItem(name)
     for _, it in ipairs(settings().shop.items) do if it.item == name then return it end end
 end
 
-test('game scores earn prize points; staff adjustments and replays do not', function()
+test('games pay prize tickets for playing and scoring, capped per night; staff changes and replays pay nothing', function()
     BUYER = WALKERS[1]
     if not Carnival.Participants.getBySource(BUYER) then
         at(BUYER, settings().registration.entrance)
@@ -1169,22 +1169,46 @@ test('game scores earn prize points; staff adjustments and replays do not', func
     end
     local p = Carnival.Participants.getBySource(BUYER)
     truthy(p and p.status == 'active', 'walk-up participant')
+    local cid = H.players[BUYER].citizenid
+    local rule = settings().shop.earning.fortune
+    local saved = { perPlay = rule.perPlay, per100Points = rule.per100Points, maxPerNight = rule.maxPerNight }
+    rule.perPlay, rule.per100Points, rule.maxPerNight = 5, 50, 30
     local before = balanceOf(BUYER)
-    local saved = settings().shop.earnPercent
-    settings().shop.earnPercent = 50
     H.pushes = {}
     local ok, tx = H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
     truthy(ok and tx.delta > 0, 'scored')
-    eq(balanceOf(BUYER), before + math.floor(tx.delta * 50 / 100), 'earned at the configured rate')
+    local fromScore = math.floor(tx.delta * 50 / 100)
+    eq(balanceOf(BUYER), before + fromScore, 'tickets for points scored, at the game\'s rate')
     local pushed = H.pushesFor(BUYER, 'wallet')
-    eq(pushed[#pushed].delta, math.floor(tx.delta * 50 / 100), 'wallet pushed')
+    eq(pushed[#pushed].delta, fromScore, 'wallet pushed')
+    eq(pushed[#pushed].attraction, 'fortune')
     local mid = balanceOf(BUYER)
     H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
-    eq(balanceOf(BUYER), mid, 'replayed score earns nothing')
-    okRes(H.api(ADMIN, 'scores.adjust', { participantId = p.id, delta = 30, reason = 'testing the counter', requestId = 'shopadj000001' }))
-    eq(balanceOf(BUYER), mid, 'staff adjustments earn nothing')
-    settings().shop.earnPercent = saved
-    eq(count("SELECT COUNT(*) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND kind = 'earned' AND score_tx_id = ?", { H.players[BUYER].citizenid, tx.id }), 1)
+    eq(balanceOf(BUYER), mid, 'replayed score pays nothing')
+    okRes(H.api(ADMIN, 'scores.adjust', { participantId = p.id, delta = 30, reason = 'testing the counter', requestId = 'shopadj000001', attractionId = 'fortune' }))
+    eq(balanceOf(BUYER), mid, 'staff adjustments pay nothing')
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 10, key = 'shoptest:2', source = 'participation_bonus', txType = 'participation', attractionId = 'fortune' })
+    eq(balanceOf(BUYER), mid, 'participation bonus points pay nothing (finishing pays perPlay)')
+
+    local eventId = Carnival.Events.activeId()
+    H.call(Carnival.Shop.played, p, 'fortune', 9001, eventId)
+    eq(balanceOf(BUYER), mid + 5, 'tickets for finishing the game')
+    H.call(Carnival.Shop.played, p, 'fortune', 9001, eventId)
+    eq(balanceOf(BUYER), mid + 5, 'finishing pays once per visit')
+    -- the cap: fortune may pay at most 30 tonight
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 100, key = 'shoptest:3', source = 'test', attractionId = 'fortune', skipAttractionCap = true })
+    eq(tonumber(H.sql([[SELECT SUM(delta) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND event_id = ? AND attraction_id = 'fortune' AND kind = 'earned']], { cid, eventId })[1].n), 30, 'capped per night')
+    local capped = balanceOf(BUYER)
+    H.call(Carnival.Shop.played, p, 'fortune', 9002, eventId)
+    eq(balanceOf(BUYER), capped, 'nothing more once the cap is reached')
+
+    local open = okRes(H.api(BUYER, 'shop.open'))
+    local fortune
+    for _, r in ipairs(open.earning) do if r.attraction == 'fortune' then fortune = r end end
+    eq(fortune.wonTonight, 30, 'shop shows what this game has paid tonight')
+    eq(fortune.perPlay, 5)
+    truthy(open.items[1].category, 'items carry their shelf')
+    rule.perPlay, rule.per100Points, rule.maxPerNight = saved.perPlay, saved.per100Points, saved.maxPerNight
 end)
 
 test('buying checks distance, stock rules and balance, and retries never charge twice', function()
@@ -1315,7 +1339,7 @@ test('tickets cannot be put on sale and ambient zones are validated', function()
         return paths, tree
     end
     local paths, tree = errorPaths(function(t)
-        t.shop.items[#t.shop.items + 1] = { item = 'carnival_ticket_red', price = 1, dailyLimit = 0, enabled = true }
+        t.shop.items[#t.shop.items + 1] = { item = 'carnival_ticket_red', price = 1, dailyLimit = 0, category = 'prize', enabled = true }
     end)
     truthy(paths['shop.items.' .. #tree.shop.items .. '.item'], 'ticket rejected')
     paths = errorPaths(function(t) t.ambience.zones[1].sound = 'not_a_sound' end)

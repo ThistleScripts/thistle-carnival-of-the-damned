@@ -97,17 +97,25 @@ Dress the carnival with your own props. Every placed prop is saved in the databa
 
 **Moving and removing.** Target a placed prop for *Admin: move prop* / *Admin: remove prop*, or use **Move**, **Waypoint** and **Remove** on the Props list. Every placement, move and removal is in the audit trail; removed props keep their database row. Placing needs the `props.manage` permission (owners and administrators by default); up to 1,000 props can be placed.
 
-## Prize counter
+## Prize counter and prize tickets
 
-Every point a player scores in the games also earns **prize points** (*Settings → Scoring & prizes → Prize counter*: *prize points per 100 game points*, default 100 = one for one). Staff score adjustments and corrections never earn prize points, and a replayed score never pays twice. Prize points belong to the character (citizen ID) and **carry over between nights**.
+The games pay out **prize tickets**, a currency separate from leaderboard points (like arcade tickets). Set what each game pays under *Settings → Scoring & prizes → Prize counter → Tickets each game pays out*:
 
-Players spend them at the **prize counter** NPC (location, NPC model and blip in the same settings section): targeting it opens a shop showing their balance and the items for sale with their inventory pictures. `/prizepoints` tells a player their balance, and the player hub (`/carnival`) shows it with a waypoint to the counter.
+| Setting | Meaning | Default |
+|---|---|---|
+| *Tickets for finishing the game* | Paid once each time a player completes that game. | 3-10 |
+| *Tickets per 100 points scored in it* | Paid as points are scored there, so better play wins more tickets. | 20-25 |
+| *Most tickets one player can win here per night* | Cap per game per player per night (0 = no cap). | 40-80 |
 
-**Items for sale** are a list of `item`, optional shop name and description (blank = the item's own), `price`, *limit per player per day* (0 = none) and *for sale*. Any registered ox_inventory item can be sold, except the carnival tickets. The factory list sells the ten carnival foods plus trick/treat tokens and the prize box.
+Staff score adjustments, corrections and the participation bonus never pay tickets, and a replayed score never pays twice. Tickets belong to the character (citizen ID) and **carry over between nights**. Players get a toast ("+12 Prize Tickets from House of Horrors") whenever they win some. The currency name is a setting too.
 
-**Buying** is decided by the server: the player must be at the counter, have the points and room in their inventory; the points are taken and the item handed over, and if the hand-over fails the points are refunded straight away. Every purchase, refund and adjustment is a row in the prize ledger, and a double-clicked or retried purchase is only charged once.
+Players spend tickets at the **prize counter** NPC (location, NPC model and blip in the same settings section). Targeting it opens the prize booth: the ticket balance on a ticket stub, shelves (*Treats*, *Drinks*, *Prizes*, *Curiosities*), the item pictures from ox_inventory, a detail panel with quantity, cost and tickets left after, and a *Win tickets at the games* strip showing what each game pays and how much of tonight's cap the player has already won. `/prizetickets` tells a player their balance, and the player hub (`/carnival`) shows it with a waypoint to the counter.
 
-*Players → Prize counter* (`shop.manage`) shows points held, earned and spent, purchases in the last 24 hours, best sellers, recent purchases and every wallet. **Adjust** adds or removes points with a reason (audited).
+**Items for sale** are a list of `item`, optional shop name and description (blank = the item's own), *shelf*, price in tickets, *limit per player per day* (0 = none) and *for sale*. Any registered ox_inventory item can be sold, except the carnival tickets. The factory list sells the ten carnival foods plus trick/treat tokens and the prize box.
+
+**Redeeming** is decided by the server: the player must be at the counter, have the tickets and room in their inventory; the tickets are taken and the item handed over, and if the hand-over fails the tickets are refunded straight away. Every win, purchase, refund and adjustment is a row in the prize ledger, and a double-clicked or retried purchase is only charged once.
+
+*Players → Prize counter* (`shop.manage`) shows tickets held, won and spent, purchases in the last 24 hours, best sellers, recent purchases and every wallet. **Adjust** adds or removes tickets with a reason (audited).
 
 ### Carnival food (`consumables.lua`)
 

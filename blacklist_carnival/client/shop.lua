@@ -17,10 +17,12 @@ Carnival.onPush('wallet', function(data)
     end
 end)
 
-RegisterCommand('prizepoints', function()
+local function showTickets()
     local w = Carnival.api('shop.wallet')
     if not w then return end
-    lib.notify({ title = 'Prize counter', description = ('You have %d %s.'):format(w.balance or 0, w.currency or 'points'), type = 'inform' })
-end, false)
+    lib.notify({ title = 'Prize counter', description = ('You have %d %s.'):format(w.balance or 0, w.currency or 'tickets'), type = 'inform' })
+end
+RegisterCommand('prizetickets', showTickets, false)
+RegisterCommand('prizepoints', showTickets, false) -- old name
 
-TriggerEvent('chat:addSuggestion', '/prizepoints', 'Show how many prize points you have to spend at the carnival prize counter')
+TriggerEvent('chat:addSuggestion', '/prizetickets', 'Show how many prize tickets you have to spend at the carnival prize counter')

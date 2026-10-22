@@ -1,7 +1,7 @@
--- Carnival of the Damned - full schema (equivalent to sql/migrations/001-006).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-007).
 -- Optional: the resource applies migrations automatically on start. Importing this
 -- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
--- start the resource records the migrations as applied (the columns added by 003/004
+-- start the resource records the migrations as applied (the columns added by 003/004/007
 -- are already present here, which the migration runner accepts).
 
 -- Carnival of the Damned - migration 001: initial schema
@@ -702,6 +702,7 @@ CREATE TABLE IF NOT EXISTS carnival_prize_ledger (
     delta INT NOT NULL,
     balance_after INT NOT NULL,
     event_id INT UNSIGNED NULL,
+    attraction_id VARCHAR(32) NULL,
     score_tx_id INT UNSIGNED NULL,
     item VARCHAR(64) NULL,
     item_count INT NULL,
@@ -713,5 +714,6 @@ CREATE TABLE IF NOT EXISTS carnival_prize_ledger (
     created_at BIGINT UNSIGNED NOT NULL,
     UNIQUE KEY uq_prize_ledger_key (idempotency_key),
     KEY idx_prize_ledger_citizen (citizenid, created_at),
-    KEY idx_prize_ledger_kind (kind, created_at)
+    KEY idx_prize_ledger_kind (kind, created_at),
+    KEY idx_prize_ledger_earning (citizenid, event_id, attraction_id, kind)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
