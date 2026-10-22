@@ -67,6 +67,10 @@ end
 -- Open a NUI view. opts.focus (default true) captures keyboard+mouse.
 function Carnival.openView(view, data, opts)
     opts = opts or {}
+    if not Client.nuiReady then
+        print('^1[blacklist_carnival] the carnival interface (NUI) has not loaded. Check that web/dist exists and is listed in files {} in fxmanifest.lua, and look for errors in F8.^0')
+        lib.notify({ title = 'Carnival', description = 'The carnival interface has not loaded yet. If this keeps happening, tell an admin (see F8).', type = 'error' })
+    end
     if opts.focus ~= false then
         focusViews[view] = { cursor = opts.cursor ~= false }
     end
@@ -100,6 +104,14 @@ RegisterNUICallback('ready', function(_, cb)
     if Client.settings then
         Carnival.nui('push', { channel = 'bootstrap', data = Client.lastBootstrap })
     end
+end)
+
+-- Interface errors reported by the NUI (window errors and screens that failed to draw).
+RegisterNUICallback('nuiError', function(data, cb)
+    cb({ ok = true })
+    if type(data) ~= 'table' then return end
+    print(('^1[blacklist_carnival] interface error: %s^0'):format(tostring(data.message)))
+    if data.stack and data.stack ~= '' then print(tostring(data.stack)) end
 end)
 
 RegisterNUICallback('close', function(data, cb)

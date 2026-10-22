@@ -18,6 +18,9 @@ local function guard(src, perm)
     if not Carnival.Perms.has(src, perm) then
         Carnival.Monitor.security(src, 'permission_denied', { command = true, permission = perm }, 'permission')
         reply(src, 'You do not have permission to do that.', 'error')
+        -- help owners fix config.lua: show which identifiers this player has
+        print(('^3[blacklist_carnival] %s (id %d) lacks %s. Their identifiers: %s. Add one to Config.Security.Allowlist in config.lua, e.g. [\'%s\'] = \'owner\', then restart the resource.^0'):format(
+            GetPlayerName(tostring(src)) or '?', src, perm, table.concat(Carnival.Identity.licenses(src), ', '), Carnival.Identity.licenses(src)[1] or 'license:...'))
         return false
     end
     return true
@@ -39,6 +42,9 @@ end, false)
 
 RegisterCommand('carnivaladmin', function(src)
     if src == 0 or not guard(src, 'panel.admin') then return end
+    -- send fresh settings and permissions first, so the panel opens even if the
+    -- client missed its bootstrap (e.g. it loaded before the server was ready)
+    Carnival.Push.bootstrap(src)
     TriggerClientEvent('blacklist_carnival:client:openPanel', src, 'admin')
 end, false)
 

@@ -17,7 +17,9 @@ import './styles.css';
 import { fetchNui, isNui } from './nui';
 import { loadLocale } from './i18n';
 import { installBridge } from './bridge';
+import { installErrorReporting } from './components/ErrorBoundary';
 
+installErrorReporting();
 installBridge();
 
 // Scale every panel to the screen: designed at 2400×1350, so about 0.8 at
@@ -39,11 +41,12 @@ window.addEventListener('message', (ev) => {
 });
 applyZoom();
 
-loadLocale().finally(() => {
-  createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-  if (isNui) fetchNui('ready').catch(() => undefined);
-});
+// Render straight away; the locale strings are only fallback error texts and
+// load in the background (a slow or missing file must never keep the UI blank).
+createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+if (isNui) fetchNui('ready').catch(() => undefined);
+loadLocale().catch(() => undefined);

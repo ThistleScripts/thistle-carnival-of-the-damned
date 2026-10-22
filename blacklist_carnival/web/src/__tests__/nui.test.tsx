@@ -503,3 +503,16 @@ describe('prize counter', () => {
     expect(calls.find((c) => c.endpoint === 'shop.adjust')!.payload).toMatchObject({ citizenid: 'ABC123', delta: 50, reason: 'Lost points in a crash' });
   });
 });
+
+describe('error safety net', () => {
+  it('a screen that fails to draw shows an error card with a way out instead of a blank screen', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<App />);
+    lua('open', { view: 'shop', data: { label: 'Broken', currency: 'Tickets', wallet: { balance: 0 }, items: null } });
+    expect(screen.getByText('The carnival interface hit a problem')).toBeTruthy();
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.queryByText('The carnival interface hit a problem')).toBeNull();
+    expect(getState().views.shop).toBeUndefined();
+    spy.mockRestore();
+  });
+});
