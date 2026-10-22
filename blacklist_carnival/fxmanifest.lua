@@ -29,6 +29,7 @@ shared_scripts {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'config.lua',
+    'consumables.lua',
     'server/main.lua',
     'server/persistence.lua',
     'server/monitoring.lua',
@@ -58,6 +59,7 @@ server_scripts {
     'server/attractions/horror.lua',
     'server/props.lua',
     'server/shop.lua',
+    'server/consumables.lua',
     'server/admin_api.lua',
     'server/commands.lua',
     'server/exports.lua',
@@ -79,6 +81,7 @@ client_scripts {
     'client/attractions/horror.lua',
     'client/props.lua',
     'client/shop.lua',
+    'client/consumables.lua',
     'client/ambience.lua',
     'client/preview.lua',
 }

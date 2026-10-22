@@ -82,116 +82,57 @@ return {
         server = { export = 'blacklist_carnival.usePrizeBox' },
     },
 
-    -- Carnival food sold at the prize counter. Plain ox_inventory consumables:
-    -- `client.status` feeds hunger/thirst (works with qbx_core's ox_inventory bridge).
+    -- Carnival food sold at the prize counter. What each one does (hunger, thirst,
+    -- stress, armour, health, animation, prop, time) is set in
+    -- blacklist_carnival/consumables.lua, not here.
     ['carnival_bloodfloss'] = {
         label = 'Bloodspun Candy Floss', weight = 40, stack = true, close = true,
         description = 'Spun from sugar and something darker. It leaves your lips red.',
-        client = {
-            status = { hunger = 150000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_candy_pqs', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 3000,
-            notification = 'The floss melts like it was never there.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_poison_apple'] = {
         label = 'Poisoned Toffee Apple', weight = 120, stack = true, close = true,
         description = 'Black toffee over a green apple. The skull on the stick is only a joke. Probably.',
-        client = {
-            status = { hunger = 250000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_amb_donut', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 4000,
-            notification = 'Crunchy. Sour. You feel fine. For now.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_finger_dog'] = {
         label = 'Severed Finger Corn Dog', weight = 160, stack = true, close = true,
         description = 'Battered, fried and dressed in ketchup. Do not count the knuckles.',
-        client = {
-            status = { hunger = 350000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_cs_hotdog_01', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 4000,
-            notification = 'Surprisingly good, considering.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_grave_popcorn'] = {
         label = 'Graveyard Popcorn', weight = 100, stack = true, close = true,
         description = 'Buttered and charcoal-black kernels in a coffin-striped box.',
-        client = {
-            status = { hunger = 200000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_candy_pqs', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 3500,
-            notification = 'A handful of popcorn, half of it black as soot.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_bone_pretzel'] = {
         label = 'Bone-Knot Pretzel', weight = 140, stack = true, close = true,
         description = 'A soft pretzel twisted into a femur and crusted with salt.',
-        client = {
-            status = { hunger = 300000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_sandwich_01', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 4000,
-            notification = 'Salty, chewy and only a little bit ominous.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_web_cake'] = {
         label = 'Cobweb Funnel Cake', weight = 180, stack = true, close = true,
         description = 'Fried batter under a web of powdered sugar. Mind the resident.',
-        client = {
-            status = { hunger = 400000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_amb_donut', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 4500,
-            notification = 'Sugar dust everywhere. The spider was decorative. You hope.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_eyeball_pop'] = {
         label = 'Eyeball Cake Pop', weight = 80, stack = true, close = true,
         description = 'A cake pop that watches you eat it. Raspberry glaze.',
-        client = {
-            status = { hunger = 120000 },
-            anim = { dict = 'mp_player_inteat@burger', clip = 'mp_player_int_eat_burger' },
-            prop = { model = 'prop_choc_ego', pos = vec3(0.02, 0.02, -0.02), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 2500,
-            notification = 'It stopped staring at you. Eventually.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_witch_brew'] = {
         label = 'Witch\'s Brew Lemonade', weight = 90, stack = true, close = true,
         description = 'Sour green lemonade that will not stop bubbling.',
-        client = {
-            status = { thirst = 300000 },
-            anim = { dict = 'mp_player_intdrink', clip = 'loop_bottle' },
-            prop = { model = 'prop_food_bs_juice01', pos = vec3(0.01, 0.0, 0.0), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 3500,
-            notification = 'Fizzy, sour and faintly glowing.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_blood_slushie'] = {
         label = 'Blood Moon Slushie', weight = 110, stack = true, close = true,
         description = 'Crushed ice and cherry syrup the colour of an eclipse.',
-        client = {
-            status = { thirst = 350000 },
-            anim = { dict = 'mp_player_intdrink', clip = 'loop_bottle' },
-            prop = { model = 'prop_food_bs_juice01', pos = vec3(0.01, 0.0, 0.0), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 3500,
-            notification = 'Brain freeze, the carnival way.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
     ['carnival_grave_shake'] = {
         label = 'Grave Dirt Shake', weight = 200, stack = true, close = true,
         description = 'Chocolate shake buried under cookie crumbs, gummy worms and a headstone.',
-        client = {
-            status = { hunger = 150000, thirst = 250000 },
-            anim = { dict = 'mp_player_intdrink', clip = 'loop_bottle' },
-            prop = { model = 'prop_food_bs_juice01', pos = vec3(0.01, 0.0, 0.0), rot = vec3(0.0, 0.0, 0.0) },
-            usetime = 4500,
-            notification = 'You dug all the way to the bottom.',
-        },
+        server = { export = 'blacklist_carnival.useFood' },
     },
 }

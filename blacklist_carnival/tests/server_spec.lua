@@ -1247,6 +1247,64 @@ test('a failed hand-over refunds the points; wallets are admin-only to change', 
     eq(w.balance, tonumber(H.sql('SELECT SUM(delta) AS n FROM carnival_prize_ledger WHERE citizenid = ?', { cid })[1].n), 'ledger balances')
 end)
 
+test('food effects come from consumables.lua and eating is checked by the server', function()
+    local src = BUYER
+    local p = H.players[src]
+    p.metadata.hunger, p.metadata.thirst, p.metadata.stress = 50, 50, 20
+    local useFood = H.ownExports.useFood
+    truthy(useFood, 'useFood export registered')
+    local function give(item) table.insert(H.inventories[src].items, { name = item, count = 1, metadata = {}, slot = #H.inventories[src].items + 1 }) end
+    local function use(item)
+        H.pushes = {}
+        local r = H.call(useFood, 'usingItem', { name = item, label = item }, { id = src, items = H.inventories[src].items }, 1)
+        eq(r, false, 'ox_inventory is told not to consume it itself')
+        local pushed = H.pushesFor(src, 'consume')
+        return pushed[#pushed]
+    end
+
+    give('carnival_finger_dog')
+    local cfg = Config.Consumables.carnival_finger_dog
+    local job = use('carnival_finger_dog')
+    truthy(job and job.token, 'eating started')
+    eq(job.time, cfg.time)
+    eq(job.anim.dict, Config.ConsumableAnims.eat.dict, 'named animation resolved')
+    eq(job.prop.model, cfg.prop.model)
+    eq(use('carnival_finger_dog'), nil, 'cannot start a second one while eating')
+    errRes(H.api(src, 'food.finish', { token = job.token }), 'too_fast', 'finishing instantly is refused')
+
+    job = (function() H.advance(30) return use('carnival_finger_dog') end)()
+    truthy(job, 'restarted after the last one expired')
+    H.ms = H.ms + cfg.time
+    local res = okRes(H.api(src, 'food.finish', { token = job.token }))
+    eq(p.metadata.hunger, 50 + cfg.hunger, 'hunger added')
+    eq(p.metadata.thirst, 50 + cfg.thirst, 'thirst changed')
+    eq(H.stateBags[src].hunger, 50 + cfg.hunger, 'state bag replicated')
+    eq(res.armour, cfg.armour)
+    eq(#H.itemsOf(src, 'carnival_finger_dog'), 0, 'item removed')
+    errRes(H.api(src, 'food.finish', { token = job.token }), 'invalid', 'a token works once')
+
+    -- values are clamped to 0-100 and armour/health are passed to the client
+    give('carnival_grave_shake')
+    Config.Consumables.carnival_grave_shake = { hunger = 500, thirst = 10, stress = -100, armour = 40, health = 25, time = 1000, anim = 'drink' }
+    Carnival.Consumables.load()
+    job = use('carnival_grave_shake')
+    H.ms = H.ms + 1000
+    res = okRes(H.api(src, 'food.finish', { token = job.token }))
+    eq(p.metadata.hunger, 100, 'capped at 100')
+    eq(p.metadata.stress, 0, 'stress cannot go below 0')
+    eq(res.armour, 40)
+    eq(res.health, 25)
+    eq(job.prop, nil, 'no prop configured')
+
+    -- bad entries are skipped with a warning, unconfigured items are refused
+    Config.Consumables.carnival_web_cake = { hunger = 10, anim = 'dance' }
+    local _, bad = Carnival.Consumables.load()
+    eq(#bad, 1, 'invalid anim reported')
+    give('carnival_web_cake')
+    eq(use('carnival_web_cake'), nil, 'unconfigured treat does nothing')
+    eq(#H.itemsOf(src, 'carnival_web_cake'), 1, 'and is not taken')
+end)
+
 test('tickets cannot be put on sale and ambient zones are validated', function()
     local function errorPaths(mutate)
         local tree = Carnival.U.deepCopy(settings())

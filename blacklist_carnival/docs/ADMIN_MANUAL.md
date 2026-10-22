@@ -109,24 +109,36 @@ Players spend them at the **prize counter** NPC (location, NPC model and blip in
 
 *Players → Prize counter* (`shop.manage`) shows points held, earned and spent, purchases in the last 24 hours, best sellers, recent purchases and every wallet. **Adjust** adds or removes points with a reason (audited).
 
-### Carnival food
+### Carnival food (`consumables.lua`)
 
-Ten consumables ship with the resource (images in `images/inventory`, definitions in the ox_inventory snippet). They use ox_inventory's own `client.status` hunger/thirst values (qbx_core's ox_inventory bridge applies them), with an eating or drinking animation and a hand prop:
+Ten foods and drinks ship with the resource (images in `images/inventory`, definitions in the ox_inventory snippet). **What each one does is set in `blacklist_carnival/consumables.lua`**, one entry per item:
 
-| Item | Name | Restores |
-|---|---|---|
-| `carnival_bloodfloss` | Bloodspun Candy Floss | hunger |
-| `carnival_poison_apple` | Poisoned Toffee Apple | hunger |
-| `carnival_finger_dog` | Severed Finger Corn Dog | hunger (a lot) |
-| `carnival_grave_popcorn` | Graveyard Popcorn | hunger |
-| `carnival_bone_pretzel` | Bone-Knot Pretzel | hunger |
-| `carnival_web_cake` | Cobweb Funnel Cake | hunger (the most) |
-| `carnival_eyeball_pop` | Eyeball Cake Pop | hunger (a little) |
-| `carnival_witch_brew` | Witch's Brew Lemonade | thirst |
-| `carnival_blood_slushie` | Blood Moon Slushie | thirst |
-| `carnival_grave_shake` | Grave Dirt Shake | hunger + thirst |
+```lua
+carnival_finger_dog = {
+    hunger = 35, thirst = -5, stress = 0, armour = 0, health = 0,
+    time = 4000, anim = 'eat', prop = prop('prop_cs_hotdog_01', 0.13, 0.05, 0.02, -50.0, 16.0, 60.0),
+    message = 'Surprisingly good, considering.',
+},
+```
 
-Change the amounts, animations or props in `ox_inventory/data/items.lua` after pasting. To redraw the pictures: `python3 tools/generate_item_images.py`.
+| Field | Meaning |
+|---|---|
+| `hunger`, `thirst` | Points added to the QBX hunger / thirst, 0-100 scale (100 = full). Negative takes some away (salty food makes you thirsty). |
+| `stress` | Points added to QBX stress; negative calms the player down. |
+| `armour` | Body armour added (capped at 100). |
+| `health` | Health restored, as a percentage of a full bar. |
+| `time` | How long eating takes, in milliseconds (the progress bar can be cancelled). |
+| `anim` | `'eat'`, `'drink'` (defined in `Config.ConsumableAnims` at the bottom of the file) or your own `{ dict = '...', clip = '...', flag = 49 }`. |
+| `prop` | Hand prop: model, position and rotation offsets, bone. Leave it out for none. |
+| `label` / `message` | Progress bar text (default "Eating <item>") / notification afterwards. |
+
+Restart the resource after editing. Values are clamped to sensible ranges, and an entry with a mistake (for example an unknown `anim`) is skipped with a warning in the server console and the monitoring log, so a typo never breaks the other items. The ox_inventory definitions only point at the resource (`server = { export = 'blacklist_carnival.useFood' }`), so nothing in ox_inventory needs changing when you rebalance.
+
+Eating is checked by the server: using the item starts the progress bar, and the item is only removed and the effects applied when the bar finishes (it cannot be skipped or repeated). Hunger, thirst and stress are written to the QBX character's metadata and state bags; armour and health are applied on the player's ped.
+
+**Your own items** can use the same system: give the item `server = { export = 'blacklist_carnival.useFood' }` in `ox_inventory/data/items.lua` and add an entry with its name to `consumables.lua`.
+
+To redraw the item pictures: `python3 tools/generate_item_images.py`.
 
 ## Ambient sound
 

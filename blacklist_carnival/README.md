@@ -38,6 +38,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 
 ```
 config.lua                bootstrap security (roles, allowlists, webhooks via convars, logging) — server only
+consumables.lua           what each carnival food/drink gives (hunger, thirst, stress, armour, health, anim, prop) — server only
 shared/                   constants, utils, config schema, factory defaults, validation
 server/                   bootstrap, persistence, monitoring, audit, discord, identity, permissions,
                           api router, push, config manager, inventory, prizes, events, registration,
