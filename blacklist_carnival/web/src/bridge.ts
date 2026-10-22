@@ -1,5 +1,5 @@
 import { closeViewState, getState, invalidate, openView, setState, syncServerTime } from './store';
-import { playSound, stopAll, stopSound } from './audio';
+import { playSound, setAmbient, stopAll, stopSound } from './audio';
 import { toast } from './components/ui';
 import { ATTRACTION_SHORT, signed } from './format';
 
@@ -46,6 +46,10 @@ function handlePush(channel: string, data: any) {
     case 'shooting':
       setState({ shooting: { ...data, receivedAt: Date.now() } });
       break;
+    case 'wallet':
+      setState({ wallet: { balance: data.balance ?? 0, earned: data.earned ?? 0, spent: data.spent ?? 0, currency: data.currency ?? 'Prize Points' } });
+      if (data.delta > 0) toast(`+${data.delta} ${data.currency ?? 'prize points'} to spend at the prize counter`, 'success');
+      break;
     case 'invalidate':
       if (Array.isArray(data)) invalidate(data);
       break;
@@ -88,6 +92,9 @@ export function onLuaMessage(ev: MessageEvent) {
       if (data.action === 'play') playSound(data.sound, data.volume ?? 1, !!data.loop);
       else if (data.action === 'stop') stopSound(data.sound);
       else if (data.action === 'stopAll') stopAll();
+      break;
+    case 'ambient':
+      setAmbient(Array.isArray(data.levels) ? data.levels : []);
       break;
     case 'shooting':
       if (data.serverTime) syncServerTime(data.serverTime);

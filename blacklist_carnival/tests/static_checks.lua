@@ -102,6 +102,7 @@ end
 Carnival = {}
 dofile('shared/constants.lua')
 local C = Carnival.C
+vec3 = function(x, y, z) return { x = x, y = y, z = z } end -- FiveM builtin used by item props
 local defs = dofile('items/items.lua')
 local manifest = require('dkjson').decode(read('items/item-manifest.json'))
 local manifestNames = {}

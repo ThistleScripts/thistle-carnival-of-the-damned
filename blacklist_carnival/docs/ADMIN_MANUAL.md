@@ -97,6 +97,41 @@ Dress the carnival with your own props. Every placed prop is saved in the databa
 
 **Moving and removing.** Target a placed prop for *Admin: move prop* / *Admin: remove prop*, or use **Move**, **Waypoint** and **Remove** on the Props list. Every placement, move and removal is in the audit trail; removed props keep their database row. Placing needs the `props.manage` permission (owners and administrators by default); up to 1,000 props can be placed.
 
+## Prize counter
+
+Every point a player scores in the games also earns **prize points** (*Settings → Scoring & prizes → Prize counter*: *prize points per 100 game points*, default 100 = one for one). Staff score adjustments and corrections never earn prize points, and a replayed score never pays twice. Prize points belong to the character (citizen ID) and **carry over between nights**.
+
+Players spend them at the **prize counter** NPC (location, NPC model and blip in the same settings section): targeting it opens a shop showing their balance and the items for sale with their inventory pictures. `/prizepoints` tells a player their balance, and the player hub (`/carnival`) shows it with a waypoint to the counter.
+
+**Items for sale** are a list of `item`, optional shop name and description (blank = the item's own), `price`, *limit per player per day* (0 = none) and *for sale*. Any registered ox_inventory item can be sold, except the carnival tickets. The factory list sells the ten carnival foods plus trick/treat tokens and the prize box.
+
+**Buying** is decided by the server: the player must be at the counter, have the points and room in their inventory; the points are taken and the item handed over, and if the hand-over fails the points are refunded straight away. Every purchase, refund and adjustment is a row in the prize ledger, and a double-clicked or retried purchase is only charged once.
+
+*Players → Prize counter* (`shop.manage`) shows points held, earned and spent, purchases in the last 24 hours, best sellers, recent purchases and every wallet. **Adjust** adds or removes points with a reason (audited).
+
+### Carnival food
+
+Ten consumables ship with the resource (images in `images/inventory`, definitions in the ox_inventory snippet). They use ox_inventory's own `client.status` hunger/thirst values (qbx_core's ox_inventory bridge applies them), with an eating or drinking animation and a hand prop:
+
+| Item | Name | Restores |
+|---|---|---|
+| `carnival_bloodfloss` | Bloodspun Candy Floss | hunger |
+| `carnival_poison_apple` | Poisoned Toffee Apple | hunger |
+| `carnival_finger_dog` | Severed Finger Corn Dog | hunger (a lot) |
+| `carnival_grave_popcorn` | Graveyard Popcorn | hunger |
+| `carnival_bone_pretzel` | Bone-Knot Pretzel | hunger |
+| `carnival_web_cake` | Cobweb Funnel Cake | hunger (the most) |
+| `carnival_eyeball_pop` | Eyeball Cake Pop | hunger (a little) |
+| `carnival_witch_brew` | Witch's Brew Lemonade | thirst |
+| `carnival_blood_slushie` | Blood Moon Slushie | thirst |
+| `carnival_grave_shake` | Grave Dirt Shake | hunger + thirst |
+
+Change the amounts, animations or props in `ox_inventory/data/items.lua` after pasting. To redraw the pictures: `python3 tools/generate_item_images.py`.
+
+## Ambient sound
+
+*Settings → Carnival → Ambient sound* holds the **sound zones**: each has a centre (use **Use my position**), a radius, a looping sound and a volume. Players hear a zone at full volume at its centre, fading to silence at its edge; zones overlap and fade smoothly as players walk. The factory zones (midway organ waltz, crowd murmur, Fortune Teller chimes, House of Horrors wind) sit at the default pier positions — move them with your attractions. The loops are original and bundled (`tools/generate_audio.py`); the master volume in *Audio* also applies. Any player can mute the ambience for themselves with `/carnivalambience`.
+
 ## Prizes
 
 *Prizes & results* defines rank tiers (from/to rank, label, items). When results freeze, a reward row is created per winner and item (idempotent: re-freezing never duplicates a prize). Offline winners receive prizes when they next log in (if *retry on login* is on) or via Players → Prize deliveries.

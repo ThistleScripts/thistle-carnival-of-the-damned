@@ -7,6 +7,7 @@ import { ConfigEditor } from './ConfigEditor';
 import { AuditPage, EventsPage, HealthPage, LedgerPage, MonitoringPage, Overview, RewardsPage, StaffPage } from './Pages';
 import { ParticipantsPanel, StaffLeaderboard } from '../shared/Operations';
 import { PropsPage } from './PropsPage';
+import { ShopPage } from './ShopPage';
 
 type PageId = 'overview' | 'players' | 'nights' | 'settings' | 'system';
 interface Tab { id: string; label: string; perm?: string }
@@ -15,12 +16,13 @@ interface Page { id: PageId; label: string; icon: string; blurb: string; tabs?: 
 const PAGES: Page[] = [
   { id: 'overview', label: 'Overview', icon: 'home', blurb: 'How the carnival is doing right now' },
   {
-    id: 'players', label: 'Players', icon: 'people', blurb: 'Tickets, scores and prizes',
+    id: 'players', label: 'Players', icon: 'people', blurb: 'Tickets, scores, prizes and the prize counter',
     tabs: [
       { id: 'participants', label: 'Participants', perm: 'participants.view' },
       { id: 'leaderboard', label: 'Leaderboard', perm: 'leaderboard.staff' },
       { id: 'ledger', label: 'Score ledger', perm: 'scores.view' },
       { id: 'rewards', label: 'Prize deliveries', perm: 'rewards.manage' },
+      { id: 'shop', label: 'Prize counter', perm: 'shop.manage' },
     ],
   },
   { id: 'nights', label: 'Nights & results', icon: 'crown', blurb: 'Every carnival night, its results and exports', perm: 'events.history' },
@@ -52,6 +54,7 @@ const SETTING_SECTIONS: Record<string, { id: string; label: string; icon?: strin
     { id: 'groups', label: 'Ticket colours' },
     { id: 'rotation', label: 'Rotation' },
     { id: 'audio', label: 'Audio' },
+    { id: 'ambience', label: 'Ambient sound' },
   ],
   attractions: [
     { id: 'attractions.shooting', label: 'Shooting Gallery', icon: 'shooting' },
@@ -66,6 +69,7 @@ const SETTING_SECTIONS: Record<string, { id: string; label: string; icon?: strin
     { id: 'leaderboard', label: 'Leaderboard' },
     { id: 'prizes', label: 'Prizes & results' },
     { id: 'rewards', label: 'Reward items' },
+    { id: 'shop', label: 'Prize counter' },
   ],
 };
 
@@ -112,6 +116,7 @@ export default function AdminApp({ onClose }: { onClose: () => void }) {
     else if (tab === 'leaderboard') content = <StaffLeaderboard />;
     else if (tab === 'ledger') content = <LedgerPage />;
     else if (tab === 'rewards') content = <RewardsPage />;
+    else if (tab === 'shop') content = <ShopPage />;
   } else if (page.id === 'system') {
     if (tab === 'health') content = <HealthPage />;
     else if (tab === 'roles') content = <StaffPage />;

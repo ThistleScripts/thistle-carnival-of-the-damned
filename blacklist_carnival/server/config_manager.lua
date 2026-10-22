@@ -139,6 +139,7 @@ function Cfg.referencedItems(tree)
     end
     for i, it in ipairs(tree.rewards.allowedItems or {}) do add(it, ('rewards.allowedItems.%d'):format(i)) end
     for i, it in ipairs(tree.rewards.prizeBox or {}) do add(it.item, ('rewards.prizeBox.%d.item'):format(i)) end
+    for i, it in ipairs(tree.shop and tree.shop.items or {}) do add(it.item, ('shop.items.%d.item'):format(i)) end
     if a.horror.physicalTokens then
         for _, t in ipairs(C.TOKEN_TYPES) do add(C.TOKEN_ITEMS[t], 'attractions.horror.physicalTokens') end
     end
@@ -379,6 +380,11 @@ function Cfg.publicSettings()
         leaderboard = e.leaderboard,
         audio = e.audio,
         rewards = { trickEffectSeconds = e.rewards.trickEffectSeconds },
+        shop = {
+            enabled = e.shop.enabled, label = e.shop.label, currency = e.shop.currency,
+            location = e.shop.location, npcModel = e.shop.npcModel, interactDistance = e.shop.interactDistance, blip = e.shop.blip,
+        },
+        ambience = e.ambience,
         attractions = attractions,
     }
 end

@@ -15,9 +15,10 @@ import { ShootingGame } from './player/ShootingGame';
 import { TheatreVote } from './player/TheatreVote';
 import { ResultsBanner } from './player/ResultsBanner';
 import { PlayerHub } from './player/PlayerHub';
+import { ShopView } from './player/ShopView';
 
 // Views that hold NUI focus; Escape closes the top-most one.
-const FOCUS_ORDER = ['ticket', 'wheel', 'fortune', 'deception', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
+const FOCUS_ORDER = ['shop', 'ticket', 'wheel', 'fortune', 'deception', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
 
 export function close(view: string) {
   closeViewState(view);
@@ -57,6 +58,7 @@ export default function App() {
       {show('results') && <ResultsBanner data={views.results} onClose={() => close('results')} />}
 
       {show('player') && <PlayerHub onClose={() => close('player')} />}
+      {show('shop') && <ShopView data={views.shop} onClose={() => close('shop')} />}
       {show('ticket') && <TicketCard data={views.ticket} onClose={() => close('ticket')} />}
       {show('leaderboard') && <LeaderboardView initial={views.leaderboard} onClose={() => close('leaderboard')} />}
       {show('wheel') && <WheelGame data={views.wheel} onClose={() => close('wheel')} />}

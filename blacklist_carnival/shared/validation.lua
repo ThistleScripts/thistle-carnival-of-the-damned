@@ -300,6 +300,17 @@ local function crossValidate(cfg, errors)
         if merr then err('rotation.matrix', merr) end
     end
 
+    if cfg.shop and cfg.shop.items then
+        local seen = {}
+        for i, it in ipairs(cfg.shop.items) do
+            if C.TICKET_ITEM_COLOUR[it.item] then
+                err(('shop.items.%d.item'):format(i), 'carnival tickets cannot be sold at the prize counter')
+            end
+            if seen[it.item] then err(('shop.items.%d.item'):format(i), ('"%s" is listed twice'):format(it.item)) end
+            seen[it.item] = true
+        end
+    end
+
     local a = cfg.attractions or {}
     if a.wheel and a.wheel.outcomes then
         local total = 0

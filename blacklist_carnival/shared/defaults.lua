@@ -114,6 +114,47 @@ Carnival.Defaults = {
         roundSound = 'round_bell',
     },
 
+    -- Prize counter: players spend prize points earned from their game scores.
+    shop = {
+        enabled = true,
+        label = 'The Prize Counter',
+        currency = 'Prize Points',
+        earnPercent = 100,
+        location = v4(-1641.2, -1061.8, 13.15, 230.0),
+        npcModel = 's_f_y_shop_mid',
+        interactDistance = 2.5,
+        validationDistance = 8.0,
+        blip = { enabled = true, sprite = 52, colour = 1 },
+        items = {
+            { item = 'carnival_bloodfloss', price = 15, dailyLimit = 0, enabled = true },
+            { item = 'carnival_eyeball_pop', price = 10, dailyLimit = 0, enabled = true },
+            { item = 'carnival_grave_popcorn', price = 15, dailyLimit = 0, enabled = true },
+            { item = 'carnival_poison_apple', price = 20, dailyLimit = 0, enabled = true },
+            { item = 'carnival_bone_pretzel', price = 20, dailyLimit = 0, enabled = true },
+            { item = 'carnival_finger_dog', price = 25, dailyLimit = 0, enabled = true },
+            { item = 'carnival_web_cake', price = 30, dailyLimit = 0, enabled = true },
+            { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, enabled = true },
+            { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, enabled = true },
+            { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, enabled = true },
+            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, enabled = true },
+            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, enabled = true },
+            { item = 'carnival_prize_box', price = 250, dailyLimit = 2, enabled = true },
+        },
+    },
+
+    -- Ambient sound zones: looping sounds every player hears near each zone,
+    -- fading with distance.
+    ambience = {
+        enabled = true,
+        volume = 0.5,
+        zones = {
+            { id = 'midway_organ', label = 'Midway organ', coords = v3(-1645.0, -1070.0, 13.15), radius = 45.0, sound = 'ambient_organ', volume = 0.55, enabled = true },
+            { id = 'crowd', label = 'Crowd murmur', coords = v3(-1652.0, -1078.0, 13.15), radius = 55.0, sound = 'ambient_crowd', volume = 0.4, enabled = true },
+            { id = 'fortune_chimes', label = 'Fortune Teller chimes', coords = v3(-1630.0, -1090.0, 13.15), radius = 18.0, sound = 'ambient_chimes', volume = 0.5, enabled = true },
+            { id = 'horror_wind', label = 'House of Horrors wind', coords = v3(-1676.0, -1104.0, 13.15), radius = 35.0, sound = 'ambient_wind', volume = 0.6, enabled = true },
+        },
+    },
+
     attractions = {
         shooting = {
             enabled = true,

@@ -161,6 +161,45 @@ S.root = { type = 'group', fields = {
         f('roundSound', { type = 'sound', label = 'Round change sound' }),
     } }),
 
+    f('shop', { type = 'group', label = 'Prize counter', fields = {
+        f('enabled', { type = 'bool', label = 'Prize counter open' }),
+        f('label', { type = 'string', label = 'Name', max = 64 }),
+        f('currency', { type = 'string', label = 'Currency name', max = 32 }),
+        f('earnPercent', { type = 'int', label = 'Prize points earned per 100 game points', min = 0, max = 10000,
+            help = 'Players earn prize points from points scored in the games (staff adjustments never count). 100 = one prize point per game point. Points are kept between nights.' }),
+        f('location', { type = 'vec4', label = 'Counter location (NPC / interaction point)', restart = true }),
+        f('npcModel', { type = 'model', label = 'Counter NPC model (blank for none)', max = 64, allowEmpty = true, restart = true }),
+        f('interactDistance', { type = 'number', label = 'Interaction distance (m)', min = 0.5, max = 15, step = 0.1 }),
+        f('validationDistance', { type = 'number', label = 'Server distance tolerance (m)', min = 1, max = 100, step = 0.5 }),
+        f('blip', { type = 'group', label = 'Map blip', fields = {
+            f('enabled', { type = 'bool', label = 'Show blip' }),
+            f('sprite', { type = 'int', label = 'Sprite', min = 1, max = 900 }),
+            f('colour', { type = 'int', label = 'Colour', min = 0, max = 85 }),
+        } }),
+        f('items', { type = 'list', label = 'Items for sale', max = 60, itemLabel = 'item', item = { type = 'group', fields = {
+            f('item', { type = 'item', label = 'Item' }),
+            f('label', { type = 'string', label = 'Shop label (blank = item label)', max = 64, allowEmpty = true }),
+            f('description', { type = 'text', label = 'Shop description (blank = item description)', max = 300, allowEmpty = true }),
+            f('price', { type = 'int', label = 'Price', min = 1, max = 1000000 }),
+            f('dailyLimit', { type = 'int', label = 'Limit per player per day (0 = none)', min = 0, max = 1000 }),
+            f('enabled', { type = 'bool', label = 'For sale' }),
+        } } }),
+    } }),
+
+    f('ambience', { type = 'group', label = 'Ambient sound', fields = {
+        f('enabled', { type = 'bool', label = 'Play ambient sound zones' }),
+        f('volume', { type = 'number', label = 'Ambient volume', min = 0, max = 1, step = 0.05 }),
+        f('zones', { type = 'list', label = 'Sound zones', max = 40, itemLabel = 'label', item = { type = 'group', fields = {
+            f('id', { type = 'string', label = 'ID', max = 32 }),
+            f('label', { type = 'string', label = 'Name', max = 64 }),
+            f('enabled', { type = 'bool', label = 'Enabled' }),
+            f('coords', { type = 'vec3', label = 'Centre' }),
+            f('radius', { type = 'number', label = 'Radius (m) - full volume at the centre, silent at the edge', min = 2, max = 300, step = 1 }),
+            f('sound', { type = 'sound', label = 'Loop' }),
+            f('volume', { type = 'number', label = 'Volume', min = 0, max = 1, step = 0.05 }),
+        } } }),
+    } }),
+
     f('attractions', { type = 'group', label = 'Attractions', fields = {
         f('shooting', { type = 'group', label = C.ATTRACTION_LABELS.shooting, fields = baseAttraction({
             f('durationSeconds', { type = 'int', label = 'Game length (s)', min = 15, max = 300 }),

@@ -19,4 +19,6 @@ All commands are checked on the server with the same permission as the equivalen
 | `/carnivalhud` | – | participant | Toggle the participant HUD. |
 | `/carnivalpreview` | `[screen]` | `panel.admin` | Opens a game screen with labelled demo data (no server calls, no points): `wheel`, `fortune`, `deception`, `puppets`, `horror`, `shooting`, `ticket`, `leaderboard`, `hub`. Also on every attraction ped as *Admin: preview game screen*. |
 | `/carnivalprop` | `<model> [name]` | `props.manage` | Starts the prop placer with that model (see the admin manual's *World props*). |
+| `/prizepoints` | – | anyone | Shows your prize points (spent at the prize counter). |
+| `/carnivalambience` | – | anyone | Turns the carnival ambient sounds off or on, just for you (remembered). |
 | `/carnivalclose` | – | anyone | Closes every carnival interface and releases NUI focus (safety valve). |

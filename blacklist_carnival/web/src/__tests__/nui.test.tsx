@@ -25,7 +25,7 @@ vi.mock('../nui', async () => {
     captureCoords: vi.fn(async () => ({ x: 1, y: 2, z: 3, w: 90 })),
   };
 });
-vi.mock('../audio', () => ({ playSound: vi.fn(), stopSound: vi.fn(), stopAll: vi.fn() }));
+vi.mock('../audio', () => ({ playSound: vi.fn(), stopSound: vi.fn(), stopAll: vi.fn(), setAmbient: vi.fn() }));
 
 import App from '../App';
 import { installBridge } from '../bridge';
@@ -33,6 +33,7 @@ installBridge();
 import { getState, setState } from '../store';
 import { formatDuration, signed, colourHex } from '../format';
 import { placeProp } from '../nui';
+import { playSound, setAmbient } from '../audio';
 
 const settings: any = {
   ...(fixture as any).defaults,
@@ -56,7 +57,7 @@ beforeEach(() => {
       settings,
       event: { active: true, id: 1, name: 'Test Night', state: 'running', stateLabel: 'Running', round: 2, totalRounds: 6, roundEndsAt: Math.floor(Date.now() / 1000) + 300, participantCount: 12, maxParticipants: 120 },
       participant: { registered: true, id: 5, name: 'Ada Lovelace', colour: 'red', status: 'active', total: 42, rank: 3, ticket: { serial: 'CTD-ABCDE-FGHIJ', status: 'active' }, completed: ['shooting'], current: { attraction: 'wheel', status: 'active', sessionId: 9 }, next: 'fortune', breakdown: { shooting: 30 } },
-      permissions: ['panel.admin', 'panel.staff', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.wheel', 'attractions.operate.horror', 'horror.control', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history'],
+      permissions: ['panel.admin', 'panel.staff', 'config.view', 'config.edit', 'events.manage', 'events.operate', 'events.history', 'participants.view', 'participants.manage', 'scores.view', 'scores.adjust', 'rewards.manage', 'attractions.operate.wheel', 'attractions.operate.horror', 'horror.control', 'monitoring.view', 'audit.view', 'staff.manage', 'leaderboard.staff', 'deception.secrets', 'export.history', 'shop.manage'],
       role: 'owner',
     },
   });
@@ -376,5 +377,73 @@ describe('theatre audience vote', () => {
     fireEvent.click(screen.getByText('Grace'));
     await waitFor(() => expect(screen.getByText(/Vote cast/)).toBeTruthy());
     expect(calls.find((c) => c.endpoint === 'theatre.vote')!.payload).toMatchObject({ performanceId: 5, participantId: 11 });
+  });
+});
+
+describe('prize counter', () => {
+  const shop = {
+    label: 'The Prize Counter', currency: 'Prize Points', earnPercent: 100,
+    wallet: { balance: 40, earned: 60, spent: 20 },
+    items: [
+      { item: 'carnival_witch_brew', label: "Witch's Brew Lemonade", description: 'Sour green lemonade.', price: 15, dailyLimit: 0 },
+      { item: 'carnival_prize_box', label: 'Carnival Prize Box', price: 250, dailyLimit: 2, remainingToday: 2 },
+      { item: 'carnival_trick_token', label: 'Trick Token', price: 5, dailyLimit: 5, remainingToday: 0 },
+    ],
+  };
+
+  it('shows the wallet and items, and buys with a fresh request id', async () => {
+    responses['shop.buy'] = { ok: true, data: { balance: 10, item: 'carnival_witch_brew', count: 2, cost: 30 } };
+    responses['shop.open'] = { ok: true, data: { ...shop, wallet: { ...shop.wallet, balance: 10 } } };
+    render(<App />);
+    lua('open', { view: 'shop', data: shop });
+    expect(screen.getByText('40')).toBeTruthy();
+    expect(screen.getByText("Witch's Brew Lemonade")).toBeTruthy();
+    // unaffordable and sold-out items cannot be bought
+    expect((screen.getByText('Buy · 250').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Sold out').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    const card = screen.getByText("Witch's Brew Lemonade").closest('.shop-card') as HTMLElement;
+    fireEvent.click(card.querySelector('.stepper button:last-child')!);
+    fireEvent.click(screen.getByText('Buy · 30'));
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shop.buy')).toBeTruthy());
+    const buy = calls.find((c) => c.endpoint === 'shop.buy')!.payload;
+    expect(buy).toMatchObject({ item: 'carnival_witch_brew', count: 2 });
+    expect(buy.requestId).toMatch(/^[0-9a-f]{24}$/);
+    await waitFor(() => expect(screen.getByText('10')).toBeTruthy());
+    expect(playSound).toHaveBeenCalledWith('shop_purchase', 0.7);
+  });
+
+  it('wallet pushes update the balance and announce earned points', async () => {
+    render(<App />);
+    lua('open', { view: 'shop', data: shop });
+    lua('push', { channel: 'wallet', data: { balance: 65, earned: 85, spent: 20, currency: 'Prize Points', delta: 25 } });
+    expect(screen.getByText('65')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/\+25 Prize Points/)).toBeTruthy());
+  });
+
+  it('ambient levels from Lua go to the mixer', () => {
+    lua('ambient', { levels: [{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }] });
+    expect(setAmbient).toHaveBeenCalledWith([{ id: 'crowd', sound: 'ambient_crowd', volume: 0.3 }]);
+  });
+
+  it('admin prize counter page lists wallets and adjusts with a reason', async () => {
+    responses['shop.overview'] = { ok: true, data: {
+      currency: 'Prize Points',
+      totals: { wallets: 1, outstanding: 40, earned: 60, spent: 20, purchasesToday: 1, spentToday: 20 },
+      popular: [{ item: 'carnival_witch_brew', sold: 2, points: 30 }],
+      recent: [{ id: 3, citizenid: 'ABC123', display_name: 'Ada Lovelace', kind: 'purchase', delta: -30, balance_after: 40, item: 'carnival_witch_brew', item_count: 2, created_at: 1760000000 }],
+      wallets: [{ citizenid: 'ABC123', display_name: 'Ada Lovelace', balance: 40, earned_total: 60, spent_total: 20, updated_at: 1760000000 }],
+    } };
+    responses['shop.adjust'] = { ok: true, data: { balance: 90 } };
+    render(<App />);
+    lua('open', { view: 'admin', data: {} });
+    fireEvent.click(screen.getByText('Players'));
+    fireEvent.click(screen.getByText('Prize counter'));
+    await waitFor(() => expect(screen.getByText('Best sellers')).toBeTruthy());
+    fireEvent.click(screen.getByText('Adjust'));
+    fireEvent.change(screen.getByPlaceholderText('e.g. 50 or -20'), { target: { value: '50' } });
+    fireEvent.change(document.querySelector('.modal textarea')!, { target: { value: 'Lost points in a crash' } });
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => expect(calls.find((c) => c.endpoint === 'shop.adjust')).toBeTruthy());
+    expect(calls.find((c) => c.endpoint === 'shop.adjust')!.payload).toMatchObject({ citizenid: 'ABC123', delta: 50, reason: 'Lost points in a crash' });
   });
 });

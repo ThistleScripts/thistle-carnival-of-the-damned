@@ -19,6 +19,7 @@ Db.MIGRATIONS = {
     { version = 3, name = 'theatre_timer_columns', file = 'sql/migrations/003_theatre_timer_columns.sql' },
     { version = 4, name = 'walkup_mode', file = 'sql/migrations/004_walkup_mode.sql' },
     { version = 5, name = 'world_props', file = 'sql/migrations/005_world_props.sql' },
+    { version = 6, name = 'prize_counter', file = 'sql/migrations/006_prize_counter.sql' },
 }
 
 local function shorten(sql)

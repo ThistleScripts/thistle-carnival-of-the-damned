@@ -2,14 +2,14 @@
 
 ## Automated results (this repository, run with `tests/run_all.sh`)
 
-Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 (jsdom). Date of run: 2026-10-21.
+Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 (jsdom). Date of run: 2026-10-22.
 
 | Suite | Result |
 |---|---|
-| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **798 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
-| Server integration (real server scripts, real database) | **67 tests, 67 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 23 tests passed** |
-| `sql/schema.sql` imported twice into an empty MariaDB database | **38 tables, no errors (idempotent)** |
+| Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, no clown content) | **929 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
+| Server integration (real server scripts, real database) | **71 tests, 71 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 27 tests passed** |
+| `sql/schema.sql` imported twice into an empty MariaDB database | **40 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
 
@@ -29,15 +29,16 @@ Recovery: restart → event paused, scores recovered, reward mid-delivery → `u
 Completion: six rounds, each colour visits each attraction exactly once · final results frozen + prize rewards · correction creates results v2 · completed results unchanged after config change · no scoring after completion · new event leaves history intact · CSV export (audited, permission-gated).
 Walk-up mode: switching the mode opens a carnival with only system transitions and keeps registration open · no rounds · each colour's first game is the first on its ticket · out-of-order games refused with directions · wheel, gallery, fortune, solo theatre, deception and horror each complete and advance the ticket · no joining a run in progress · idle visits close without credit · restart keeps it running with progress · finalising freezes results and a fresh carnival opens.
 World props: only `props.manage` can place · model/position/rotation validated · placing, moving and removing push to every player and are audited · bootstrap carries every prop · removed props keep their row · props reload after a restart.
+Prize counter: game scores earn prize points at the configured rate; replays and staff adjustments earn nothing · buying needs to be at the counter, enough points, and an item on sale (tickets never are) · a retried purchase charges and delivers once · daily limits reset after a day · a failed hand-over refunds · wallets and the overview are `shop.manage` only · wallet balance equals the ledger · tickets cannot be configured for sale; ambient zone sounds are validated.
 Roles & audit: grants bounded by rank, revocation immediate · audit covers key actions and is never updated/deleted by code · DB failure reported and recovered · monitoring queryable with filters.
 
 ### NUI tests (web/src/__tests__/nui.test.tsx)
 
-HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · props tab lists props, starts the in-world placer (new and move) and removes after confirming · permission loss hides gated navigation.
+HUD (round and walk-up modes) · ticket card open + Escape releases view · void ticket · wheel spin uses the server outcome · wheel error state · fortune answer payload · deception requires exact liar count · theatre/horror/shooting overlays · live leaderboard push · admin panel has five sections; the settings editor renders every section from the real Lua schema with no staff modes, shows server validation errors and disables locked fields while live · coordinate tool fills vec4 fields · overview shows attractions, who is playing, the board and recovers from errors, with no round controls in walk-up · props tab lists props, starts the in-world placer (new and move) and removes after confirming · prize counter shows the wallet and items, blocks unaffordable/sold-out items, buys with a fresh request id and follows wallet pushes · ambient levels reach the mixer · admin prize counter adjusts a wallet with a reason · permission loss hides gated navigation.
 
 ### Visual review
 
-`node tools/ui-screens.mjs <outDir> [scene ...]` renders the built NUI (`web/dist`) in headless Chromium with a fake game bridge and realistic demo data, and saves a PNG of every screen: HUD, hub, ticket, leaderboard, wheel, fortune, shooting gallery, deception, theatre card and vote, horror HUD, and the admin overview, players and settings pages. Use it after changing the UI or adding background artwork.
+`node tools/ui-screens.mjs <outDir> [scene ...]` renders the built NUI (`web/dist`) in headless Chromium with a fake game bridge and realistic demo data, and saves a PNG of every screen: HUD, hub, ticket, leaderboard, wheel, fortune, shooting gallery, deception, theatre card and vote, horror HUD, prize counter, and the admin overview, players, prize counter and settings pages. Use it after changing the UI or adding background artwork.
 
 ## Manual in-game test plan (not yet executed — requires a FiveM server)
 

@@ -97,7 +97,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 6, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -105,7 +105,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 5, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 6, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -1147,6 +1147,124 @@ test('props persist across a restart', function()
     eq(all[1].rz, 180)
     eq(all[1].collision, false)
     eq(Carnival.Push.bootstrapData(PLAYERS[1]).props[1].model, 'carnival_gate')
+end)
+
+---------------------------------------------------------------------------
+section('Prize counter')
+---------------------------------------------------------------------------
+local BUYER
+local function balanceOf(src)
+    local w = Carnival.Shop.wallet(H.players[src].citizenid)
+    return w and w.balance or 0
+end
+local function shopItem(name)
+    for _, it in ipairs(settings().shop.items) do if it.item == name then return it end end
+end
+
+test('game scores earn prize points; staff adjustments and replays do not', function()
+    BUYER = WALKERS[1]
+    if not Carnival.Participants.getBySource(BUYER) then
+        at(BUYER, settings().registration.entrance)
+        okRes(H.api(BUYER, 'registration.register'), 'buy a ticket')
+    end
+    local p = Carnival.Participants.getBySource(BUYER)
+    truthy(p and p.status == 'active', 'walk-up participant')
+    local before = balanceOf(BUYER)
+    local saved = settings().shop.earnPercent
+    settings().shop.earnPercent = 50
+    H.pushes = {}
+    local ok, tx = H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
+    truthy(ok and tx.delta > 0, 'scored')
+    eq(balanceOf(BUYER), before + math.floor(tx.delta * 50 / 100), 'earned at the configured rate')
+    local pushed = H.pushesFor(BUYER, 'wallet')
+    eq(pushed[#pushed].delta, math.floor(tx.delta * 50 / 100), 'wallet pushed')
+    local mid = balanceOf(BUYER)
+    H.call(Carnival.Scoring.award, { participantId = p.id, delta = 40, key = 'shoptest:1', source = 'test', attractionId = 'fortune' })
+    eq(balanceOf(BUYER), mid, 'replayed score earns nothing')
+    okRes(H.api(ADMIN, 'scores.adjust', { participantId = p.id, delta = 30, reason = 'testing the counter', requestId = 'shopadj000001' }))
+    eq(balanceOf(BUYER), mid, 'staff adjustments earn nothing')
+    settings().shop.earnPercent = saved
+    eq(count("SELECT COUNT(*) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND kind = 'earned' AND score_tx_id = ?", { H.players[BUYER].citizenid, tx.id }), 1)
+end)
+
+test('buying checks distance, stock rules and balance, and retries never charge twice', function()
+    local cid = H.players[BUYER].citizenid
+    H.moveTo(BUYER, { x = 0, y = 0, z = 0 })
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = 100, reason = 'float for testing', requestId = 'shopadj000002' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 1, requestId = 'buy000000001' }), 'too_far')
+    at(BUYER, settings().shop.location)
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_ticket_red', count = 1, requestId = 'buy000000002' }), 'not_for_sale')
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000003' }), 'insufficient')
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 0, requestId = 'buy000000004' }), 'invalid')
+
+    local before = balanceOf(BUYER)
+    local price = shopItem('carnival_witch_brew').price
+    local r = okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 2, requestId = 'buy000000005' }))
+    eq(r.balance, before - price * 2)
+    eq(#H.itemsOf(BUYER, 'carnival_witch_brew'), 1, 'item handed over')
+    local again = okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_witch_brew', count = 2, requestId = 'buy000000005' }))
+    truthy(again.duplicate, 'retry recognised')
+    eq(balanceOf(BUYER), before - price * 2, 'charged once')
+    eq(#H.itemsOf(BUYER, 'carnival_witch_brew'), 1, 'delivered once')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = 'prize_purchase'"), 1)
+
+    local open = okRes(H.api(BUYER, 'shop.open'))
+    eq(open.wallet.balance, balanceOf(BUYER))
+    for _, it in ipairs(open.items) do truthy(not C.TICKET_ITEM_COLOUR[it.item], 'no tickets listed') end
+
+    -- daily limit
+    local limited = shopItem('carnival_trick_token')
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = limited.price * (limited.dailyLimit + 1), reason = 'limit test', requestId = 'shopadj000003' }))
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = limited.dailyLimit, requestId = 'buy000000006' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000007' }), 'limit')
+    H.advance(86401)
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
+end)
+
+test('a failed hand-over refunds the points; wallets are admin-only to change', function()
+    local cid = H.players[BUYER].citizenid
+    okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = 200, reason = 'refund test', requestId = 'shopadj000004' }))
+    local before = balanceOf(BUYER)
+    local saved = H.itemRegistry.carnival_web_cake
+    H.itemRegistry.carnival_web_cake = nil
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_web_cake', count = 1, requestId = 'buy000000009' }), 'delivery_failed')
+    H.itemRegistry.carnival_web_cake = saved
+    eq(balanceOf(BUYER), before, 'refunded')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_prize_ledger WHERE citizenid = ? AND kind = 'refund'", { cid }), 1)
+
+    errRes(H.api(BUYER, 'shop.adjust', { citizenid = cid, delta = 1000, reason = 'free points', requestId = 'shopadj000005' }), 'forbidden')
+    errRes(H.api(MANAGER, 'shop.overview'), 'forbidden')
+    errRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = -1000000, reason = 'too much', requestId = 'shopadj000006' }), 'insufficient')
+    errRes(H.api(ADMIN, 'shop.adjust', { citizenid = 'NOBODY', delta = 5, reason = 'no wallet', requestId = 'shopadj000007' }), 'not_found')
+    local ov = okRes(H.api(ADMIN, 'shop.overview'))
+    truthy(ov.totals.wallets >= 1 and ov.totals.purchasesToday >= 1, 'overview totals')
+    eq(ov.popular[1] ~= nil, true, 'best sellers listed')
+    eq(#okRes(H.api(ADMIN, 'shop.search', { query = 'WALK' })).wallets >= 1, true, 'search by citizen id')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = 'prize_points_adjusted'"), 3, 'only applied adjustments')
+
+    -- wallet totals always match the ledger
+    local w = Carnival.Shop.wallet(cid)
+    eq(w.balance, tonumber(H.sql('SELECT SUM(delta) AS n FROM carnival_prize_ledger WHERE citizenid = ?', { cid })[1].n), 'ledger balances')
+end)
+
+test('tickets cannot be put on sale and ambient zones are validated', function()
+    local function errorPaths(mutate)
+        local tree = Carnival.U.deepCopy(settings())
+        mutate(tree)
+        local _, errors = Carnival.Validate.config(tree)
+        local paths = {}
+        for _, e in ipairs(errors or {}) do paths[e.path] = e.message end
+        return paths, tree
+    end
+    local paths, tree = errorPaths(function(t)
+        t.shop.items[#t.shop.items + 1] = { item = 'carnival_ticket_red', price = 1, dailyLimit = 0, enabled = true }
+    end)
+    truthy(paths['shop.items.' .. #tree.shop.items .. '.item'], 'ticket rejected')
+    paths = errorPaths(function(t) t.ambience.zones[1].sound = 'not_a_sound' end)
+    truthy(paths['ambience.zones.1.sound'], 'unknown sound rejected')
+    local pub = Carnival.Config.publicSettings()
+    truthy(pub.shop and pub.shop.currency and pub.shop.items == nil, 'public shop settings omit prices')
+    eq(#pub.ambience.zones, #settings().ambience.zones)
 end)
 
 ---------------------------------------------------------------------------

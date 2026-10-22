@@ -57,6 +57,7 @@ server_scripts {
     'server/attractions/deception.lua',
     'server/attractions/horror.lua',
     'server/props.lua',
+    'server/shop.lua',
     'server/admin_api.lua',
     'server/commands.lua',
     'server/exports.lua',
@@ -77,6 +78,8 @@ client_scripts {
     'client/attractions/deception.lua',
     'client/attractions/horror.lua',
     'client/props.lua',
+    'client/shop.lua',
+    'client/ambience.lua',
     'client/preview.lua',
 }
 

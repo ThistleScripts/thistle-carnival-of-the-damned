@@ -1,4 +1,4 @@
--- Carnival of the Damned - full schema (equivalent to sql/migrations/001-005).
+-- Carnival of the Damned - full schema (equivalent to sql/migrations/001-006).
 -- Optional: the resource applies migrations automatically on start. Importing this
 -- file manually is safe and repeatable (IF NOT EXISTS / INSERT IGNORE); on first
 -- start the resource records the migrations as applied (the columns added by 003/004
@@ -680,4 +680,38 @@ CREATE TABLE IF NOT EXISTS carnival_props (
     deleted_by VARCHAR(80) NULL,
     deleted_at BIGINT UNSIGNED NULL,
     KEY idx_props_active (deleted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Carnival of the Damned - migration 006: prize counter
+
+CREATE TABLE IF NOT EXISTS carnival_prize_wallets (
+    citizenid VARCHAR(64) NOT NULL PRIMARY KEY,
+    display_name VARCHAR(96) NULL,
+    balance INT NOT NULL DEFAULT 0,
+    earned_total INT NOT NULL DEFAULT 0,
+    spent_total INT NOT NULL DEFAULT 0,
+    created_at BIGINT UNSIGNED NOT NULL,
+    updated_at BIGINT UNSIGNED NOT NULL,
+    KEY idx_wallet_balance (balance)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS carnival_prize_ledger (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    citizenid VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    delta INT NOT NULL,
+    balance_after INT NOT NULL,
+    event_id INT UNSIGNED NULL,
+    score_tx_id INT UNSIGNED NULL,
+    item VARCHAR(64) NULL,
+    item_count INT NULL,
+    unit_price INT NULL,
+    reason VARCHAR(500) NULL,
+    staff_license VARCHAR(80) NULL,
+    staff_name VARCHAR(96) NULL,
+    idempotency_key VARCHAR(160) NOT NULL,
+    created_at BIGINT UNSIGNED NOT NULL,
+    UNIQUE KEY uq_prize_ledger_key (idempotency_key),
+    KEY idx_prize_ledger_citizen (citizenid, created_at),
+    KEY idx_prize_ledger_kind (kind, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

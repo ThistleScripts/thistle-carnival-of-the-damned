@@ -10,8 +10,12 @@ export interface Settings {
   leaderboard: any;
   audio: { masterVolume: number; notificationSound: string; roundSound: string };
   rewards: any;
+  shop?: { enabled: boolean; label: string; currency: string; location: { x: number; y: number; z: number; w?: number } };
+  ambience?: any;
   attractions: Record<string, any>;
 }
+
+export interface Wallet { balance: number; earned: number; spent: number; currency: string }
 
 export interface EventState {
   active: boolean;
@@ -49,6 +53,7 @@ export interface State {
   horror: any;
   leaderboard: any;
   lastScore: any;
+  wallet: Wallet | null;
   invalidations: Record<string, number>;
 }
 
@@ -67,6 +72,7 @@ let state: State = {
   horror: { active: false },
   leaderboard: null,
   lastScore: null,
+  wallet: null,
   invalidations: {},
 };
 
