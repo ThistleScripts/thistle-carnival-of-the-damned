@@ -297,20 +297,31 @@ select option { background: #1a1116; }
 .toast-success { border-color: rgba(103, 193, 137, 0.6); } .toast-error { border-color: rgba(236, 83, 103, 0.7); } .toast-warning { border-color: rgba(231, 178, 74, 0.6); }
 
 /* Player HUD (no focus) */
-.hud { position: fixed; right: 22px; top: 26vh; width: 250px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; font-size: 13px; animation: fade-in 0.4s; }
-.hud > div { background: linear-gradient(180deg, rgba(22, 12, 17, 0.9), rgba(10, 6, 8, 0.88)); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); backdrop-filter: blur(3px); }
+.hud { position: fixed; right: 22px; top: 30vh; width: 230px; pointer-events: none; font-size: 13px; animation: fade-in 0.4s;
+  padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); border-left: 4px solid var(--ticket, var(--gold));
+  background: linear-gradient(180deg, rgba(24, 12, 18, 0.92), rgba(10, 6, 8, 0.9)); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.hud > * + * { margin-top: 8px; }
 .hud-dim { opacity: 0.55; }
-.hud-ticket { display: flex; gap: 8px; align-items: center; border-left: 4px solid !important; font-family: var(--font-display); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; }
-.hud-warn { color: #ffa7b3; font-size: 11px; margin-left: auto; text-transform: none; letter-spacing: 0; font-family: var(--font-body); }
-.hud-score { display: flex; align-items: baseline; gap: 8px; }
-.hud-points { font-size: 30px; font-family: var(--font-display); font-weight: 700; background: var(--foil); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1; }
+.hud-top { display: flex; align-items: center; justify-content: space-between; }
+.hud-ticket { display: inline-flex; align-items: center; gap: 6px; color: var(--ticket, var(--gold)); font-family: var(--font-display); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; font-size: 11px; }
+.hud-rank { font-family: var(--font-display); color: var(--gold-hi); font-size: 14px; }
+.hud-score { display: flex; align-items: baseline; flex-wrap: wrap; }
+.hud-score > * + * { margin-left: 6px; }
+.hud-points { font-size: 30px; font-family: var(--font-display); font-weight: 700; color: var(--gold-hi); line-height: 1; }
 .hud-label { color: var(--muted); }
-.hud-round { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
-.hud-paused { color: #f6d48d; font-weight: 700; }
-.hud-next { color: var(--muted); }
-.hud-attraction { display: flex; gap: 10px; align-items: center; border-color: var(--line-strong) !important; }
-.hud-attraction .icon { color: var(--gold-hi); flex-shrink: 0; }
-.hud-now { font-weight: 600; font-family: var(--font-display); letter-spacing: 0.03em; } .hud-sub { color: var(--muted); font-size: 11px; }
+.hud-flag { color: #f6d48d; font-size: 11px; font-weight: 700; }
+.hud-route { display: flex; align-items: center; }
+.hud-step { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 4px;
+  border: 1px solid var(--line); color: var(--muted); background: rgba(0, 0, 0, 0.3); }
+.hud-step-done { border-color: rgba(120, 200, 150, 0.6); color: #a6e4bb; background: rgba(40, 90, 60, 0.35); }
+.hud-step-now { border-color: var(--gold); color: var(--gold-hi); box-shadow: 0 0 8px rgba(214, 174, 96, 0.5); }
+.hud-count { margin-left: auto; color: var(--muted); font-size: 11px; }
+.hud-round { display: flex; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.hud-round > * + * { margin-left: 8px; }
+.hud-next { display: flex; align-items: center; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.hud-next > .icon { color: var(--gold-hi); flex-shrink: 0; margin-right: 10px; }
+.hud-now { font-weight: 600; font-family: var(--font-display); letter-spacing: 0.03em; color: var(--text); }
+.hud-sub { color: var(--muted); font-size: 11px; }
 .countdown { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--gold-hi); }
 .countdown-urgent { color: var(--blood-hi); animation: pulse 0.8s infinite; }
 @keyframes pulse { 50% { opacity: 0.4; } }
@@ -639,3 +650,5 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 /* Shown instead of a blank screen when a view fails to draw. */
 .crash-card { width: min(640px, 92vw); display: flex; flex-direction: column; gap: 12px; }
 .crash-card h2 { color: var(--blood-hi); }
+.results-timer { height: 3px; margin-top: 14px; border-radius: 3px; background: var(--gold); transform-origin: left; animation: results-shrink linear forwards; }
+@keyframes results-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }

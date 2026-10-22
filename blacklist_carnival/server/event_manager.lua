@@ -380,6 +380,19 @@ local function ensureWalkup()
         Carnival.Monitor.log('info', 'event_state', 'walkup_event_created', { eventId = id })
     end
     if Events.active.mode ~= 'walkup' then return end
+    -- after "End the night" the final results stay up for a while, then the
+    -- books close by themselves (the next check opens a fresh carnival)
+    if Events.active.state == S.FINAL then
+        local wait = Carnival.Config.get().rotation.walkup.closeBooksSeconds or 0
+        if wait <= 0 then return end
+        local at = tonumber(Carnival.Db.scalar([[SELECT MAX(created_at) FROM carnival_event_transitions
+            WHERE event_id = ? AND to_state = ?]], { Events.active.id, S.FINAL })) or os.time()
+        if os.time() - at < wait then return end
+        local ok, code, msg = Events.transition(0, S.COMPLETED, 'Walk-up night closed automatically after the final results',
+            { system = true, actor = SYSTEM })
+        if not ok then return walkupFailed(S.COMPLETED, code, msg) end
+        return
+    end
     for _ = 1, 4 do
         local to = WALKUP_PATH[Events.active.state]
         if not to then break end

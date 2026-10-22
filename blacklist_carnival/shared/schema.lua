@@ -108,6 +108,8 @@ S.root = { type = 'group', fields = {
                 help = 'Off: any attraction the player has not completed yet may be played.' }),
             f('idleSeconds', { type = 'int', label = 'Close an idle attraction visit after (s)', min = 60, max = 7200,
                 help = 'A visit nobody is playing is closed (without completing it) so the next player can start fresh.' }),
+            f('closeBooksSeconds', { type = 'int', label = 'After "End the night", open a fresh carnival after (s, 0 = wait for an admin)', min = 0, max = 86400,
+                help = 'The final results stay on screen this long, then the books close by themselves and a new carnival opens.' }),
         } }),
     } }),
 

@@ -64,7 +64,7 @@ Carnival.Defaults = {
         autoFinalise = false,
         warningSeconds = { 120, 60 },
         unavailableBehaviour = 'hold',
-        walkup = { enforceOrder = true, idleSeconds = 600 },
+        walkup = { enforceOrder = true, idleSeconds = 600, closeBooksSeconds = 120 },
     },
 
     scoring = {

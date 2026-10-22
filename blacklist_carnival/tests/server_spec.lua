@@ -981,7 +981,7 @@ test('switching to walk-up opens a carnival automatically and sells tickets with
     local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
     eq(Carnival.Defaults.general.mode, 'scheduled', 'suite override')
     doc.general.mode = 'walkup'
-    doc.rotation.walkup = { enforceOrder = true, idleSeconds = 300 }
+    doc.rotation.walkup = { enforceOrder = true, idleSeconds = 300, closeBooksSeconds = 120 }
     okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
     H.advance(6)
     local e = Carnival.Events.active
@@ -1137,6 +1137,21 @@ test('finalising the night freezes results and a fresh carnival opens by itself'
     eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { walkEvent })[1].state, 'completed')
     eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { walkEvent }), 1, 'results frozen')
     eq(okRes(H.api(WALKERS[1], 'participant.state')).registered, false, 'a new ticket is needed')
+end)
+
+test('after "End the night" the books close by themselves and a fresh carnival opens', function()
+    local night = Carnival.Events.activeId()
+    local wait = settings().rotation.walkup.closeBooksSeconds
+    truthy(wait > 0, 'auto close configured by default')
+    okRes(H.api(ADMIN, 'events.transition', { to = 'final_results' }))
+    H.advance(math.floor(wait / 2))
+    eq(Carnival.Events.activeId(), night, 'results stay up for a while')
+    eq(Carnival.Events.state(), 'final_results')
+    H.advance(math.ceil(wait / 2) + 12)
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { night })[1].state, 'completed', 'books closed')
+    eq(H.sql("SELECT actor FROM carnival_event_transitions WHERE event_id = ? AND to_state = 'completed'", { night })[1].actor, 'system')
+    local e = Carnival.Events.active
+    truthy(e and e.id ~= night and e.state == 'running', 'a fresh carnival is open')
 end)
 
 ---------------------------------------------------------------------------

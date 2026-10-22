@@ -1,9 +1,17 @@
+import { useEffect } from 'react';
 import { Backdrop, Icon } from '../components/Art';
-import { Button, ColourChip } from '../components/ui';
+import { ColourChip } from '../components/ui';
 
-// Shown to everyone when the final results are frozen.
+export const RESULTS_SECONDS = 30;
+
+// Shown to everyone when the final results are frozen. It has no mouse focus
+// (players keep moving), so it closes by itself after RESULTS_SECONDS.
 export function ResultsBanner({ data, onClose }: { data: any; onClose: () => void }) {
   const top: any[] = data?.top ?? [];
+  useEffect(() => {
+    const t = setTimeout(onClose, RESULTS_SECONDS * 1000);
+    return () => clearTimeout(t);
+  }, [data]);
   return (
     <div className="results-banner">
       <Backdrop name="results" className="results-inner">
@@ -20,7 +28,7 @@ export function ResultsBanner({ data, onClose }: { data: any; onClose: () => voi
             </li>
           ))}
         </ol>
-        <Button small variant="ghost" onClick={onClose}>Dismiss</Button>
+        <div className="results-timer" style={{ animationDuration: `${RESULTS_SECONDS}s` }} />
       </Backdrop>
     </div>
   );
