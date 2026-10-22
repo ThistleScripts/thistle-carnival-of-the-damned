@@ -230,8 +230,11 @@ test('apply test configuration (short timers, everyone ready)', function()
     doc.attractions.horror.tokenTypes.gold.quantity = 0
     doc.attractions.fortune.questionsPerVisit = 2
     doc.attractions.horror.lobbySeconds = 5
-    doc.attractions.shooting.durationSeconds = 20
-    doc.attractions.shooting.targetCount = 10
+    doc.attractions.shooting.roundBreakSeconds = 2
+    for i, r in ipairs(doc.attractions.shooting.rounds) do
+        r.durationSeconds = 8
+        r.targetCount = 3 + i
+    end
     local r = okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, note = 'test', confirm = true }))
     eq(r.saved, true)
 end)
@@ -380,6 +383,7 @@ test('registration closes, event becomes ready and starts round 1 with six sessi
     eq(count('SELECT COUNT(*) AS n FROM carnival_event_settings WHERE event_id = ? AND reason = ?', { eventId, 'start' }), 1, 'settings snapshot')
 end)
 
+
 ---------------------------------------------------------------------------
 section('Attraction: Wheel of Misfortune')
 ---------------------------------------------------------------------------
@@ -498,7 +502,10 @@ test('aim game: the server owns the schedule, validates every click and scores o
     at(s, cfg.location)
     errRes(H.api(membersOf(colourAt('wheel'))[1], 'shooting.start'), 'wrong_attraction')
     local g = okRes(H.api(s, 'shooting.start'))
-    eq(#g.plan, cfg.targetCount, 'schedule sent')
+    local targets = 0
+    for _, r in ipairs(cfg.rounds) do targets = targets + r.targetCount end
+    eq(#g.plan, targets, 'schedule for every round sent')
+    eq(#g.rounds, #cfg.rounds)
     truthy(g.elapsedMs < 0, 'countdown first')
     -- resuming returns the same game
     eq(okRes(H.api(s, 'shooting.start')).gameId, g.gameId)
@@ -529,12 +536,54 @@ test('aim game: the server owns the schedule, validates every click and scores o
     errRes(H.api(shooters[2], 'shooting.shot', { gameId = g.gameId, targetId = 2 }), 'stale')
     -- finishing early is refused; the server timer ends the game
     errRes(H.api(s, 'shooting.finish', { gameId = g.gameId }), 'too_early')
-    H.advance(cfg.durationSeconds + 6)
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
     local res = H.sql('SELECT * FROM carnival_shooting_results WHERE heat_id = ?', { g.gameId })
     eq(#res, 1)
     local pid = Carnival.Participants.idOfSource(s)
     eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?', { ('shooting:%d:%d'):format(g.gameId, pid) }), res[1].points ~= 0 and 1 or 0)
     errRes(H.api(s, 'shooting.start'), 'already_shot')
+end)
+
+test('three rounds, each harder and worth more; the break between rounds ignores clicks', function()
+    local sc = colourAt('shooting')
+    local s = membersOf(sc)[2]
+    local cfg = settings().attractions.shooting
+    at(s, cfg.location)
+    local g = okRes(H.api(s, 'shooting.start'))
+    eq(#g.rounds, 3)
+    for i = 2, 3 do
+        local prev, r = cfg.rounds[i - 1], cfg.rounds[i]
+        truthy(r.targetLifetimeMs < prev.targetLifetimeMs, 'round ' .. i .. ' targets are faster')
+        truthy(r.targetSize < prev.targetSize, 'round ' .. i .. ' targets are smaller')
+        truthy(r.decoyChance > prev.decoyChance, 'round ' .. i .. ' has more lanterns')
+        truthy(r.pointsPercent > prev.pointsPercent, 'round ' .. i .. ' is worth more')
+        eq(g.rounds[i].startMs, g.rounds[i - 1].endMs + cfg.roundBreakSeconds * 1000, 'break between rounds')
+    end
+    for _, t in ipairs(g.plan) do
+        local r = g.rounds[t.round]
+        truthy(t.t >= r.startMs and t.t + t.life <= r.endMs, 'target inside its round')
+        truthy(t.lane >= 1 and t.lane <= r.lanes, 'lane inside its round')
+    end
+    local start = H.ms
+    -- a click during the first break is ignored
+    H.ms = start + 3000 + g.rounds[1].endMs + 500
+    errRes(H.api(s, 'shooting.shot', { gameId = g.gameId }), 'between_rounds')
+    -- a normal target in round 3 is worth pointsPercent of the base
+    local t3
+    for _, t in ipairs(g.plan) do if t.round == 3 and t.kind == 'normal' then t3 = t break end end
+    if t3 then
+        H.ms = start + 3000 + t3.t + 50
+        local hit = okRes(H.api(s, 'shooting.shot', { gameId = g.gameId, targetId = t3.id, ring = 'outer' }))
+        eq(hit.round, 3)
+        eq(hit.points, math.floor(cfg.targetPoints * cfg.rounds[3].pointsPercent / 100 + 0.5), 'round 3 multiplier')
+    end
+    H.pushes = {}
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
+    local pushed = H.pushesFor(s, 'shooting')
+    local result = pushed[#pushed].result
+    eq(#result.rounds, 3, 'result has every round')
+    if t3 then eq(result.rounds[3].hits, 1) end
+    eq(result.rounds[1].points + result.rounds[2].points + result.rounds[3].points, result.targetPoints, 'rounds add up')
 end)
 
 ---------------------------------------------------------------------------
@@ -981,7 +1030,7 @@ test('shooting gallery: walk up, play the aim game, move on', function()
     at(s, settings().attractions.shooting.location)
     local g = okRes(H.api(s, 'shooting.start'))
     truthy(g.gameId and #g.plan > 0, 'game started')
-    H.advance(settings().attractions.shooting.durationSeconds + 6)
+    H.advance(math.ceil(Carnival.ShootingGameLengthMs() / 1000) + 6)
     truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'shooting'), 'completed')
     eq(nextOf(s).attraction, 'wheel')
 end)

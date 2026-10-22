@@ -61,7 +61,15 @@ Recovery tools (Nights & results, active night): reload state from the database,
 
 ### Attraction settings at a glance
 
-* **Shooting Gallery** — aim game length, games per visit, simultaneous players (player limit), targets per game, lanes, crossing speed, points, bullseye bonus, golden target chance/points, spirit lantern chance/penalty, accuracy bonus, miss penalty, minimum time between shots, max score.
+* **Shooting Gallery** — a game is **several rounds, each harder than the last** (*Rounds*, 1-5, plus *break between rounds*). Each round has its own name, length, number of targets, lanes, crossing speed, target size, golden target and spirit lantern chances, movement (`straight`, or `wave` where targets bob as they cross) and a *points multiplier*. The factory game is three 20-second rounds:
+
+  | Round | Targets | Lanes | Cross time | Size | Lanterns | Movement | Points |
+  |---|---|---|---|---|---|---|---|
+  | 1 · Warm-up | 14 | 2 | 3.4 s | 100 % | 6 % | straight | ×1 |
+  | 2 · Quickfire | 20 | 3 | 2.5 s | 85 % | 14 % | straight | ×1.5 |
+  | 3 · Dead Eye | 24 | 3 | 1.9 s | 70 % | 22 % | wave | ×2 |
+
+  Between rounds the screen shows the next round's name, what got harder and its multiplier, with a countdown; clicks during the break are ignored. The result lists the points and hits of every round. Also: games per visit, simultaneous players (player limit), base points per target, bullseye bonus, golden target points, lantern penalty (all multiplied by the round), accuracy bonus, miss penalty, minimum time between shots, max score (default 500).
 * **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, colour), spins per participant, cooldown, animation length, first-spin bonus.
 * **Fortune Teller** — questions per reading, readings per player, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes and whether a fortune scores.
 * **Puppet Master's Theatre** — time for players to join the cast, audience vote time, solo points, scenario library (category, difficulty, performer counts, time limit, points range, roles), default length, participation bonus, max award.

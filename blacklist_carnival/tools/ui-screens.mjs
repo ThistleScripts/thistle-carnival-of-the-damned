@@ -48,7 +48,23 @@ const participant = { registered: true, id: 1, name: 'Ada Lovelace', colour: 're
   breakdown: { shooting: 64, wheel: 25, fortune: 0, puppets: 0, deception: 0, horror: 0 } };
 const event = { active: true, id: 3, name: 'Carnival of the Damned', state: 'running', stateLabel: 'Running', mode: 'walkup', round: 0, totalRounds: 6, participantCount: 37, maxParticipants: 120, registrationOpen: true };
 
-const plan = Array.from({ length: 40 }, (_, i) => ({ id: i + 1, t: i * 900, life: 2800, kind: i % 9 === 4 ? 'special' : i % 7 === 3 ? 'decoy' : 'normal', lane: i % 3, dir: i % 2 ? 1 : -1 }));
+// the configured rounds as the server would send them (deterministic layout)
+const sh = settings.attractions.shooting;
+const sgRounds = []; const plan = [];
+{
+  let offset = 0, id = 0;
+  sh.rounds.forEach((rc, i) => {
+    const duration = rc.durationSeconds * 1000;
+    for (let k = 0; k < rc.targetCount; k++) {
+      id++;
+      const kind = k % 9 === 4 ? 'special' : k % 5 === 3 && rc.decoyChance > 10 ? 'decoy' : 'normal';
+      plan.push({ id, round: i + 1, t: offset + Math.floor(k * (duration - rc.targetLifetimeMs) / rc.targetCount), life: rc.targetLifetimeMs, kind, lane: 1 + (k % rc.lanes), dir: k % 2 ? 1 : -1 });
+    }
+    sgRounds.push({ number: i + 1, label: rc.label, startMs: offset, endMs: offset + duration, lanes: rc.lanes, size: rc.targetSize, motion: rc.motion, pointsPercent: rc.pointsPercent, life: rc.targetLifetimeMs, decoyChance: rc.decoyChance, targets: rc.targetCount });
+    offset += duration + (i < sh.rounds.length - 1 ? sh.roundBreakSeconds * 1000 : 0);
+  });
+}
+const sgDuration = sgRounds[sgRounds.length - 1].endMs;
 const mystery = settings.attractions.deception.mysteries[0];
 const deceptionState = { active: true, roundId: 4, status: 'questioning', endsAt: now() + 412, serverTime: now(), submissionsUsed: 0, maxSubmissions: 2,
   mystery: { id: mystery.id, title: mystery.title, description: mystery.description, rules: mystery.rules, liarCount: mystery.liarCount,
@@ -114,7 +130,11 @@ const scenes = {
   leaderboard: [['open', { view: 'leaderboard', data: board }]],
   wheel: [['open', { view: 'wheel', data: { outcomes: settings.attractions.wheel.outcomes, spinsUsed: 0, maxSpins: 2, cooldownRemaining: 0, animationMs: 4000, label: settings.attractions.wheel.label } }]],
   fortune: [['open', { view: 'fortune', data: fortuneVisit }]],
-  shooting: [['open', { view: 'shootingGame', data: { gameId: 1, duration: 45000, lanes: 3, countdownMs: 3000, elapsedMs: 9000, plan, total: 35, hits: 6, shots: 8, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shooting: [['open', { view: 'shootingGame', data: { gameId: 1, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgRounds[2].startMs + 5200, plan, total: 95, hits: 19, shots: 24, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shootingbreak: [['open', { view: 'shootingGame', data: { gameId: 2, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgRounds[1].endMs + 1200, plan, total: 70, hits: 14, shots: 17, hitIds: [], label: 'The Shooting Gallery' } }]],
+  shootingresult: [['open', { view: 'shootingGame', data: { gameId: 3, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgDuration - 300, plan, total: 186, hits: 41, shots: 49, hitIds: [], label: 'The Shooting Gallery' } }],
+    ['push', { channel: 'shooting', data: { action: 'result', result: { gameId: 3, points: 202, targetPoints: 186, hits: 41, shots: 49, bullseyes: 9, specials: 5, decoys: 1, accuracy: 83, accuracyBonus: 16,
+      rounds: sgRounds.map((r, i) => ({ number: r.number, label: r.label, points: [62, 72, 52][i], hits: [12, 15, 14][i], targets: r.targets, pointsPercent: r.pointsPercent })) } } }]],
   deception: [['open', { view: 'deception', data: deceptionState }]],
   vote: [['open', { view: 'theatreVote', data: { performanceId: 2, title: 'The Lion Tamer\'s Last Bow', endsAt: now() + 20, serverTime: now(), self: 1, candidates: [{ participantId: 2, name: 'Marlo Vance', role: 'Lion Tamer' }, { participantId: 3, name: 'Juno Reyes', role: 'Unionised Lion' }] } }]],
   theatre: [['open', { view: 'theatre', data: { scenario: { title: 'The Lion Tamer\'s Last Bow', difficulty: 'absurd', description: 'The lion has unionised and refuses to perform until its demands are met.' }, role: 'Unionised Lion', performer: true, status: 'running', endsAt: now() + 120, serverTime: now(), performers: [{ name: 'Marlo Vance', role: 'Lion Tamer' }, { name: 'Ada Lovelace', role: 'Unionised Lion' }] } }]],

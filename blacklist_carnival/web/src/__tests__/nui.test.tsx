@@ -358,6 +358,31 @@ describe('shooting gallery aim game', () => {
     await waitFor(() => expect(screen.getByText('42 points')).toBeTruthy(), { timeout: 3000 });
   });
 
+  it('plays harder rounds: a break card names the next round and the result lists every round', async () => {
+    const rounds = [
+      { number: 1, label: 'Warm-up', startMs: 0, endMs: 2000, lanes: 2, size: 100, motion: 'straight', pointsPercent: 100, life: 1500, decoyChance: 5, targets: 2 },
+      { number: 2, label: 'Dead Eye', startMs: 6000, endMs: 8000, lanes: 3, size: 70, motion: 'wave', pointsPercent: 200, life: 1000, decoyChance: 20, targets: 2 },
+    ];
+    const plan2 = [{ id: 1, round: 1, t: 0, life: 1500, kind: 'normal', lane: 1, dir: 1 }, { id: 2, round: 2, t: 6000, life: 1000, kind: 'normal', lane: 3, dir: -1 }];
+    render(<App />);
+    // 3 s into the game: the break before round 2
+    lua('open', { view: 'shootingGame', data: { gameId: 90, duration: 8000, rounds, countdownMs: 3000, elapsedMs: 3000, plan: plan2, total: 5 } });
+    expect(screen.getByText('Dead Eye')).toBeTruthy();
+    expect(screen.getByText('Faster targets')).toBeTruthy();
+    expect(screen.getByText('Smaller targets')).toBeTruthy();
+    expect(screen.getByText('Targets weave')).toBeTruthy();
+    expect(screen.getByText('Points ×2')).toBeTruthy();
+    expect(screen.getByText('Round', { exact: false, selector: '.sg-stats span' })).toBeTruthy();
+    // clicking the range during the break sends nothing
+    fireEvent.mouseDown(document.querySelector('.sg-area')!);
+    expect(calls.filter((c) => c.endpoint === 'shooting.shot').length).toBe(0);
+    lua('push', { channel: 'shooting', data: { action: 'result', result: { gameId: 90, points: 35, hits: 2, shots: 3, accuracy: 66, targetPoints: 35,
+      rounds: [{ number: 1, label: 'Warm-up', points: 5, hits: 1, targets: 2, pointsPercent: 100 }, { number: 2, label: 'Dead Eye', points: 30, hits: 1, targets: 2, pointsPercent: 200 }] } } });
+    await waitFor(() => expect(screen.getByText('35 points')).toBeTruthy());
+    expect(screen.getByText('+30')).toBeTruthy();
+    expect(screen.getByText('Round 2 · Dead Eye', { exact: false })).toBeTruthy();
+  });
+
   it('preview mode plays locally', () => {
     render(<App />);
     lua('open', { view: 'shootingGame', data: { preview: true, duration: 30000, lanes: 3, lifetime: 2800, countdownMs: 3000 } });

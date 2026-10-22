@@ -622,3 +622,16 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 .stepper button:disabled { opacity: 0.35; cursor: default; }
 .stepper span { min-width: 24px; text-align: center; font-variant-numeric: tabular-nums; }
 .booth-detail .pill, .booth-earn .pill { text-transform: none; }
+
+/* Shooting Gallery rounds */
+.sg-roundcard { flex-direction: column; gap: 6px; background: radial-gradient(ellipse at center, rgba(20, 6, 10, 0.55), transparent 70%); }
+.sg-round-kicker { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--blood-hi); text-shadow: 0 2px 6px #000; }
+.sg-break { background: radial-gradient(ellipse at center, rgba(20, 6, 10, 0.85), rgba(5, 2, 3, 0.6) 75%); }
+.sg-round-name { font-family: var(--font-deco); font-size: 64px; line-height: 1; color: var(--gold-hi); }
+.sg-round-changes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.sg-round-changes .pill { font-family: var(--font-body); font-size: 13px; text-transform: none; text-shadow: none; }
+.sg-round-count { font-family: var(--font-deco); font-size: 72px; line-height: 1; }
+.sg-rounds { display: flex; flex-direction: column; gap: 4px; min-width: 340px; margin: 4px 0 6px; }
+.sg-round-row { display: grid; grid-template-columns: 1fr auto 60px; gap: 12px; align-items: center; padding: 6px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line-soft); }
+.sg-round-row em { font-style: normal; color: var(--gold); font-size: 12px; }
+.sg-round-row strong { text-align: right; font-family: var(--font-display); color: var(--gold-hi); }

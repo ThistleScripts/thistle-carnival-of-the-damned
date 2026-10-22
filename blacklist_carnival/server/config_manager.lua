@@ -345,9 +345,8 @@ function Cfg.publicSettings()
         }
     end
     local sh = e.attractions.shooting
-    attractions.shooting.durationSeconds = sh.durationSeconds
-    attractions.shooting.lanes = sh.lanes
-    attractions.shooting.targetLifetimeMs = sh.targetLifetimeMs
+    attractions.shooting.rounds = U.deepCopy(sh.rounds)
+    attractions.shooting.roundBreakSeconds = sh.roundBreakSeconds
     local wh = e.attractions.wheel
     attractions.wheel.maxSpins = wh.maxSpins
     attractions.wheel.cooldownSeconds = wh.cooldownSeconds

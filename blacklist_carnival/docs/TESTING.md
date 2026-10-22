@@ -7,8 +7,8 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 | Suite | Result |
 |---|---|
 | Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, every food has a consumables.lua entry and uses useFood, no clown content) | **1032 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
-| Server integration (real server scripts, real database) | **72 tests, 72 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 28 tests passed** |
+| Server integration (real server scripts, real database) | **73 tests, 73 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 29 tests passed** |
 | `sql/schema.sql` imported twice into an empty MariaDB database | **40 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
@@ -19,7 +19,7 @@ Configuration: invalid config rejected with field errors · secret redaction + r
 Lifecycle & registration: invalid transitions rejected · registration blocked when ticket items missing · booth distance enforced · 12 players balanced 2 per colour with physical tickets + metadata · duplicate registration rejected · capacity on transfer · ticket replacement voids old serial · forged ticket logged and rejected · transfer reissues ticket (audited) · remove/reinstate · reconnect recovery with a new source id · start → six unique sessions matching the matrix + settings snapshot.
 Wheel: wrong group refused · max spins · total equals ledger · 10 000-draw distribution within ±2.5 % of weights · special prizes delivered straight away, idempotent delivery · inventory-full failure then retry · tickets refused as rewards.
 Fortune: no answer leak · resume same pending question · correct/incorrect marking · no re-answering · visit limit.
-Shooting: server-owned schedule · countdown clicks refused · bullseye scored on the server · already-hit / off-screen / too-fast refused · server timer ends the game · one award · cannot play twice.
+Shooting: server-owned schedule for every round · each round faster, smaller, with more lanterns and a bigger multiplier, targets stay inside their round and lanes, the break between rounds ignores clicks, round-3 hits are multiplied, results add up per round · countdown clicks refused · bullseye scored on the server · already-hit / off-screen / too-fast refused · server timer ends the game · one award · cannot play twice.
 Theatre: players take the stage, random scenario and roles, audience vote (no self-votes, one vote each, ties), solo shows scored, committed once.
 Deception: starts on arrival · no answer key in public state or pushes · selection count enforced · submission limit · clues unlock over time · marked automatically once everyone has accused (perfect bonus, tie-break, penalties) · scored once.
 Horror: only allowlisted controllers start · too far · valid collect · replayed collect refused · invalid token · stale run · non-runner · warnings at configured thresholds · escape bonus once · expiry ends run once and completes the group.
@@ -38,7 +38,7 @@ HUD (round and walk-up modes) · ticket card open + Escape releases view · void
 
 ### Visual review
 
-`node tools/ui-screens.mjs <outDir> [scene ...]` renders the built NUI (`web/dist`) in headless Chromium with a fake game bridge and realistic demo data, and saves a PNG of every screen: HUD, hub, ticket, leaderboard, wheel, fortune, shooting gallery, deception, theatre card and vote, horror HUD, prize counter, and the admin overview, players, prize counter and settings pages. Use it after changing the UI or adding background artwork.
+`node tools/ui-screens.mjs <outDir> [scene ...]` renders the built NUI (`web/dist`) in headless Chromium with a fake game bridge and realistic demo data, and saves a PNG of every screen: HUD, hub, ticket, leaderboard, wheel, fortune, shooting gallery (a round in play, the break card and the per-round result), deception, theatre card and vote, horror HUD, prize counter, and the admin overview, players, prize counter and settings pages. Use it after changing the UI or adding background artwork.
 
 ## Manual in-game test plan (not yet executed — requires a FiveM server)
 
