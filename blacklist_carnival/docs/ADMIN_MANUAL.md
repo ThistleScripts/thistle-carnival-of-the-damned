@@ -156,7 +156,7 @@ Eating is checked by the server: using the item starts the progress bar, and the
 
 **Your own items** can use the same system: give the item `server = { export = 'blacklist_carnival.useFood' }` in `ox_inventory/data/items.lua` and add an entry with its name to `consumables.lua`.
 
-To redraw the item pictures: `python3 tools/generate_item_images.py`.
+The food pictures are your own artwork (256×256 transparent PNGs in `images/inventory/`, copied to `ox_inventory_additions/web/images/`). To replace one, save the new PNG under the item name in both folders (and in `ox_inventory/web/images/`). `tools/generate_item_images.py` leaves them alone unless run with `--food-placeholders`.
 
 ## Ambient sound
 

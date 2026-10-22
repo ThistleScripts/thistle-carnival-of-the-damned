@@ -6,11 +6,13 @@ Output: 256x256 transparent PNGs named exactly after the item names, written to
   images/inventory/                              (resource copy)
   ../ox_inventory_additions/web/images/          (copy for ox_inventory/web/images)
 
-Usage:  python3 tools/generate_item_images.py
+Usage:  python3 tools/generate_item_images.py [--food-placeholders]
+(the food items ship with owner-supplied artwork; the flag overwrites it with drawn placeholders)
 Requires Pillow and numpy.
 """
 import math
 import os
+import sys
 import shutil
 
 import numpy as np
@@ -617,8 +619,11 @@ def main():
     trick_token()
     treat_token()
     prize_box()
-    for draw in FOOD:
-        draw()
+    # The ten carnival foods use the owner's artwork (images/inventory/carnival_<food>.png).
+    # The drawn versions below are placeholders, only written with --food-placeholders.
+    if '--food-placeholders' in sys.argv:
+        for draw in FOOD:
+            draw()
 
 
 if __name__ == '__main__':
