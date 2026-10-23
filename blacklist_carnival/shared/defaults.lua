@@ -91,7 +91,7 @@ Carnival.Defaults = {
             { label = 'Ringmaster', fromRank = 1, toRank = 1, items = { { item = 'carnival_prize_box', count = 5 } } },
             { label = 'Headliner', fromRank = 2, toRank = 2, items = { { item = 'carnival_prize_box', count = 3 } } },
             { label = 'Showstopper', fromRank = 3, toRank = 3, items = { { item = 'carnival_prize_box', count = 2 } } },
-            { label = 'Crowd Favourite', fromRank = 4, toRank = 10, items = { { item = 'carnival_treat_token', count = 3 } } },
+            { label = 'Crowd Favourite', fromRank = 4, toRank = 10, items = { { item = 'carnival_prize_box', count = 1 } } },
         },
     },
 
@@ -99,13 +99,28 @@ Carnival.Defaults = {
         maxCount = 50,
         allowedItems = {},
         retryOnLogin = true,
-        prizeBox = {
-            { item = 'carnival_treat_token', count = 2, weight = 50 },
-            { item = 'carnival_trick_token', count = 2, weight = 35 },
-            { item = 'carnival_treat_token', count = 5, weight = 15 },
-        },
-        treatHeal = 25,
         trickEffectSeconds = 12,
+    },
+
+    -- What a prize box gives when opened: between minItems and maxItems prizes,
+    -- each one drawn from `contents` by its percentage chance (chances add up to
+    -- 100), with a random quantity between minCount and maxCount.
+    prizeBox = {
+        minItems = 1,
+        maxItems = 3,
+        contents = {
+            { item = 'carnival_bloodfloss', minCount = 1, maxCount = 1, chance = 12 },
+            { item = 'carnival_eyeball_pop', minCount = 1, maxCount = 2, chance = 12 },
+            { item = 'carnival_grave_popcorn', minCount = 1, maxCount = 1, chance = 12 },
+            { item = 'carnival_poison_apple', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_bone_pretzel', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_finger_dog', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_web_cake', minCount = 1, maxCount = 1, chance = 7 },
+            { item = 'carnival_witch_brew', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_blood_slushie', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_grave_shake', minCount = 1, maxCount = 1, chance = 5 },
+            { item = 'carnival_token_gold', minCount = 1, maxCount = 1, chance = 2 },
+        },
     },
 
     audio = {
@@ -146,8 +161,6 @@ Carnival.Defaults = {
             { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
             { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
             { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, category = 'drink', enabled = true },
-            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, category = 'prize', enabled = true },
-            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, category = 'prize', enabled = true },
             { item = 'carnival_prize_box', price = 250, dailyLimit = 2, category = 'prize', enabled = true },
         },
     },
@@ -219,8 +232,8 @@ Carnival.Defaults = {
                 { id = 'lucky', label = 'Lucky Spin', type = 'bonus', weight = 120, points = 20, item = '', count = 0, colour = '#2a2a2a' },
                 { id = 'void', label = 'The Void', type = 'nothing', weight = 180, points = 0, item = '', count = 0, colour = '#0d0d0d' },
                 { id = 'cursed', label = 'Cursed!', type = 'penalty', weight = 100, points = -10, item = '', count = 0, colour = '#6e0f1d' },
-                { id = 'trick', label = 'Trick!', type = 'trick', weight = 80, points = 0, item = 'carnival_trick_token', count = 1, colour = '#3b1452' },
-                { id = 'treat', label = 'Treat!', type = 'treat', weight = 80, points = 5, item = 'carnival_treat_token', count = 1, colour = '#7a3a12' },
+                { id = 'trick', label = 'Trick!', type = 'trick', weight = 80, points = 0, item = '', count = 0, colour = '#3b1452' },
+                { id = 'treat', label = 'Treat!', type = 'treat', weight = 80, points = 5, item = 'carnival_bloodfloss', count = 1, colour = '#7a3a12' },
                 { id = 'prize_box', label = 'Prize Box', type = 'common_prize', weight = 40, points = 0, item = 'carnival_prize_box', count = 1, colour = '#1d3b2a' },
                 { id = 'rare_box', label = 'Cursed Hoard', type = 'rare_prize', weight = 15, points = 0, item = 'carnival_prize_box', count = 3, colour = '#c9a54a' },
                 { id = 'favour', label = "Ringmaster's Favour", type = 'special_prize', weight = 5, points = 50, item = 'carnival_prize_box', count = 5, colour = '#e8d7a0' },

@@ -105,6 +105,7 @@ const responses = {
     { id: 2, model: 'carnival_lamp', label: 'Lamp by the booth', x: -1636.1, y: -1055.8, z: 13.15, rx: 0, ry: 0, rz: 45, collision: true, createdBy: 'Owner', createdAt: now() - 1800 },
     { id: 3, model: 'carnivalcoingold', label: null, x: -1604.0, y: -1115.5, z: 14.1, rx: 0, ry: 0, rz: 0, collision: false, createdBy: 'Admin', createdAt: now() - 120 },
   ] } },
+  'prizebox.simulate': { ok: true, data: { boxes: 2000, avgItems: 2.13, rows: fixture.defaults.prizeBox.contents.map((c) => ({ item: c.item, label: c.item.replace('carnival_', '').replace(/_/g, ' '), inBoxes: Math.round(c.chance * 1.9 * 10) / 10, avgCount: Math.round(c.chance * 2.2) / 100 })) } },
   'shop.wallet': { ok: true, data: { balance: 85, earned: 140, spent: 55, currency: 'Prize Tickets' } },
   'shop.overview': { ok: true, data: { currency: 'Prize Tickets', totals: { wallets: 31, outstanding: 2140, earned: 5260, spent: 3120, purchasesToday: 18, spentToday: 410 },
     popular: [['carnival_finger_dog', 22, 550], ['carnival_blood_slushie', 19, 285], ['carnival_bloodfloss', 15, 225], ['carnival_prize_box', 3, 750]].map(([item, sold, points]) => ({ item, sold, points })),
@@ -117,7 +118,7 @@ const perms = ['panel.admin', 'config.view', 'config.edit', 'events.manage', 'ev
 
 const shopItems = { carnival_bloodfloss: 'Bloodspun Candy Floss', carnival_eyeball_pop: 'Eyeball Cake Pop', carnival_grave_popcorn: 'Graveyard Popcorn', carnival_poison_apple: 'Poisoned Toffee Apple',
   carnival_bone_pretzel: 'Bone-Knot Pretzel', carnival_finger_dog: 'Severed Finger Corn Dog', carnival_web_cake: 'Cobweb Funnel Cake', carnival_witch_brew: "Witch's Brew Lemonade",
-  carnival_blood_slushie: 'Blood Moon Slushie', carnival_grave_shake: 'Grave Dirt Shake', carnival_treat_token: 'Treat Token', carnival_trick_token: 'Trick Token', carnival_prize_box: 'Carnival Prize Box' };
+  carnival_blood_slushie: 'Blood Moon Slushie', carnival_grave_shake: 'Grave Dirt Shake', carnival_prize_box: 'Carnival Prize Box' };
 const shopData = { label: settings.shop.label, currency: settings.shop.currency, wallet: { balance: 85, earned: 140, spent: 55 },
   earning: ['shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror'].map((id, i) => ({ attraction: id, label: settings.attractions[id].label, ...settings.shop.earning[id], wonTonight: [42, 40, 12, 0, 0, 0][i] })),
   items: settings.shop.items.filter((it) => shopItems[it.item]).map((it, i) => ({ item: it.item, label: shopItems[it.item], price: it.price, category: it.category, dailyLimit: it.dailyLimit,
@@ -145,6 +146,9 @@ const scenes = {
   props: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(4)']],
   players: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(2)']],
   shop: [['open', { view: 'shop', data: shopData }]],
+  prizebox: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(3)'], ['click', '.chip:nth-child(4)']],
+  prizeboxodds: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(4)'], ['click', '.tab:nth-child(3)'], ['click', '.chip:nth-child(4)'], ['scroll', '.shell-main']],
+  reveal: [['open', { view: 'prizeReveal', data: { contents: [{ item: 'carnival_eyeball_pop', count: 2, label: 'Eyeball Cake Pop' }, { item: 'carnival_finger_dog', count: 1, label: 'Severed Finger Corn Dog' }, { item: 'carnival_token_gold', count: 1, label: 'Gold Horror Token' }], images: [] } }]],
   shopprizes: [['open', { view: 'shop', data: shopData }], ['click', '.chips .chip:nth-child(4)'], ['click', '.booth-item:nth-child(3)']],
   shopadmin: [['open', { view: 'admin', data: {} }], ['click', '.nav-item:nth-child(2)'], ['click', '.tab:nth-child(5)']],
 };
@@ -173,7 +177,10 @@ for (const [name, msgs] of Object.entries(scenes)) {
   const post = (action, data) => page.evaluate(([a, d]) => window.dispatchEvent(new MessageEvent('message', { data: { action: a, data: d } })), [action, data]);
   await post('push', { channel: 'bootstrap', data: { serverTime: now(), settings, event, participant, permissions: perms, role: 'owner' } });
   for (const [a, d] of msgs) {
-    if (a === 'click') {
+    if (a === 'scroll') {
+      await page.waitForTimeout(600);
+      await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.scrollTop = el.scrollHeight; }, d);
+    } else if (a === 'click') {
       await page.waitForTimeout(300);
       try { await page.click(d, { timeout: 3000 }); } catch { console.warn(`${name}: nothing matched ${d}`); }
     } else await post(a, d);

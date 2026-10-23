@@ -10,7 +10,7 @@ import { playSound } from '../audio';
 
 interface Node {
   key?: string; type: string; label?: string; fields?: Node[]; keys?: string[]; item?: Node; options?: string[];
-  min?: number; max?: number; step?: number; secret?: boolean; restart?: boolean; locked?: boolean; help?: string; itemLabel?: string; allowEmpty?: boolean;
+  min?: number; max?: number; step?: number; secret?: boolean; restart?: boolean; locked?: boolean; help?: string; itemLabel?: string; allowEmpty?: boolean; itemSummary?: string; sumField?: string; sumTarget?: number;
 }
 
 interface Ctx { sounds: string[]; liveLocked: boolean; canEdit: boolean; errors: Record<string, string> }
@@ -181,7 +181,9 @@ function NodeEditor({ node, value, onChange, path, ctx, depth = 0 }: { node: Nod
               <ScalarEditor node={node.item!} value={item} path={[...path, i]} ctx={ctx} onChange={(v) => onChange(list.map((x, xi) => (xi === i ? v : x)))} />
             ) : (
               <details open={false}>
-                <summary>{i + 1}. {String(item?.[node.itemLabel ?? 'id'] ?? item?.id ?? '').slice(0, 80) || '(new)'} {ctx.errors && Object.keys(ctx.errors).some((k) => k.startsWith(pathKey([...path, i]) + '.')) ? <span className="pill pill-bad">error</span> : null}</summary>
+                <summary>{i + 1}. {String(item?.[node.itemLabel ?? 'id'] ?? item?.id ?? '').slice(0, 80) || '(new)'}
+                  {node.itemSummary ? <span className="cfg-item-summary">{node.itemSummary.replace(/\{(\w+)\}/g, (_, k) => String(item?.[k] ?? '?'))}</span> : null}
+                  {' '}{ctx.errors && Object.keys(ctx.errors).some((k) => k.startsWith(pathKey([...path, i]) + '.')) ? <span className="pill pill-bad">error</span> : null}</summary>
                 <NodeEditor node={node.item!} value={item} path={[...path, i]} ctx={ctx} depth={depth + 1} onChange={(v) => onChange(list.map((x, xi) => (xi === i ? v : x)))} />
               </details>
             )}
@@ -192,6 +194,11 @@ function NodeEditor({ node, value, onChange, path, ctx, depth = 0 }: { node: Nod
             </div>
           </div>
         ))}
+        {node.sumField ? (() => {
+          const total = Math.round(list.reduce((n, x) => n + (Number(x?.[node.sumField!]) || 0), 0) * 10) / 10;
+          const ok = node.sumTarget == null || Math.abs(total - node.sumTarget) < 0.05;
+          return <div className={`cfg-sum ${ok ? 'cfg-sum-ok' : 'cfg-sum-bad'}`}>Total: {total}{node.sumTarget != null ? ` / ${node.sumTarget}` : ''}{ok ? '' : ' (must add up exactly)'}</div>;
+        })() : null}
         <Button small disabled={disabled || (node.max != null && list.length >= node.max)} onClick={() => {
           const d = defaultFor(node.item!);
           if (d && typeof d === 'object' && 'id' in d) d.id = `item_${list.length + 1}`;

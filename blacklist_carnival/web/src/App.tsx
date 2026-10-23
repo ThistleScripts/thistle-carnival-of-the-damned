@@ -17,6 +17,7 @@ import { ResultsBanner } from './player/ResultsBanner';
 import { PlayerHub } from './player/PlayerHub';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ShopView } from './player/ShopView';
+import { PrizeReveal } from './player/PrizeReveal';
 
 // Views that hold NUI focus; Escape closes the top-most one.
 const FOCUS_ORDER = ['shop', 'ticket', 'wheel', 'fortune', 'deception', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
@@ -57,6 +58,7 @@ export default function App() {
       {show('fortuneCard') && <FortuneCard data={views.fortuneCard} />}
       {show('deceptionReveal') && <DeceptionReveal data={views.deceptionReveal} />}
       {show('horrorResult') && <HorrorResult data={views.horrorResult} />}
+      {show('prizeReveal') && <PrizeReveal data={views.prizeReveal} onClose={() => close('prizeReveal')} />}
       {show('results') && <ResultsBanner data={views.results} onClose={() => close('results')} />}
 
       {show('player') && <PlayerHub onClose={() => close('player')} />}

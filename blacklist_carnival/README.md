@@ -12,7 +12,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 | Attraction | Type | Highlights |
 |---|---|---|
 | The Shooting Gallery | solo | Mouse-aim NUI game in three rounds that get harder (faster, smaller, weaving targets, more lanterns, bigger multipliers); golden targets, spirit lanterns not to shoot; schedule and scoring on the server. |
-| The Wheel of Misfortune | solo | Marquee wheel with weighted server-side outcomes, points ±, prizes, trick/treat. |
+| The Wheel of Misfortune | solo | Marquee wheel with weighted server-side outcomes, points ±, prize boxes, a candy floss *Treat!* and a spooky *Trick!*. |
 | The Fortune Teller's Curse | solo | A reading with riddles and multiple choice marked on the server, and a fortune. |
 | The Puppet Master's Theatre | group | Players take the stage, get a random scenario and roles, perform on a timer, the audience votes the winner. |
 | The Hall of Deception | group | Starts when players arrive; suspects' testimony on the terminal, clues unlock over time, accusations auto-marked. |

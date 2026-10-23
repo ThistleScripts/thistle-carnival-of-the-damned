@@ -300,6 +300,21 @@ local function crossValidate(cfg, errors)
         if merr then err('rotation.matrix', merr) end
     end
 
+    if cfg.prizeBox and cfg.prizeBox.contents then
+        local pb = cfg.prizeBox
+        if (pb.minItems or 1) > (pb.maxItems or 1) then err('prizeBox.minItems', 'the fewest prizes cannot be more than the most prizes') end
+        local total = 0
+        for i, it in ipairs(pb.contents) do
+            local path = ('prizeBox.contents.%d'):format(i)
+            total = total + (it.chance or 0)
+            if it.item == C.PRIZE_BOX then err(path .. '.item', 'a prize box cannot contain a prize box') end
+            if C.TICKET_ITEM_COLOUR[it.item] then err(path .. '.item', 'carnival tickets cannot be prizes in a box') end
+            if (it.minCount or 1) > (it.maxCount or 1) then err(path .. '.minCount', '"quantity from" cannot be more than "quantity up to"') end
+        end
+        if math.abs(total - 100) > 0.05 then
+            err('prizeBox.contents', ('the chances add up to %s%%; they must add up to 100%%'):format((math.floor(total * 10 + 0.5) / 10)))
+        end
+    end
     if cfg.shop and cfg.shop.items then
         local seen = {}
         for i, it in ipairs(cfg.shop.items) do

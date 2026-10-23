@@ -34,11 +34,12 @@ C.TOKEN_ITEMS = {
 }
 C.TOKEN_TYPES = { 'bronze', 'silver', 'gold' }
 
-C.PRIZE_ITEMS = {
-    trick = 'carnival_trick_token',
-    treat = 'carnival_treat_token',
-    box = 'carnival_prize_box',
-}
+-- The prize box: an ox_inventory container that arrives filled with prizes.
+C.PRIZE_BOX = 'carnival_prize_box'
+
+-- Items removed from the resource (saved settings that still name them are
+-- upgraded on load).
+C.RETIRED_ITEMS = { carnival_trick_token = true, carnival_treat_token = true }
 
 -- Carnival food sold at the prize counter (plain ox_inventory consumables).
 C.FOOD_ITEMS = {
@@ -53,7 +54,7 @@ C.CUSTOM_ITEMS = {
     'carnival_ticket_red', 'carnival_ticket_blue', 'carnival_ticket_green',
     'carnival_ticket_yellow', 'carnival_ticket_purple', 'carnival_ticket_orange',
     'carnival_token_bronze', 'carnival_token_silver', 'carnival_token_gold',
-    'carnival_trick_token', 'carnival_treat_token', 'carnival_prize_box',
+    'carnival_prize_box',
 }
 for _, item in ipairs(C.FOOD_ITEMS) do C.CUSTOM_ITEMS[#C.CUSTOM_ITEMS + 1] = item end
 

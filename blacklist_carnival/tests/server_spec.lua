@@ -446,7 +446,7 @@ end)
 test('reward delivery failure (full inventory) is recorded and reconcilable', function()
     local p = Carnival.Participants.getBySource(PLAYERS[6])
     H.inventoryFull[PLAYERS[6]] = true
-    local r = H.call(Carnival.Rewards.create, { participantId = p.id, source = 'manual', item = 'carnival_treat_token', count = 2, key = 'test:full' })
+    local r = H.call(Carnival.Rewards.create, { participantId = p.id, source = 'manual', item = 'carnival_bloodfloss', count = 2, key = 'test:full' })
     eq(H.call(Carnival.Rewards.deliver, r.id), 'failed')
     eq(H.sql('SELECT last_error FROM carnival_rewards WHERE id = ?', { r.id })[1].last_error, 'inventory_full')
     H.inventoryFull[PLAYERS[6]] = nil
@@ -800,7 +800,7 @@ test('resource restart pauses a running event and never replays interrupted work
     H.advance(settings().attractions.horror.lobbySeconds + 1)
     -- a reward stuck mid-delivery
     local pid = Carnival.Participants.idOfSource(PLAYERS[8])
-    local rw = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_treat_token', count = 1, key = 'test:stuck' })
+    local rw = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_bloodfloss', count = 1, key = 'test:stuck' })
     H.sql("UPDATE carnival_rewards SET status = 'delivering' WHERE id = ?", { rw.id })
     local totalBefore = Carnival.Participants.get(pid).total_score
     -- restart
@@ -1301,12 +1301,12 @@ test('buying checks distance, stock rules and balance, and retries never charge 
     for _, it in ipairs(open.items) do truthy(not C.TICKET_ITEM_COLOUR[it.item], 'no tickets listed') end
 
     -- daily limit
-    local limited = shopItem('carnival_trick_token')
+    local limited = shopItem('carnival_prize_box')
     okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = limited.price * (limited.dailyLimit + 1), reason = 'limit test', requestId = 'shopadj000003' }))
-    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = limited.dailyLimit, requestId = 'buy000000006' }))
-    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000007' }), 'limit')
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = limited.dailyLimit, requestId = 'buy000000006' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000007' }), 'limit')
     H.advance(86401)
-    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
 end)
 
 test('a failed hand-over refunds the points; wallets are admin-only to change', function()
@@ -1391,6 +1391,93 @@ test('food effects come from consumables.lua and eating is checked by the server
     give('carnival_web_cake')
     eq(use('carnival_web_cake'), nil, 'unconfigured treat does nothing')
     eq(#H.itemsOf(src, 'carnival_web_cake'), 1, 'and is not taken')
+end)
+
+test('prize boxes give what the admin set: item count range, percentage chances and quantities', function()
+    local src = BUYER
+    local box = settings().prizeBox
+    local saved = Carnival.U.deepCopy(box)
+    box.minItems, box.maxItems = 2, 3
+    box.contents = {
+        { item = 'carnival_bloodfloss', minCount = 1, maxCount = 2, chance = 70 },
+        { item = 'carnival_token_gold', minCount = 1, maxCount = 1, chance = 30 },
+    }
+    local usePrizeBox = H.ownExports.usePrizeBox
+    truthy(usePrizeBox, 'usePrizeBox export registered')
+    local function count(item) local n = 0 for _, s in ipairs(H.itemsOf(src, item)) do n = n + s.count end return n end
+    local before = count('carnival_bloodfloss') + count('carnival_token_gold')
+    H.pushes = {}
+    H.ms = H.ms + 5000
+    eq(H.call(usePrizeBox, 'usingItem', { name = 'carnival_prize_box' }, { id = src }, 1), true, 'box opens')
+    H.call(usePrizeBox, 'usedItem', { name = 'carnival_prize_box' }, { id = src }, 1)
+    local pushed = H.pushesFor(src, 'prize')
+    local got = pushed[#pushed].contents
+    truthy(#got >= 1, 'something inside')
+    local total = 0
+    for _, g in ipairs(got) do
+        truthy(g.item == 'carnival_bloodfloss' or g.item == 'carnival_token_gold', 'only configured prizes')
+        total = total + g.count
+    end
+    truthy(total >= 2 and total <= 6, 'between 2 and 3 prizes, each 1-2: ' .. total)
+    eq(count('carnival_bloodfloss') + count('carnival_token_gold') - before, total, 'prizes handed over')
+    -- a full inventory keeps the box closed
+    H.inventoryFull[src] = true
+    H.ms = H.ms + 5000
+    eq(H.call(usePrizeBox, 'usingItem', { name = 'carnival_prize_box' }, { id = src }, 1), false, 'no room, box stays shut')
+    H.inventoryFull[src] = nil
+
+    -- the odds preview matches the chances (admin only)
+    errRes(H.api(src, 'prizebox.simulate', { boxes = 2000 }), 'forbidden')
+    box.minItems, box.maxItems = 1, 1
+    local sim = okRes(H.api(ADMIN, 'prizebox.simulate', { boxes = 4000 }))
+    eq(sim.avgItems > 1 and sim.avgItems < 2, true, 'one prize of 1-2 floss or 1 token: ' .. sim.avgItems)
+    for _, r in ipairs(sim.rows) do
+        local expected = r.item == 'carnival_bloodfloss' and 70 or 30
+        truthy(math.abs(r.inBoxes - expected) < 4, ('%s found in %s%% of boxes, expected about %d%%'):format(r.item, r.inBoxes, expected))
+    end
+    settings().prizeBox = saved
+end)
+
+test('prize box settings: chances must add up to 100%, ranges must make sense, no boxes inside boxes', function()
+    local function errorsFor(mutate)
+        local tree = Carnival.U.deepCopy(settings())
+        mutate(tree.prizeBox)
+        local _, errors = Carnival.Validate.config(tree)
+        local paths = {}
+        for _, e in ipairs(errors or {}) do paths[e.path] = e.message end
+        return paths
+    end
+    truthy(errorsFor(function(b) b.contents[1].chance = b.contents[1].chance + 5 end)['prizeBox.contents'], 'chances over 100%')
+    truthy(errorsFor(function(b) b.minItems, b.maxItems = 4, 2 end)['prizeBox.minItems'], 'min above max')
+    truthy(errorsFor(function(b) b.contents[1].minCount, b.contents[1].maxCount = 3, 1 end)['prizeBox.contents.1.minCount'], 'quantity range')
+    truthy(errorsFor(function(b) b.contents[1].item = 'carnival_prize_box' end)['prizeBox.contents.1.item'], 'box in a box')
+    local ok = errorsFor(function() end)
+    eq(next(ok), nil, 'factory prize box is valid')
+end)
+
+test('saved settings that still use trick/treat tokens are upgraded on load', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    -- what an older version saved
+    doc.prizeBox = nil
+    doc.rewards.prizeBox = {
+        { item = 'carnival_treat_token', count = 2, weight = 50 },
+        { item = 'carnival_grave_shake', count = 1, weight = 30 },
+        { item = 'carnival_eyeball_pop', count = 3, weight = 10 },
+    }
+    doc.rewards.treatHeal = 25
+    doc.attractions.wheel.outcomes[6].item, doc.attractions.wheel.outcomes[6].count = 'carnival_trick_token', 1
+    doc.prizes.tiers[4].items = { { item = 'carnival_treat_token', count = 3 } }
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    local cfg = settings()
+    local contents = cfg.prizeBox.contents
+    eq(#contents, 2, 'token dropped from the prize box')
+    eq(contents[1].item, 'carnival_grave_shake')
+    eq(contents[1].chance + contents[2].chance, 100, 'remaining chances rescaled to 100%')
+    eq(contents[2].minCount, 3)
+    for _, o in ipairs(cfg.attractions.wheel.outcomes) do truthy(not Carnival.C.RETIRED_ITEMS[o.item], 'wheel token removed: ' .. o.id) end
+    eq(cfg.prizes.tiers[4].items[1].item, 'carnival_prize_box', 'prize tier gives a box instead')
+    eq(cfg.rewards.treatHeal, nil)
 end)
 
 test('tickets cannot be put on sale and ambient zones are validated', function()

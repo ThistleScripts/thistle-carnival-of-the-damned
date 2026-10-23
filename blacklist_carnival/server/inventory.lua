@@ -131,38 +131,6 @@ exports('useToken', function(event, item, inventory, slot)
     return false
 end)
 
--- Trick token: harmless visual trick, consumed.
-exports('useTrickToken', function(event, item, inventory)
-    local src = sourceOfInventory(inventory)
-    if not src then return false end
-    if event == 'usingItem' then
-        return Carnival.Prizes.canUse(src, 'trick')
-    elseif event == 'usedItem' then
-        Carnival.Prizes.applyTrick(src)
-    end
-end)
-
--- Treat token: restores a little health, consumed.
-exports('useTreatToken', function(event, item, inventory)
-    local src = sourceOfInventory(inventory)
-    if not src then return false end
-    if event == 'usingItem' then
-        return Carnival.Prizes.canUse(src, 'treat')
-    elseif event == 'usedItem' then
-        Carnival.Prizes.applyTreat(src)
-    end
-end)
-
--- Prize box: opened server-side, contents from the configured weighted table.
-exports('usePrizeBox', function(event, item, inventory, slot)
-    local src = sourceOfInventory(inventory)
-    if not src then return false end
-    if event == 'usingItem' then
-        return Carnival.Prizes.canOpenBox(src)
-    elseif event == 'usedItem' then
-        Carnival.Prizes.openBox(src)
-    end
-end)
 
 -- Carnival food (and any item pointed here): effects come from consumables.lua.
 -- 'usingItem' starts the eating progress on the client and returns false, so
@@ -174,4 +142,16 @@ exports('useFood', function(event, item, inventory, slot)
     if not src then return false end
     Carnival.Consumables.begin(src, item and item.name, slot, item and item.label)
     return false
+end)
+
+-- Prize box: opened server-side; the contents are rolled from the prize box
+-- settings (admin panel -> Settings -> Scoring & prizes -> Prize box).
+exports('usePrizeBox', function(event, item, inventory)
+    local src = sourceOfInventory(inventory)
+    if not src then return false end
+    if event == 'usingItem' then
+        return Carnival.Prizes.prepareBox(src)
+    elseif event == 'usedItem' then
+        Carnival.Prizes.openBox(src)
+    end
 end)

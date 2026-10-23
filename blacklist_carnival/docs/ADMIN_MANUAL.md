@@ -166,6 +166,21 @@ The food pictures are your own artwork (256×256 transparent PNGs in `images/inv
 
 *Prizes & results* defines rank tiers (from/to rank, label, items). When results freeze, a reward row is created per winner and item (idempotent: re-freezing never duplicates a prize). Offline winners receive prizes when they next log in (if *retry on login* is on) or via Players → Prize deliveries.
 
+### Prize boxes
+
+The **Carnival Prize Box** is handed out by the prize tiers (ranks 1–10 by default), the wheel's prize segments and the prize counter. A player uses it from their inventory to open it, and a card shows what was inside. You decide what is inside in *Settings → Scoring & prizes → Prize box*:
+
+| Setting | Meaning |
+|---|---|
+| *Fewest / Most prizes in a box* | Each box gives a random number of prizes in this range (factory: 1–3). |
+| *Possible prizes* | A list of items, each with a **chance per prize (%)** and a **quantity from / up to**. Every prize in a box is drawn separately by these chances (so the same item can come up twice and is then added together), then gets a random quantity in its range. |
+
+The chances must add up to exactly 100%: the list shows a running total, and the save is refused otherwise. A prize box cannot contain a prize box, and tickets cannot be prizes. Below the settings, **What players will get** opens 2,000 boxes on the server with the saved settings and shows how often each prize turns up and how many of it a box gives on average, so you can check the odds before players see them.
+
+The factory box holds 1–3 carnival foods, with a 2% chance per prize of a Gold Horror Token. A box only opens if the player has room for everything inside; otherwise it stays shut with a message.
+
+The old trick and treat tokens have been removed. Saved settings that still mention them are upgraded automatically on start: they disappear from the prize box list (the remaining chances are rescaled to 100%), prize tiers give a prize box instead, the wheel's *Treat!* segment gives candy floss, and *Trick!* only plays its spooky screen effect.
+
 ## Group allocation
 
 *Settings → Carnival → Ticket colours → Allocation*: `balanced` (fewest members first), `random`, or `manual` (players register without a colour and an admin assigns one under Players; tickets are issued on assignment). Capacity is enforced per colour.

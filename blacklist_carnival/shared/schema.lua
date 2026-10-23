@@ -148,13 +148,20 @@ S.root = { type = 'group', fields = {
         f('maxCount', { type = 'int', label = 'Maximum quantity per reward', min = 1, max = 10000 }),
         f('allowedItems', { type = 'list', label = 'Additional permitted reward items', max = 100, item = { type = 'item' } }),
         f('retryOnLogin', { type = 'bool', label = 'Retry pending rewards when the player logs in' }),
-        f('prizeBox', { type = 'list', label = 'Prize box contents (weighted)', max = 30, itemLabel = 'item', item = { type = 'group', fields = {
+        f('trickEffectSeconds', { type = 'int', label = 'Wheel "Trick!": screen effect duration (s)', min = 1, max = 60 }),
+    } }),
+
+    f('prizeBox', { type = 'group', label = 'Prize box', fields = {
+        f('minItems', { type = 'int', label = 'Fewest prizes in a box', min = 1, max = 20 }),
+        f('maxItems', { type = 'int', label = 'Most prizes in a box', min = 1, max = 20,
+            help = 'Each box gives a random number of prizes between these two. Each prize is drawn separately from the list below, so the same item can come up more than once.' }),
+        f('contents', { type = 'list', label = 'Possible prizes (chances must add up to 100%)', min = 1, max = 50, itemLabel = 'item',
+            itemSummary = '{chance}% · quantity {minCount}-{maxCount}', sumField = 'chance', sumTarget = 100, item = { type = 'group', fields = {
             f('item', { type = 'item', label = 'Item' }),
-            f('count', { type = 'int', label = 'Quantity', min = 1, max = 1000 }),
-            f('weight', { type = 'int', label = 'Weight', min = 1, max = 100000 }),
+            f('chance', { type = 'number', label = 'Chance per prize (%)', min = 0, max = 100, step = 0.1 }),
+            f('minCount', { type = 'int', label = 'Quantity from', min = 1, max = 1000 }),
+            f('maxCount', { type = 'int', label = 'Quantity up to', min = 1, max = 1000 }),
         } } }),
-        f('treatHeal', { type = 'int', label = 'Treat token: health restored', min = 0, max = 100 }),
-        f('trickEffectSeconds', { type = 'int', label = 'Trick token: effect duration (s)', min = 1, max = 60 }),
     } }),
 
     f('audio', { type = 'group', label = 'Audio', fields = {

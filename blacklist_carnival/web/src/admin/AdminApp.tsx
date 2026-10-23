@@ -8,6 +8,7 @@ import { AuditPage, EventsPage, HealthPage, LedgerPage, MonitoringPage, Overview
 import { ParticipantsPanel, StaffLeaderboard } from '../shared/Operations';
 import { PropsPage } from './PropsPage';
 import { ShopPage } from './ShopPage';
+import { PrizeBoxOdds } from './PrizeBoxOdds';
 
 type PageId = 'overview' | 'players' | 'nights' | 'settings' | 'system';
 interface Tab { id: string; label: string; perm?: string }
@@ -68,6 +69,7 @@ const SETTING_SECTIONS: Record<string, { id: string; label: string; icon?: strin
     { id: 'scoring', label: 'Scoring' },
     { id: 'leaderboard', label: 'Leaderboard' },
     { id: 'prizes', label: 'Prizes & results' },
+    { id: 'prizeBox', label: 'Prize box' },
     { id: 'rewards', label: 'Reward items' },
     { id: 'shop', label: 'Prize counter' },
   ],
@@ -88,6 +90,7 @@ function SettingsPage({ tab }: { tab: string }) {
         ))}
       </div>
       {section ? <ConfigEditor key={section} section={section} /> : null}
+      {section === 'prizeBox' ? <PrizeBoxOdds /> : null}
     </div>
   );
 }

@@ -273,21 +273,6 @@ def candy(d, cx, cy, r, body, wrap, stripe):
         d.line([cx + i * r * 0.28 - r * 0.12, cy - r * 0.42, cx + i * r * 0.28 + r * 0.12, cy + r * 0.42], fill=stripe, width=max(1, int(r * 0.1)))
 
 
-def trick_token():
-    img, d, c, r2 = coin_base((96, 40, 140), (34, 10, 52), (170, 130, 220), (52, 20, 80))
-    bat(d, c, c - s(12), s(64), (14, 8, 18))
-    d.ellipse([c - s(30), c - s(78), c + s(30), c - s(30)], outline=GOLD, width=s(3))
-    d.text((c, c + s(62)), 'TRICK', font=font(s(28)), fill=GOLD, anchor='mm', stroke_width=s(2), stroke_fill=INK)
-    finish(shadow(img), 'carnival_trick_token')
-
-
-def treat_token():
-    img, d, c, r2 = coin_base((240, 140, 60), (120, 44, 10), (250, 200, 130), (110, 50, 16))
-    candy(d, c, c - s(12), s(58), (170, 20, 40), (226, 196, 120), (250, 230, 200))
-    d.text((c, c + s(62)), 'TREAT', font=font(s(28)), fill=(255, 236, 190), anchor='mm', stroke_width=s(2), stroke_fill=INK)
-    finish(shadow(img), 'carnival_treat_token')
-
-
 # ---------------------------------------------------------------------------
 # Prize box
 # ---------------------------------------------------------------------------
@@ -616,8 +601,6 @@ def main():
     token('bronze', (196, 128, 70), (92, 50, 22), (226, 160, 100), (80, 42, 18), (66, 34, 14), (196, 128, 70), 'BRONZE')
     token('silver', (232, 232, 240), (120, 122, 134), (250, 250, 255), (96, 98, 110), (70, 72, 84), (232, 232, 240), 'SILVER')
     token('gold', (255, 222, 120), (170, 118, 24), (255, 236, 160), (140, 96, 16), (110, 72, 10), (255, 222, 120), 'GOLD')
-    trick_token()
-    treat_token()
     prize_box()
     # The ten carnival foods use the owner's artwork (images/inventory/carnival_<food>.png).
     # The drawn versions below are placeholders, only written with --food-placeholders.
