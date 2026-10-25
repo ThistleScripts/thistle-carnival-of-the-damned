@@ -362,12 +362,6 @@ local function crossValidate(cfg, errors)
             end
         end
     end
-    if a.puppets and a.puppets.scenarios then
-        for i, sc in ipairs(a.puppets.scenarios) do
-            if (sc.minPlayers or 1) > (sc.maxPlayers or 1) then err(('attractions.puppets.scenarios.%d'):format(i), 'minimum performers exceeds maximum') end
-            if (sc.minPoints or 0) > (sc.maxPoints or 0) then err(('attractions.puppets.scenarios.%d'):format(i), 'minimum award exceeds maximum') end
-        end
-    end
     if a.deception and a.deception.mysteries then
         local found = false
         for i, m in ipairs(a.deception.mysteries) do

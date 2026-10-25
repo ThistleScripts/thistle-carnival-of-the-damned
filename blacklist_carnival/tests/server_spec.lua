@@ -699,9 +699,10 @@ test('a show in progress holds the round past its timer (overtime) and completes
     local cast = membersOf(tc)
     for _, s in ipairs(cast) do at(s, settings().attractions.puppets.location) end
     local left = Carnival.Rotation.currentRound().ends_at - os.time()
-    if left > 20 then H.advance(left - 20) end
+    local lead = settings().attractions.puppets.lobbySeconds + 10
+    if left > lead then H.advance(left - lead) end
     okRes(H.api(cast[1], 'theatre.play'))
-    H.advance(25)
+    H.advance(lead + 5)
     for _, c in ipairs(C.COLOURS) do
         local s = Carnival.Rotation.sessionForColour(c)
         eq(s.status, s.attraction_id == 'puppets' and 'active' or 'completed', s.attraction_id)
@@ -889,36 +890,70 @@ test('second event in self-service mode starts with players registered', functio
     eq(Carnival.Rotation.currentRoundNumber(), 1)
 end)
 
-test('theatre: players take the stage, perform a random scenario and the audience vote awards points', function()
+test('theatre: each player has the stage alone in turn, then the group votes for the best', function()
     local tc = colourAt('puppets')
     local cast = membersOf(tc)
-    local loc = settings().attractions.puppets.location
+    local c = settings().attractions.puppets
+    local loc = c.location
     for _, s in ipairs(cast) do at(s, loc) end
-    local r1 = okRes(H.api(cast[1], 'theatre.play'))
-    eq(r1.cast, 1)
-    local r2 = okRes(H.api(cast[2], 'theatre.play'))
-    eq(r2.cast, 2, 'second player joined the cast')
+    eq(okRes(H.api(cast[1], 'theatre.play')).cast, 1)
+    eq(okRes(H.api(cast[2], 'theatre.play')).cast, 2, 'second player joined the show')
     H.pushes = {}
-    H.advance(6)
-    local card
-    for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'card' then card = p end end
-    truthy(card and card.performer and card.role, 'performer card with a role')
+    H.advance(c.lobbySeconds + 1)
     errRes(H.api(cast[1], 'theatre.play'), 'busy')
-    -- wait for the curtain and the vote
     local perf = H.sql("SELECT * FROM carnival_theatre_performances WHERE status = 'running' ORDER BY id DESC LIMIT 1")[1]
+    eq(perf.duration_seconds, 2 * (c.turnSeconds + c.turnGapSeconds), 'two turns')
+    local function lastCard(src)
+        local card
+        for _, p in ipairs(H.pushesFor(src, 'theatre')) do if p.action == 'card' then card = p end end
+        return card
+    end
+    local card = lastCard(cast[1])
+    eq(card.mode, 'turns')
+    eq(card.total, 2)
+    truthy(card.upNext and not card.onStage, 'an "up next" pause before the first turn')
+    -- first turn
     H.pushes = {}
-    H.advance(perf.duration_seconds + 1)
+    H.advance(c.turnGapSeconds + 1)
+    local a, b = lastCard(cast[1]), lastCard(cast[2])
+    truthy(a.onStage and b.onStage, 'both see who is on stage')
+    eq(a.onStage.name, b.onStage.name)
+    truthy(a.isYou ~= b.isYou, 'exactly one of them is performing')
+    local first = a.isYou and cast[1] or cast[2]
+    local second = first == cast[1] and cast[2] or cast[1]
+    local firstPrompt = a.onStage.title
+    truthy(a.onStage.description and #a.onStage.description > 0, 'the audience sees the prompt')
+    eq(a.order[1].now, true)
+    -- second turn, with a different prompt
+    H.pushes = {}
+    H.advance(c.turnSeconds + c.turnGapSeconds + 1)
+    local s2 = lastCard(second)
+    truthy(s2.isYou, 'second performer is on')
+    truthy(s2.onStage.title ~= firstPrompt, 'each performer gets their own prompt')
+    eq(s2.order[1].done, true, 'first turn ticked off')
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'running', 'no vote until everyone has performed')
+    -- vote
+    H.pushes = {}
+    H.advance(c.turnSeconds + 1)
     local vote
     for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'vote' then vote = p end end
-    truthy(vote, 'vote opened')
+    truthy(vote and #vote.candidates == 2, 'the group votes after the last turn')
     local p1, p2 = Carnival.Participants.idOfSource(cast[1]), Carnival.Participants.idOfSource(cast[2])
-    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p1 }), 'invalid')
+    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p1 }), 'invalid', 'no voting for yourself')
     okRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }))
     errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }), 'duplicate')
-    okRes(H.api(cast[2], 'theatre.vote', { performanceId = perf.id, participantId = p1 }))
-    H.advance(1)
-    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed', 'committed by the audience vote')
-    eq(count('SELECT COUNT(*) AS n FROM carnival_theatre_performers WHERE performance_id = ? AND is_winner = 1', { perf.id }), 2, 'tie: both win')
+    -- cast[2] abstains: the vote closes on time and p2 wins
+    H.advance(c.voteSeconds + 1)
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed', 'committed by the vote')
+    local rows = H.sql('SELECT participant_id, is_winner, points FROM carnival_theatre_performers WHERE performance_id = ?', { perf.id })
+    for _, r in ipairs(rows) do
+        if r.participant_id == p2 then
+            eq(r.is_winner == 1 or r.is_winner == true, true, 'most votes wins')
+            eq(r.points, c.winnerPoints)
+        else
+            eq(r.points, c.performerPoints, 'everyone else who performed')
+        end
+    end
     errRes(H.api(cast[1], 'theatre.play'), 'done')
 end)
 

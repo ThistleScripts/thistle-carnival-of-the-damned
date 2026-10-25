@@ -4,7 +4,7 @@ import { Backdrop, Icon } from '../components/Art';
 import { Button, Countdown } from '../components/ui';
 import { errorText } from '../i18n';
 
-// Audience vote after a self-service theatre show.
+// The group's vote after every performer has had their turn on stage.
 export function TheatreVote({ data, onClose }: { data: any; onClose: () => void }) {
   const [voted, setVoted] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function TheatreVote({ data, onClose }: { data: any; onClose: () => void 
           <div className="fortune-title"><Icon name="puppets" size={26} /><h2>Who stole the show?</h2></div>
           <div className="btn-row">{data.endsAt ? <span className="muted">Voting closes in <Countdown endsAt={data.endsAt} /></span> : null}<Button variant="ghost" onClick={onClose}>Close</Button></div>
         </header>
-        <p className="muted">{data.title}</p>
+        <p className="muted">Everyone has had their turn. Vote for the best performance - you cannot vote for yourself.</p>
         <div className="suspects">
           {candidates.map((c) => (
             <button key={c.participantId} type="button" disabled={busy || voted !== null} onClick={() => vote(c.participantId)}
@@ -38,7 +38,7 @@ export function TheatreVote({ data, onClose }: { data: any; onClose: () => void 
             </button>
           ))}
         </div>
-        {candidates.length === 0 ? <p className="muted">You were the only performer - the audience decides.</p> : null}
+        {candidates.length === 0 ? <p className="muted">You were the only performer.</p> : null}
         {voted !== null ? <div className="state-ok">Vote cast. The results are announced when voting closes.</div> : null}
         {error ? <div className="state-error">{error}</div> : null}
       </Backdrop>

@@ -172,8 +172,9 @@ describe('player screens', () => {
 
   it('theatre card and horror HUD render as non-blocking overlays', () => {
     render(<App />);
-    lua('open', { view: 'theatre', data: { action: 'card', status: 'displayed', performer: true, role: 'Lion Tamer', scenario: { title: 'The Reluctant Lion Tamer', description: 'x', difficulty: 'medium' }, performers: [{ name: 'Ada', role: 'Lion Tamer' }] } });
-    expect(screen.getByText(/Your role/)).toBeTruthy();
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 1, total: 2, isYou: true, endsAt: Math.floor(Date.now() / 1000) + 60,
+      onStage: { name: 'Ada', title: 'The Tightrope', description: 'x', difficulty: 'medium' }, order: [] } });
+    expect(screen.getByText("You're on stage!")).toBeTruthy();
     lua('horror', { active: true, status: 'running', endsAt: Math.floor(Date.now() / 1000) + 50, collected: 2, points: 15, runnerStatus: 'inside' });
     expect(screen.getByText('Tokens 2')).toBeTruthy();
     lua('horror', { active: false });
@@ -548,5 +549,24 @@ describe('prize box reveal', () => {
     act(() => { vi.advanceTimersByTime(8000); });
     expect(screen.queryByText('Your prize box held')).toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe('theatre solo turns', () => {
+  it('shows who is on stage, their prompt, the running order and your own turn', () => {
+    render(<App />);
+    const now = Math.floor(Date.now() / 1000);
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 2, total: 3, myTurn: 3, serverTime: now, endsAt: now + 42,
+      onStage: { name: 'Juno Reyes', title: 'The Haunted Mirror', description: 'You are a funhouse mirror that has seen too much.', difficulty: 'medium' }, isYou: false,
+      order: [{ name: 'Marlo Vance', done: true, now: false, skipped: false, you: false }, { name: 'Juno Reyes', done: false, now: true, skipped: false, you: false }, { name: 'Ada Lovelace', done: false, now: false, skipped: false, you: true }] } });
+    expect(screen.getByText('Now on stage: Juno Reyes')).toBeTruthy();
+    expect(screen.getByText(/funhouse mirror/)).toBeTruthy();
+    expect(screen.getByText(/turn 2 of 3/)).toBeTruthy();
+    expect(screen.getByText('Ada Lovelace (you)')).toBeTruthy();
+    expect(document.querySelector('.order-done')!.textContent).toContain('Marlo Vance');
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 3, total: 3, myTurn: 3, serverTime: now, startsAt: now + 4,
+      upNext: { name: 'Ada Lovelace', title: 'The Tightrope', isYou: true }, order: [] } });
+    expect(screen.getByText("You're up next!")).toBeTruthy();
+    expect(screen.getByText('The Tightrope')).toBeTruthy();
   });
 });

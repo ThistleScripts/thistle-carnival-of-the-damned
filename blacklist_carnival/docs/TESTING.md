@@ -8,7 +8,7 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 |---|---|
 | Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, every food has a consumables.lua entry and uses useFood, no clown content) | **1032 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
 | Server integration (real server scripts, real database) | **80 tests, 80 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
-| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 32 tests passed** |
+| NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 33 tests passed** |
 | `sql/schema.sql` imported twice into an empty MariaDB database | **40 tables, no errors (idempotent)** |
 
 ### Integration tests (server_spec.lua)
@@ -20,7 +20,7 @@ Lifecycle & registration: invalid transitions rejected · registration blocked w
 Wheel: wrong group refused · max spins · total equals ledger · 10 000-draw distribution within ±2.5 % of weights · special prizes delivered straight away, idempotent delivery · inventory-full failure then retry · tickets refused as rewards.
 Fortune: no answer leak · resume same pending question · correct/incorrect marking · no re-answering · visit limit.
 Shooting: server-owned schedule for every round · each round faster, smaller, with more lanterns and a bigger multiplier, targets stay inside their round and lanes, the break between rounds ignores clicks, round-3 hits are multiplied, results add up per round · countdown clicks refused · bullseye scored on the server · already-hit / off-screen / too-fast refused · server timer ends the game · one award · cannot play twice.
-Theatre: players take the stage, random scenario and roles, audience vote (no self-votes, one vote each, ties), solo shows scored, committed once.
+Theatre: the group performs one by one (each turn alone, its own prompt, an up-next pause, the order ticked off), no vote until everyone has performed, then a group vote (no self-votes, one vote each, most votes wins, the rest get performer points), solo shows scored, committed once.
 Deception: starts on arrival · no answer key in public state or pushes · selection count enforced · submission limit · clues unlock over time · marked automatically once everyone has accused (perfect bonus, tie-break, penalties) · scored once.
 Horror: only allowlisted controllers start · too far · valid collect · replayed collect refused · invalid token · stale run · non-runner · warnings at configured thresholds · escape bonus once · expiry ends run once and completes the group.
 Rotation: a show in progress holds the round past its timer (overtime) and completes it when it ends · between rounds → auto round 2 matching the matrix · pause freezes / resume restores exactly · extend/skip/delay audited, delay auto-releases.
@@ -58,7 +58,7 @@ Run these on a staging server before the first live event. IDs are referenced fr
 - M-AT-1 Shooting: target the gallery ped; the aim game opens with a countdown, targets slide across, clicks register with sound and points; golden targets and lanterns appear; result at the end.
 - M-AT-2 Wheel: spin animation lands on the segment shown in the result; the Trick! outcome plays the screen effect; special prize waits for approval.
 - M-AT-3 Fortune: riddle typed answer accepted case-insensitively; fortune shown; visit completes.
-- M-AT-4 Theatre: two players take the stage; role cards visible without blocking movement; timer; vote screen; results.
+- M-AT-4 Theatre: two players join the show; each gets the stage alone for 60 s with their own prompt (card visible without blocking movement, running order updates); vote screen after the last turn; results.
 - M-AT-5 Deception: terminal shows testimony; clues arrive over time; accusation scored; reveal shows liars.
 - M-AT-6 Horror: ambient audio plays, tokens visible within proximity distance, collection via ox_target, warnings at 120/60/30/10/5 s with sounds, scares shake/flash, exit zone grants bonus, run end stops ambient.
 
