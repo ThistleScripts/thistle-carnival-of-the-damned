@@ -78,12 +78,16 @@ function Wheel.spin(src)
         end
         Carnival.Monitor.log('info', 'attraction', 'wheel_spin', { participantId = p.id, attractionId = ID, details = { spinId = spinId, outcome = outcome.id, roll = U.round(roll, 3), total = total } })
 
+        -- Points are recorded now but announced (and prizes handed over) only once
+        -- the wheel has stopped, so nothing gives the result away mid-spin.
+        local notices = {}
         if spinNumber == 1 and c.participationBonus > 0 then
-            Carnival.Scoring.award({
+            local ok, tx = Carnival.Scoring.award({
                 participantId = p.id, delta = c.participationBonus, key = 'wheel:participation:' .. p.id, txType = 'participation',
                 source = 'wheel_participation', reason = 'First spin of the Wheel of Misfortune', attractionId = ID,
-                sessionId = session.id, roundNumber = session.round_number, publicReason = 'Wheel participation',
+                sessionId = session.id, roundNumber = session.round_number, publicReason = 'Wheel participation', quiet = true,
             })
+            if ok and tx.notice then notices[#notices + 1] = tx.notice end
         end
 
         local applied = 0
@@ -92,9 +96,12 @@ function Wheel.spin(src)
                 participantId = p.id, delta = outcome.points, key = 'wheel:spin:' .. spinId,
                 txType = outcome.points > 0 and 'award' or 'penalty', source = 'wheel_' .. outcome.type,
                 reason = 'Wheel: ' .. outcome.label, attractionId = ID, sessionId = session.id, roundNumber = session.round_number,
-                publicReason = outcome.label,
+                publicReason = outcome.label, quiet = true,
             })
-            if ok then applied = tx.delta end
+            if ok then
+                applied = tx.delta
+                if tx.notice then notices[#notices + 1] = tx.notice end
+            end
         end
 
         local reward
@@ -106,25 +113,28 @@ function Wheel.spin(src)
             })
             if r then
                 Carnival.Db.update('UPDATE carnival_wheel_spins SET reward_id = ? WHERE id = ?', { r.id, spinId })
-                local status = r.status
-                if status == 'pending' then status = Carnival.Rewards.deliver(r.id, Carnival.Identity.SYSTEM) end
-                reward = { item = outcome.item, label = Carnival.Inventory.itemLabel(outcome.item), count = outcome.count, status = status }
-                if status == 'awaiting_approval' then Carnival.Push.invalidate('wheel', 'rewards') end
+                -- handed over when the wheel stops (a restart leaves it pending; the retry delivers it)
+                reward = { id = r.id, item = outcome.item, label = Carnival.Inventory.itemLabel(outcome.item), count = outcome.count, status = r.status }
+                if r.status == 'awaiting_approval' then Carnival.Push.invalidate('wheel', 'rewards') end
             else
                 reward = { item = outcome.item, count = outcome.count, status = 'failed', error = rcode }
             end
         end
 
         Carnival.Push.invalidate('wheel')
-        CreateThread(function()
-            Wait(c.spinAnimationMs + 500)
+        local cid = p.citizenid
+        SetTimeout(c.spinAnimationMs + 300, function()
+            for _, n in ipairs(notices) do Carnival.Push.send(src, 'score', n) end
+            if Carnival.Shop then Carnival.Shop.releaseWallet(cid) end
+            if reward and reward.id and reward.status == 'pending' then Carnival.Rewards.deliver(reward.id, Carnival.Identity.SYSTEM) end
+            Wait(200)
             -- walk-up: the visit is over for this player once their spins are used
             if spinNumber >= c.maxSpins then Carnival.Rotation.memberFinished(session.id, p.id, 'Spun the wheel') end
             maybeCompleteSession(Carnival.Rotation.sessionById(session.id))
         end)
         return {
             index = index, outcome = { id = outcome.id, label = outcome.label, type = outcome.type },
-            points = applied, reward = reward, spinsUsed = spinNumber, maxSpins = c.maxSpins,
+            points = applied, reward = reward and { item = reward.item, label = reward.label, count = reward.count, status = reward.status } or nil, spinsUsed = spinNumber, maxSpins = c.maxSpins,
             animationMs = c.spinAnimationMs, cooldownSeconds = c.cooldownSeconds,
         }
     end)

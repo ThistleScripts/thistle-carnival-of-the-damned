@@ -95,7 +95,9 @@ local function apply(cid, name, entry)
     end)
 end
 
-local function earn(p, attractionId, eventId, amount, key, scoreTxId, reason)
+local heldWallet = {}   -- [citizenid] = { delta, attraction } held back until Shop.releaseWallet
+
+local function earn(p, attractionId, eventId, amount, key, scoreTxId, reason, quiet)
     local rule = attractionId and cfg().earning[attractionId]
     if not rule or amount <= 0 or not p.citizenid then return end
     local ok, res = apply(p.citizenid, p.display_name, {
@@ -105,18 +107,32 @@ local function earn(p, attractionId, eventId, amount, key, scoreTxId, reason)
     if ok and not res.duplicate and (res.delta or 0) > 0 then
         local src = Carnival.Participants.sourceOf(p.id)
         if src then sourceByCitizen[p.citizenid] = src end
-        pushWallet(p.citizenid, { delta = res.delta, attraction = attractionId })
+        if quiet then
+            local h = heldWallet[p.citizenid] or { delta = 0, attraction = attractionId }
+            h.delta = h.delta + res.delta
+            heldWallet[p.citizenid] = h
+        else
+            pushWallet(p.citizenid, { delta = res.delta, attraction = attractionId })
+        end
     end
+end
+
+-- Announce prize tickets that were credited quietly (see Scoring.award quiet).
+function Shop.releaseWallet(cid)
+    local h = cid and heldWallet[cid]
+    if not h then return end
+    heldWallet[cid] = nil
+    pushWallet(cid, { delta = h.delta, attraction = h.attraction })
 end
 
 -- Called by Scoring.award after a positive game score was written.
 -- p: participant row, tx: { id, delta, attractionId, txType }
-function Shop.credit(p, tx, eventId)
+function Shop.credit(p, tx, eventId, quiet)
     if not p or not tx or not tx.id or (tx.delta or 0) <= 0 or not tx.attractionId then return end
     if tx.txType == 'participation' then return end -- finishing a game pays perPlay instead
     local rule = cfg().earning[tx.attractionId]
     if not rule then return end
-    earn(p, tx.attractionId, eventId, math.floor(tx.delta * rule.per100Points / 100), 'score:' .. tx.id, tx.id)
+    earn(p, tx.attractionId, eventId, math.floor(tx.delta * rule.per100Points / 100), 'score:' .. tx.id, tx.id, nil, quiet)
 end
 
 -- Called by Rotation when a participant finishes a game (completed visit).

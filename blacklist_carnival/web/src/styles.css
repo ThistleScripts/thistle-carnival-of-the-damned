@@ -690,3 +690,4 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 .order-now { color: var(--gold-hi); font-weight: 600; } .order-now .order-mark { color: var(--gold-hi); }
 .order-skipped { text-decoration: line-through; opacity: 0.6; }
 .order-you { font-weight: 600; }
+.sg-capped { color: #f6d48d; font-size: 13px; }

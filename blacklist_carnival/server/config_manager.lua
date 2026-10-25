@@ -100,9 +100,22 @@ local function retireTokens(doc)
     if type(doc.shop) == 'table' then doc.shop.items = filter(doc.shop.items) end
 end
 
+-- The gallery's old factory scoring (before rounds multiplied points) lets a
+-- good run reach 500+, far above every other game. If a saved config still has
+-- exactly those factory numbers, move it to the balanced ones.
+local function rebalanceShooting(doc)
+    local sh = type(doc.attractions) == 'table' and doc.attractions.shooting
+    if type(sh) ~= 'table' then return end
+    if sh.targetPoints == 5 and sh.bullseyeBonus == 3 and sh.specialPoints == 15 and sh.decoyPenalty == 10
+        and (sh.maxScore == 250 or sh.maxScore == 500) then
+        sh.targetPoints, sh.bullseyeBonus, sh.specialPoints, sh.decoyPenalty, sh.maxScore = 1, 1, 4, 3, 200
+    end
+end
+
 local function upgrade(doc)
     if type(doc) ~= 'table' then return doc end
     retireTokens(doc)
+    rebalanceShooting(doc)
     local h = type(doc.attractions) == 'table' and doc.attractions.horror
     if type(h) ~= 'table' or type(h.tokenTypes) ~= 'table' then return doc end
     for ttype, t in pairs(h.tokenTypes) do

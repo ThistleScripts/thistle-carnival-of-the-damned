@@ -433,9 +433,15 @@ test('special prizes are delivered straight away and delivery is idempotent', fu
     Carnival.WheelAttraction.choose = function(outcomes)
         for i, o in ipairs(outcomes) do if o.type == 'special_prize' then return o, i, 0.5, 1000 end end
     end
+    local scoresBefore = #H.pushesFor(s, 'score')
     local r = okRes(H.api(s, 'wheel.spin'))
     Carnival.WheelAttraction.choose = real
-    eq(r.reward.status, 'delivered', 'no staff approval step')
+    eq(r.reward.status, 'pending', 'no staff approval step')
+    -- nothing is announced or handed over while the wheel is still turning
+    eq(#H.pushesFor(s, 'score'), scoresBefore, 'no score toast mid-spin')
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = (SELECT reward_id FROM carnival_wheel_spins ORDER BY id DESC LIMIT 1)')[1].status, 'pending')
+    H.advance(math.ceil(settings().attractions.wheel.spinAnimationMs / 1000) + 1)
+    truthy(#H.pushesFor(s, 'score') > scoresBefore, 'score toast once the wheel stops')
     local reward = H.sql("SELECT * FROM carnival_rewards WHERE source = 'wheel' AND status = 'delivered' ORDER BY id DESC LIMIT 1")[1]
     local itemsBefore = #H.itemsOf(s, reward.item)
     -- retrying delivery must not duplicate
@@ -1626,6 +1632,23 @@ test('saved settings that still use trick/treat tokens are upgraded on load', fu
     for _, o in ipairs(cfg.attractions.wheel.outcomes) do truthy(not Carnival.C.RETIRED_ITEMS[o.item], 'wheel token removed: ' .. o.id) end
     eq(cfg.prizes.tiers[4].items[1].item, 'carnival_prize_box', 'prize tier gives a box instead')
     eq(cfg.rewards.treatHeal, nil)
+end)
+
+test('saved settings with the old shooting points are rebalanced to fit the cap', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    local sh = doc.attractions.shooting
+    sh.targetPoints, sh.bullseyeBonus, sh.specialPoints, sh.decoyPenalty, sh.maxScore = 5, 3, 15, 10, 250
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    local c = settings().attractions.shooting
+    eq(c.targetPoints, 1) eq(c.bullseyeBonus, 1) eq(c.specialPoints, 4) eq(c.decoyPenalty, 3) eq(c.maxScore, 200)
+    -- an admin's own numbers are left alone
+    doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    doc.attractions.shooting.targetPoints, doc.attractions.shooting.maxScore = 7, 300
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    eq(settings().attractions.shooting.targetPoints, 7)
+    eq(settings().attractions.shooting.maxScore, 300)
 end)
 
 test('tickets cannot be put on sale and ambient zones are validated', function()
