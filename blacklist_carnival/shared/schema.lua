@@ -378,6 +378,8 @@ S.root = { type = 'group', fields = {
                 f('model', { type = 'model', label = 'Prop model', max = 64,
                     help = 'The bundled coins are carnivalcoinbronze / carnivalcoinsilver / carnivalcoingold. The prop floats above the token position, spins and glows; if it cannot load, a glowing ring is shown.' }),
                 f('distance', { type = 'number', label = 'Collection distance (m)', min = 0.5, max = 10, step = 0.1 }),
+                f('scale', { type = 'number', label = 'Coin size (1 = the model\'s own size)', min = 0.1, max = 3, step = 0.05,
+                    help = 'Shrinks or grows the coin prop. 0.5 = half size.' }),
                 f('floatHeight', { type = 'number', label = 'Float height above the position (m)', min = 0, max = 3, step = 0.05 }),
                 f('bobHeight', { type = 'number', label = 'Bob up and down (m, 0 = still)', min = 0, max = 1, step = 0.01 }),
                 f('spinSpeed', { type = 'int', label = 'Spin speed (degrees per second, 0 = still)', min = 0, max = 720 }),

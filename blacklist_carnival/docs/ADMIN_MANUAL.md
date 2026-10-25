@@ -94,7 +94,7 @@ Recovery tools (Nights & results, active night): reload state from the database,
 
 The bronze, silver and gold coins are bundled in `stream/props/` (`carnivalcoinbronze`, `carnivalcoinsilver`, `carnivalcoingold`) and loaded by the resource's manifest. Each coin floats above its token position, bobs, spins and glows in its type's colour. If a model cannot load, a glowing spinning ring is shown instead so tokens are never invisible.
 
-Tune them under *Settings → Attractions → House of Horrors → Token types* (float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
+Tune them under *Settings → Attractions → House of Horrors → Token types* (**coin size**: 1 = the model's own size, factory 0.5 = half size; float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
 
 Coins are created only within about 60 m of the player, so they are always placed after the area has streamed in.
 

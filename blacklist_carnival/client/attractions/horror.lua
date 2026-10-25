@@ -84,7 +84,7 @@ local function typeCfg(ttype)
     local r, g, b = hexToRgb(c.glowColour or FALLBACK_COLOURS[ttype])
     return {
         model = (c.model and c.model ~= '') and c.model or nil,
-        float = c.floatHeight or 0.9, bob = c.bobHeight or 0.12, spin = c.spinSpeed or 90,
+        float = c.floatHeight or 0.9, bob = c.bobHeight or 0.12, spin = c.spinSpeed or 90, scale = c.scale or 1.0,
         r = r, g = g, b = b, range = c.glowRange or 2.5, intensity = c.glowIntensity or 6.0,
     }
 end
@@ -148,8 +148,16 @@ local function renderLoop()
                     local z = c.z + cfg.float + math.sin(now * 2.2 + t.phase) * cfg.bob
                     local heading = (now * cfg.spin + t.phase * 57.3) % 360.0
                     if t.entity then
-                        SetEntityCoordsNoOffset(t.entity, c.x, c.y, z, false, false, false)
-                        SetEntityHeading(t.entity, heading)
+                        if cfg.scale ~= 1.0 then
+                            -- GTA has no prop scale: draw it with a scaled transform
+                            -- matrix (forward, right, up, position) every frame
+                            local rad, s = math.rad(heading), cfg.scale
+                            local sinH, cosH = math.sin(rad), math.cos(rad)
+                            SetEntityMatrix(t.entity, -sinH * s, cosH * s, 0.0, cosH * s, sinH * s, 0.0, 0.0, 0.0, s, c.x, c.y, z)
+                        else
+                            SetEntityCoordsNoOffset(t.entity, c.x, c.y, z, false, false, false)
+                            SetEntityHeading(t.entity, heading)
+                        end
                     else
                         -- a spinning upright ring reads as a coin from any angle
                         DrawMarker(6, c.x, c.y, z, 0.0, 0.0, 0.0, 0.0, 0.0, heading, 0.45, 0.45, 0.45, cfg.r, cfg.g, cfg.b, 220, false, false, 2, false, nil, nil, false)
@@ -158,7 +166,8 @@ local function renderLoop()
                         DrawLightWithRange(c.x, c.y, z, cfg.r, cfg.g, cfg.b, cfg.range, cfg.intensity)
                     end
                     -- soft halo on the floor beneath the token
-                    DrawMarker(25, c.x, c.y, c.z + 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.7, 0.7, cfg.r, cfg.g, cfg.b, 70, false, false, 2, false, nil, nil, false)
+                    local halo = math.max(0.3, 0.7 * math.min(cfg.scale, 1.0))
+                    DrawMarker(25, c.x, c.y, c.z + 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, halo, halo, halo, cfg.r, cfg.g, cfg.b, 70, false, false, 2, false, nil, nil, false)
                 end
             end
             Wait(0)
