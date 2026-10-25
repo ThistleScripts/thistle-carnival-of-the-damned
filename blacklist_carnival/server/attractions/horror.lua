@@ -144,15 +144,13 @@ local function endRun(reason, actor)
     if not run or (run.status ~= 'running' and run.status ~= 'paused') then return nil, 'invalid', 'No run in progress.' end
     local now = os.time()
     run.status = 'ended'
-    persistRun({ status = 'ended', ended_at = now, end_reason = reason, paused_remaining = Carnival.Db.NULL })
-    local penalty = run.settings.penalties.notEscaped
+    -- Tell the players first: whatever happens below, nobody is left staring at
+    -- a finished countdown.
+    local trapped = {}
     for pid, r in pairs(run.runners) do
         if r.status == 'inside' then
             r.status = 'trapped'
-            Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'trapped' WHERE run_id = ? AND participant_id = ?", { run.id, pid })
-            if reason == 'expired' and penalty > 0 then
-                award(pid, -penalty, pid .. ':not_escaped', 'penalty', 'horror_not_escaped', 'Did not escape the House of Horrors', 'Trapped inside!')
-            end
+            trapped[#trapped + 1] = pid
         end
     end
     pushRunners({ action = 'audio_stop', sound = run.settings.ambientSound })
@@ -161,6 +159,17 @@ local function endRun(reason, actor)
         local s = Carnival.Participants.sourceOf(pid)
         if s then Carnival.Push.send(s, 'horror', { action = 'result', status = r.status, collected = r.collected, points = r.points }) end
     end
+    local ok, err = pcall(function()
+        persistRun({ status = 'ended', ended_at = now, end_reason = reason, paused_remaining = Carnival.Db.NULL })
+        local penalty = run.settings.penalties.notEscaped
+        for _, pid in ipairs(trapped) do
+            Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'trapped' WHERE run_id = ? AND participant_id = ?", { run.id, pid })
+            if reason == 'expired' and penalty > 0 then
+                award(pid, -penalty, pid .. ':not_escaped', 'penalty', 'horror_not_escaped', 'Did not escape the House of Horrors', 'Trapped inside!')
+            end
+        end
+    end)
+    if not ok then Carnival.Monitor.log('error', 'attraction', 'horror_end_failed', { attractionId = ID, details = { runId = run.id, error = tostring(err) } }) end
     Carnival.Monitor.log('info', 'countdown', 'horror_run_ended', { attractionId = ID, actor = actor, result = reason, details = { runId = run.id } })
     if actor then Carnival.Audit.record(actor, 'horror_run_ended', { targetType = 'horror_run', targetId = run.id, reason = reason }) end
     Carnival.Push.invalidate('horror')
@@ -273,6 +282,42 @@ local function escape(src, payload)
     end)
 end
 
+-- Escape hatch: the player gives up, is taken back to the return point and
+-- forfeits a share of the points they won in this run.
+local function bailOut(src, payload)
+    local p, r, msg = runnerCheck(src, payload)
+    if not p then return nil, r, msg end
+    local eh = run.settings.escapeHatches
+    if not eh or not eh.enabled then return nil, 'disabled', 'The escape hatches are sealed.' end
+    local hatch
+    for _, hp in ipairs(eh.points or {}) do
+        if hp.id == payload.hatchId then hatch = hp end
+    end
+    if not hatch then return nil, 'invalid', 'There is no hatch here.' end
+    if not Carnival.Identity.within(src, hatch.coords, eh.radius + 1.5) then return nil, 'too_far', 'Get closer to the hatch.' end
+    return Carnival.withLock('horror:runner:' .. p.id, function()
+        if r.status ~= 'inside' then return nil, 'escaped', 'You already left the maze.' end
+        r.status = 'bailed'
+        Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'bailed', exited_at = ?, seconds_remaining = ? WHERE run_id = ? AND participant_id = ?",
+            { os.time(), remaining(), run.id, p.id })
+        local forfeit = math.floor(math.max(0, r.points) * eh.forfeitPercent / 100 + 0.5)
+        local lost = 0
+        if forfeit > 0 then
+            local ok, tx = award(p.id, -forfeit, p.id .. ':bailout', 'penalty', 'horror_bailout',
+                ('Used escape hatch %s (%d%% of %d run points)'):format(hatch.id, eh.forfeitPercent, r.points), 'Escape hatch')
+            if ok then lost = -tx.delta end
+        end
+        r.points = r.points - lost
+        Carnival.Monitor.log('info', 'attraction', 'horror_bailout', { participantId = p.id, attractionId = ID, details = { hatch = hatch.id, lost = lost } })
+        Carnival.Push.send(src, 'horror', { action = 'audio_stop', sound = run.settings.ambientSound })
+        Carnival.Push.invalidate('horror')
+        local allOut = true
+        for _, rr in pairs(run.runners) do if rr.status == 'inside' then allOut = false end end
+        if allOut then CreateThread(function() endRun('all_escaped', nil) end) end
+        return { bailed = true, lost = lost, points = r.points, collected = r.collected, returnTo = eh.returnTo }
+    end)
+end
+
 ---------------------------------------------------------------------------
 -- Ticker: timer, warnings, respawns, boundary
 ---------------------------------------------------------------------------
@@ -288,6 +333,7 @@ Carnival.onTick('horror', function(now)
     end
     if not run or run.status ~= 'running' or Carnival.Events.state() ~= C.STATES.RUNNING then return end
     local left = run.endsAt - now
+    if left <= 0 then return endRun('expired', nil) end
     local warnings = U.deepCopy(run.settings.warnings)
     table.sort(warnings, function(a, b) return a > b end)
     for _, w in ipairs(warnings) do
@@ -330,7 +376,6 @@ Carnival.onTick('horror', function(now)
             end
         end
     end
-    if left <= 0 then endRun('expired', nil) end
 end)
 
 ---------------------------------------------------------------------------
@@ -408,6 +453,7 @@ Carnival.Attractions.register({
 ---------------------------------------------------------------------------
 Api.register('horror.collect', { rate = 'action', handler = function(ctx, payload) return collect(ctx.source, payload) end })
 Api.register('horror.exit', { rate = 'action', handler = function(ctx, payload) return escape(ctx.source, payload) end })
+Api.register('horror.bailout', { rate = 'action', handler = function(ctx, payload) return bailOut(ctx.source, payload) end })
 Api.register('horror.state', {
     rate = 'participant',
     handler = function(ctx)

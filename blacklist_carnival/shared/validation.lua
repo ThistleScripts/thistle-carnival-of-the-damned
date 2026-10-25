@@ -300,6 +300,21 @@ local function crossValidate(cfg, errors)
         if merr then err('rotation.matrix', merr) end
     end
 
+    if cfg.prizeBox and cfg.prizeBox.contents then
+        local pb = cfg.prizeBox
+        if (pb.minItems or 1) > (pb.maxItems or 1) then err('prizeBox.minItems', 'the fewest prizes cannot be more than the most prizes') end
+        local total = 0
+        for i, it in ipairs(pb.contents) do
+            local path = ('prizeBox.contents.%d'):format(i)
+            total = total + (it.chance or 0)
+            if it.item == C.PRIZE_BOX then err(path .. '.item', 'a prize box cannot contain a prize box') end
+            if C.TICKET_ITEM_COLOUR[it.item] then err(path .. '.item', 'carnival tickets cannot be prizes in a box') end
+            if (it.minCount or 1) > (it.maxCount or 1) then err(path .. '.minCount', '"quantity from" cannot be more than "quantity up to"') end
+        end
+        if math.abs(total - 100) > 0.05 then
+            err('prizeBox.contents', ('the chances add up to %s%%; they must add up to 100%%'):format((math.floor(total * 10 + 0.5) / 10)))
+        end
+    end
     if cfg.shop and cfg.shop.items then
         local seen = {}
         for i, it in ipairs(cfg.shop.items) do
@@ -309,6 +324,12 @@ local function crossValidate(cfg, errors)
             if seen[it.item] then err(('shop.items.%d.item'):format(i), ('"%s" is listed twice'):format(it.item)) end
             seen[it.item] = true
         end
+    end
+
+    local wk = cfg.rotation and cfg.rotation.walkup
+    if wk and wk.endNightAt then
+        local h, m = tostring(wk.endNightAt):match('^(%d%d):(%d%d)$')
+        if not h or tonumber(h) > 23 or tonumber(m) > 59 then err('rotation.walkup.endNightAt', 'use 24-hour HH:MM, e.g. 04:00') end
     end
 
     local a = cfg.attractions or {}
@@ -341,12 +362,6 @@ local function crossValidate(cfg, errors)
             end
         end
     end
-    if a.puppets and a.puppets.scenarios then
-        for i, sc in ipairs(a.puppets.scenarios) do
-            if (sc.minPlayers or 1) > (sc.maxPlayers or 1) then err(('attractions.puppets.scenarios.%d'):format(i), 'minimum performers exceeds maximum') end
-            if (sc.minPoints or 0) > (sc.maxPoints or 0) then err(('attractions.puppets.scenarios.%d'):format(i), 'minimum award exceeds maximum') end
-        end
-    end
     if a.deception and a.deception.mysteries then
         local found = false
         for i, m in ipairs(a.deception.mysteries) do
@@ -372,6 +387,11 @@ local function crossValidate(cfg, errors)
             if seen[w] then err('attractions.horror.warnings', 'duplicate warning threshold ' .. w) end
             seen[w] = true
             if w >= (a.horror.durationSeconds or 0) then err('attractions.horror.warnings', ('warning at %ds is not shorter than the run'):format(w)) end
+        end
+        local ids = {}
+        for i, hp in ipairs(a.horror.escapeHatches and a.horror.escapeHatches.points or {}) do
+            if ids[hp.id] then err(('attractions.horror.escapeHatches.points.%d.id'):format(i), 'duplicate hatch id ' .. tostring(hp.id)) end
+            ids[hp.id] = true
         end
     end
     if cfg.prizes and cfg.prizes.tiers then

@@ -29,8 +29,94 @@ end
 -- carnival coins were bundled.
 local LEGACY_TOKEN_MODELS = { [''] = true, prop_ld_case_01 = true, prop_money_bag_01 = true, prop_ld_gold_chest = true }
 
+-- Saved settings that still name the retired trick/treat tokens: wheel
+-- outcomes lose the token (Treat! gives candy floss), prize tiers give a prize
+-- box, and the tokens leave the prize box contents and the shop.
+local function retireTokens(doc)
+    local R = C.RETIRED_ITEMS
+    local function filter(list)
+        if type(list) ~= 'table' then return list end
+        local out = {}
+        for _, x in ipairs(list) do
+            local name = type(x) == 'table' and x.item or x
+            if not R[name] then out[#out + 1] = x end
+        end
+        return out
+    end
+    local wheel = type(doc.attractions) == 'table' and type(doc.attractions.wheel) == 'table' and doc.attractions.wheel
+    for _, o in ipairs(wheel and wheel.outcomes or {}) do
+        if type(o) == 'table' and R[o.item or ''] then
+            if o.item == 'carnival_treat_token' then o.item = 'carnival_bloodfloss' else o.item, o.count = '', 0 end
+        end
+    end
+    for _, t in ipairs(type(doc.prizes) == 'table' and doc.prizes.tiers or {}) do
+        for _, it in ipairs(type(t) == 'table' and t.items or {}) do
+            if type(it) == 'table' and R[it.item or ''] then it.item, it.count = C.PRIZE_BOX, 1 end
+        end
+    end
+    if type(doc.rewards) == 'table' then
+        -- the old weighted list (rewards.prizeBox) becomes prizeBox.contents with
+        -- percentage chances; a list of only tokens falls back to the factory prizes
+        local old = filter(doc.rewards.prizeBox)
+        if type(old) == 'table' and #old > 0 and doc.prizeBox == nil then
+            local total = 0
+            for _, x in ipairs(old) do total = total + (tonumber(x.weight) or 0) end
+            if total > 0 then
+                local contents, sum = {}, 0
+                for i, x in ipairs(old) do
+                    local chance = i < #old and math.floor((tonumber(x.weight) or 0) / total * 1000 + 0.5) / 10 or nil
+                    contents[i] = { item = x.item, minCount = x.count or 1, maxCount = x.count or 1, chance = chance }
+                    sum = sum + (chance or 0)
+                end
+                contents[#contents].chance = math.floor((100 - sum) * 10 + 0.5) / 10
+                doc.prizeBox = { minItems = 1, maxItems = 1, contents = contents }
+            end
+        end
+        doc.rewards.prizeBox = nil
+        doc.rewards.allowedItems = filter(doc.rewards.allowedItems)
+        doc.rewards.treatHeal = nil
+    end
+    if type(doc.prizeBox) == 'table' and type(doc.prizeBox.contents) == 'table' then
+        local before = #doc.prizeBox.contents
+        local kept = filter(doc.prizeBox.contents)
+        if #kept == 0 then
+            doc.prizeBox.contents = nil -- factory prizes
+        elseif #kept < before then
+            -- rescale the remaining chances so they still add up to 100%
+            local total = 0
+            for _, x in ipairs(kept) do total = total + (tonumber(x.chance) or 0) end
+            local sum = 0
+            for i, x in ipairs(kept) do
+                if i < #kept then
+                    x.chance = total > 0 and math.floor((tonumber(x.chance) or 0) / total * 1000 + 0.5) / 10 or 0
+                    sum = sum + x.chance
+                else
+                    x.chance = math.floor((100 - sum) * 10 + 0.5) / 10
+                end
+            end
+            doc.prizeBox.contents = kept
+        end
+    end
+    if type(doc.shop) == 'table' then doc.shop.items = filter(doc.shop.items) end
+end
+
+-- The gallery's old factory scoring (before rounds multiplied points) lets a
+-- good run reach 500+, far above every other game. If a saved config still has
+-- exactly those factory numbers, move it to the balanced ones.
+local function rebalanceShooting(doc)
+    local sh = type(doc.attractions) == 'table' and doc.attractions.shooting
+    if type(sh) ~= 'table' then return end
+    if sh.targetPoints == 5 and sh.bullseyeBonus == 3 and sh.specialPoints == 15 and sh.decoyPenalty == 10
+        and (sh.maxScore == 250 or sh.maxScore == 500) then
+        sh.targetPoints, sh.bullseyeBonus, sh.specialPoints, sh.decoyPenalty, sh.maxScore = 1, 1, 4, 3, 200
+    end
+end
+
 local function upgrade(doc)
-    local h = type(doc) == 'table' and type(doc.attractions) == 'table' and doc.attractions.horror
+    if type(doc) ~= 'table' then return doc end
+    retireTokens(doc)
+    rebalanceShooting(doc)
+    local h = type(doc.attractions) == 'table' and doc.attractions.horror
     if type(h) ~= 'table' or type(h.tokenTypes) ~= 'table' then return doc end
     for ttype, t in pairs(h.tokenTypes) do
         if type(t) == 'table' and LEGACY_TOKEN_MODELS[t.model or ''] then t.model = 'carnivalcoin' .. ttype end
@@ -138,7 +224,7 @@ function Cfg.referencedItems(tree)
         for j, it in ipairs(t.items or {}) do add(it.item, ('prizes.tiers.%d.items.%d.item'):format(i, j)) end
     end
     for i, it in ipairs(tree.rewards.allowedItems or {}) do add(it, ('rewards.allowedItems.%d'):format(i)) end
-    for i, it in ipairs(tree.rewards.prizeBox or {}) do add(it.item, ('rewards.prizeBox.%d.item'):format(i)) end
+    for i, it in ipairs(tree.prizeBox and tree.prizeBox.contents or {}) do add(it.item, ('prizeBox.contents.%d.item'):format(i)) end
     for i, it in ipairs(tree.shop and tree.shop.items or {}) do add(it.item, ('shop.items.%d.item'):format(i)) end
     if a.horror.physicalTokens then
         for _, t in ipairs(C.TOKEN_TYPES) do add(C.TOKEN_ITEMS[t], 'attractions.horror.physicalTokens') end
@@ -363,6 +449,7 @@ function Cfg.publicSettings()
         'warningSound', 'finalWarningSound', 'endSound', 'volume', 'visibility', 'visibilityDistance' }) do
         attractions.horror[k] = h[k]
     end
+    attractions.horror.escapeHatches = U.deepCopy(h.escapeHatches)
     attractions.horror.tokenTypes = {}
     for _, t in ipairs(C.TOKEN_TYPES) do
         attractions.horror.tokenTypes[t] = U.deepCopy(h.tokenTypes[t])

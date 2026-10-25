@@ -58,18 +58,6 @@
       "transparent": true
     },
     {
-      "name": "carnival_trick_token",
-      "image": "carnival_trick_token.png",
-      "size": "256x256",
-      "transparent": true
-    },
-    {
-      "name": "carnival_treat_token",
-      "image": "carnival_treat_token.png",
-      "size": "256x256",
-      "transparent": true
-    },
-    {
       "name": "carnival_prize_box",
       "image": "carnival_prize_box.png",
       "size": "256x256",

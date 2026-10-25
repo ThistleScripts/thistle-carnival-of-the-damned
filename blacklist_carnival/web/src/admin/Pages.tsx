@@ -24,6 +24,32 @@ function attractionLine(a: any): string {
   return 'Open';
 }
 
+// What is still needed before the carnival can run with no staff. Shown on the
+// Overview until everything is done.
+function SetupChecklist({ setup }: { setup: { items: { id: string; ok: boolean; label: string; detail?: string; where?: string }[] } }) {
+  const left = setup.items.filter((i) => !i.ok).length;
+  return (
+    <section className="card setup-card">
+      <header className="card-head"><h3>Finish setting up</h3><span className="pill pill-gold">{left} to do</span></header>
+      <div className="card-body">
+        <p className="muted small">Once these are done the carnival runs by itself: it opens, plays, ends the night, hands out prizes and opens again with no staff.</p>
+        <ul className="setup-list">
+          {setup.items.map((i) => (
+            <li key={i.id} className={i.ok ? 'setup-ok' : 'setup-todo'}>
+              <span className="setup-mark">{i.ok ? '✓' : '•'}</span>
+              <div>
+                <strong>{i.label}</strong>
+                {!i.ok && i.detail ? <div className="muted small">{i.detail}</div> : null}
+                {!i.ok && i.where ? <div className="setup-where">{i.where}</div> : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export function Overview({ onNavigate }: { onNavigate: (page: string) => void }) {
   const perms = useStore((s) => s.permissions);
   const st = useApi<any>('admin.dashboard', {}, [], ['dashboard', 'rotation', 'scores', 'participants', 'rewards', 'config', 'events', 'attractions']);
@@ -58,6 +84,8 @@ export function Overview({ onNavigate }: { onNavigate: (page: string) => void })
                 <Stat label="Prizes waiting" value={d.outstandingRewards} tone={d.outstandingRewards > 0 ? 'warn' : undefined} />
               </div>
             </section>
+
+            {d.setup && !d.setup.done ? <SetupChecklist setup={d.setup} /> : null}
 
             {!healthy || problems > 0 ? (
               <div className={`banner ${healthy ? 'banner-warn' : 'banner-bad'}`}>

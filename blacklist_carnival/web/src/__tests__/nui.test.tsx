@@ -172,8 +172,9 @@ describe('player screens', () => {
 
   it('theatre card and horror HUD render as non-blocking overlays', () => {
     render(<App />);
-    lua('open', { view: 'theatre', data: { action: 'card', status: 'displayed', performer: true, role: 'Lion Tamer', scenario: { title: 'The Reluctant Lion Tamer', description: 'x', difficulty: 'medium' }, performers: [{ name: 'Ada', role: 'Lion Tamer' }] } });
-    expect(screen.getByText(/Your role/)).toBeTruthy();
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 1, total: 2, isYou: true, endsAt: Math.floor(Date.now() / 1000) + 60,
+      onStage: { name: 'Ada', title: 'The Tightrope', description: 'x', difficulty: 'medium' }, order: [] } });
+    expect(screen.getByText("You're on stage!")).toBeTruthy();
     lua('horror', { active: true, status: 'running', endsAt: Math.floor(Date.now() / 1000) + 50, collected: 2, points: 15, runnerStatus: 'inside' });
     expect(screen.getByText('Tokens 2')).toBeTruthy();
     lua('horror', { active: false });
@@ -432,7 +433,7 @@ describe('prize counter', () => {
     items: [
       { item: 'carnival_witch_brew', label: "Witch's Brew Lemonade", description: 'Sour green lemonade.', price: 15, category: 'drink', dailyLimit: 0 },
       { item: 'carnival_prize_box', label: 'Carnival Prize Box', price: 250, category: 'prize', dailyLimit: 2, remainingToday: 2 },
-      { item: 'carnival_trick_token', label: 'Trick Token', price: 5, category: 'prize', dailyLimit: 5, remainingToday: 0 },
+      { item: 'carnival_grave_shake', label: 'Grave Dirt Shake', price: 5, category: 'drink', dailyLimit: 5, remainingToday: 0 },
       { item: 'carnival_bloodfloss', label: 'Bloodspun Candy Floss', price: 10, category: 'food', dailyLimit: 0 },
     ],
   };
@@ -451,7 +452,8 @@ describe('prize counter', () => {
     // unaffordable and sold-out prizes cannot be redeemed
     fireEvent.click(screen.getByText('Carnival Prize Box', { selector: '.booth-item-name' }));
     expect((screen.getByText('210 more prize tickets needed').closest('button') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByText('Trick Token', { selector: '.booth-item-name' }));
+    fireEvent.click(screen.getByText('Drinks'));
+    fireEvent.click(screen.getByText('Grave Dirt Shake', { selector: '.booth-item-name' }));
     expect((screen.getByText('Come back tomorrow').closest('button') as HTMLButtonElement).disabled).toBe(true);
     // buy two drinks
     fireEvent.click(screen.getByText('Everything'));
@@ -533,5 +535,38 @@ describe('error safety net', () => {
     expect(screen.queryByText('The carnival interface hit a problem')).toBeNull();
     expect(getState().views.shop).toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+describe('prize box reveal', () => {
+  it('shows what a prize box held and closes by itself', () => {
+    vi.useFakeTimers();
+    render(<App />);
+    lua('open', { view: 'prizeReveal', data: { contents: [{ item: 'carnival_bloodfloss', count: 2, label: 'Bloodspun Candy Floss' }, { item: 'carnival_token_gold', count: 1, label: 'Gold Horror Token' }], images: [] } });
+    expect(screen.getByText('Your prize box held')).toBeTruthy();
+    expect(screen.getByText('Bloodspun Candy Floss')).toBeTruthy();
+    expect(screen.getByText('2×')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(8000); });
+    expect(screen.queryByText('Your prize box held')).toBeNull();
+    vi.useRealTimers();
+  });
+});
+
+describe('theatre solo turns', () => {
+  it('shows who is on stage, their prompt, the running order and your own turn', () => {
+    render(<App />);
+    const now = Math.floor(Date.now() / 1000);
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 2, total: 3, myTurn: 3, serverTime: now, endsAt: now + 42,
+      onStage: { name: 'Juno Reyes', title: 'The Haunted Mirror', description: 'You are a funhouse mirror that has seen too much.', difficulty: 'medium' }, isYou: false,
+      order: [{ name: 'Marlo Vance', done: true, now: false, skipped: false, you: false }, { name: 'Juno Reyes', done: false, now: true, skipped: false, you: false }, { name: 'Ada Lovelace', done: false, now: false, skipped: false, you: true }] } });
+    expect(screen.getByText('Now on stage: Juno Reyes')).toBeTruthy();
+    expect(screen.getByText(/funhouse mirror/)).toBeTruthy();
+    expect(screen.getByText(/turn 2 of 3/)).toBeTruthy();
+    expect(screen.getByText('Ada Lovelace (you)')).toBeTruthy();
+    expect(document.querySelector('.order-done')!.textContent).toContain('Marlo Vance');
+    lua('open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 3, total: 3, myTurn: 3, serverTime: now, startsAt: now + 4,
+      upNext: { name: 'Ada Lovelace', title: 'The Tightrope', isYou: true }, order: [] } });
+    expect(screen.getByText("You're up next!")).toBeTruthy();
+    expect(screen.getByText('The Tightrope')).toBeTruthy();
   });
 });

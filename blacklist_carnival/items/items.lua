@@ -62,19 +62,9 @@ return {
         server = { export = 'blacklist_carnival.useToken' },
     },
 
-    -- Wheel / prize-tier rewards with real behaviour implemented by this resource.
-    ['carnival_trick_token'] = {
-        label = 'Trick Token', weight = 15, stack = true, close = true,
-        description = 'Use it if you dare. The carnival enjoys a good trick.',
-        client = { usetime = 1200 },
-        server = { export = 'blacklist_carnival.useTrickToken' },
-    },
-    ['carnival_treat_token'] = {
-        label = 'Treat Token', weight = 15, stack = true, close = true,
-        description = 'A sweet reward. Using it restores a little health.',
-        client = { usetime = 1500 },
-        server = { export = 'blacklist_carnival.useTreatToken' },
-    },
+    -- Prize box: using it opens it. What is inside is set by the server owner in the
+    -- admin panel (Settings -> Scoring & prizes -> Prize box): how many prizes a box
+    -- gives and the percentage chance of each.
     ['carnival_prize_box'] = {
         label = 'Carnival Prize Box', weight = 250, stack = true, close = true,
         description = 'Sealed with a gold keyhole. Something rattles inside.',

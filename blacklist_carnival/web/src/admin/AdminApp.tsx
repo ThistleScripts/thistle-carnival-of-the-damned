@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Backdrop, Icon } from '../components/Art';
 import { Button, StatusPill, Tabs } from '../components/ui';
-import { releaseFocus } from '../nui';
+import { releaseFocus, layoutMode } from '../nui';
 import { ConfigEditor } from './ConfigEditor';
 import { AuditPage, EventsPage, HealthPage, LedgerPage, MonitoringPage, Overview, RewardsPage, StaffPage } from './Pages';
 import { ParticipantsPanel, StaffLeaderboard } from '../shared/Operations';
 import { PropsPage } from './PropsPage';
 import { ShopPage } from './ShopPage';
+import { PrizeBoxOdds } from './PrizeBoxOdds';
 
 type PageId = 'overview' | 'players' | 'nights' | 'settings' | 'system';
 interface Tab { id: string; label: string; perm?: string }
@@ -68,6 +69,7 @@ const SETTING_SECTIONS: Record<string, { id: string; label: string; icon?: strin
     { id: 'scoring', label: 'Scoring' },
     { id: 'leaderboard', label: 'Leaderboard' },
     { id: 'prizes', label: 'Prizes & results' },
+    { id: 'prizeBox', label: 'Prize box' },
     { id: 'rewards', label: 'Reward items' },
     { id: 'shop', label: 'Prize counter' },
   ],
@@ -88,6 +90,7 @@ function SettingsPage({ tab }: { tab: string }) {
         ))}
       </div>
       {section ? <ConfigEditor key={section} section={section} /> : null}
+      {section === 'prizeBox' ? <PrizeBoxOdds /> : null}
     </div>
   );
 }
@@ -157,6 +160,7 @@ export default function AdminApp({ onClose }: { onClose: () => void }) {
             </div>
             <div className="btn-row">
               {event?.active ? <StatusPill status={event.state} /> : null}
+              <Button small variant="gold" onClick={() => layoutMode()} title="Close the panel and move NPCs, the maze doors and coins by walking up to them (/carnivallayout)">Lay out in the world</Button>
               <Button small variant="ghost" onClick={() => releaseFocus('admin')} title="Hide the panel so you can move (e.g. to capture coordinates); reopen with /carnivaladmin">Minimise</Button>
               <Button small variant="ghost" onClick={onClose}>Close</Button>
             </div>

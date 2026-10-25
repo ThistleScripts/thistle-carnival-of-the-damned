@@ -44,6 +44,12 @@ export function releaseFocus(view: string) {
   fetchNui('releaseFocus', { view }).catch(() => undefined);
 }
 
+// Close the panel and walk the carnival with in-world markers (/carnivallayout).
+export function layoutMode() {
+  if (!isNui) return;
+  fetchNui('layoutMode', {}).catch(() => undefined);
+}
+
 export function effect(kind: string, extra: Record<string, unknown> = {}) {
   if (!isNui) return;
   fetchNui('effect', { kind, ...extra }).catch(() => undefined);

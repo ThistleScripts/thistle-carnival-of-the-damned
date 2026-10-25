@@ -433,9 +433,15 @@ test('special prizes are delivered straight away and delivery is idempotent', fu
     Carnival.WheelAttraction.choose = function(outcomes)
         for i, o in ipairs(outcomes) do if o.type == 'special_prize' then return o, i, 0.5, 1000 end end
     end
+    local scoresBefore = #H.pushesFor(s, 'score')
     local r = okRes(H.api(s, 'wheel.spin'))
     Carnival.WheelAttraction.choose = real
-    eq(r.reward.status, 'delivered', 'no staff approval step')
+    eq(r.reward.status, 'pending', 'no staff approval step')
+    -- nothing is announced or handed over while the wheel is still turning
+    eq(#H.pushesFor(s, 'score'), scoresBefore, 'no score toast mid-spin')
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = (SELECT reward_id FROM carnival_wheel_spins ORDER BY id DESC LIMIT 1)')[1].status, 'pending')
+    H.advance(math.ceil(settings().attractions.wheel.spinAnimationMs / 1000) + 1)
+    truthy(#H.pushesFor(s, 'score') > scoresBefore, 'score toast once the wheel stops')
     local reward = H.sql("SELECT * FROM carnival_rewards WHERE source = 'wheel' AND status = 'delivered' ORDER BY id DESC LIMIT 1")[1]
     local itemsBefore = #H.itemsOf(s, reward.item)
     -- retrying delivery must not duplicate
@@ -446,7 +452,7 @@ end)
 test('reward delivery failure (full inventory) is recorded and reconcilable', function()
     local p = Carnival.Participants.getBySource(PLAYERS[6])
     H.inventoryFull[PLAYERS[6]] = true
-    local r = H.call(Carnival.Rewards.create, { participantId = p.id, source = 'manual', item = 'carnival_treat_token', count = 2, key = 'test:full' })
+    local r = H.call(Carnival.Rewards.create, { participantId = p.id, source = 'manual', item = 'carnival_bloodfloss', count = 2, key = 'test:full' })
     eq(H.call(Carnival.Rewards.deliver, r.id), 'failed')
     eq(H.sql('SELECT last_error FROM carnival_rewards WHERE id = ?', { r.id })[1].last_error, 'inventory_full')
     H.inventoryFull[PLAYERS[6]] = nil
@@ -681,7 +687,14 @@ test('escape awards completion + time bonus once; timer expiry ends the run', fu
     truthy(e.bonus >= h.completionBonus, 'bonus')
     errRes(H.api(runners[1], 'horror.exit', { runId = runId }), 'escaped')
     H.pushes = {}
+    -- even if scoring the trapped players blows up, everyone is told the run is over
+    local realAward = Carnival.Scoring.award
+    Carnival.Scoring.award = function(o)
+        if o.source == 'horror_not_escaped' then error('scoring offline') end
+        return realAward(o)
+    end
     H.advance(40)
+    Carnival.Scoring.award = realAward
     eq(H.sql('SELECT status, end_reason FROM carnival_horror_runs WHERE id = ?', { runId })[1].end_reason, 'expired')
     local ends = 0
     for _, p in ipairs(H.pushesFor(runners[2], 'horror')) do if p.action == 'end' then ends = ends + 1 end end
@@ -699,9 +712,10 @@ test('a show in progress holds the round past its timer (overtime) and completes
     local cast = membersOf(tc)
     for _, s in ipairs(cast) do at(s, settings().attractions.puppets.location) end
     local left = Carnival.Rotation.currentRound().ends_at - os.time()
-    if left > 20 then H.advance(left - 20) end
+    local lead = settings().attractions.puppets.lobbySeconds + 10
+    if left > lead then H.advance(left - lead) end
     okRes(H.api(cast[1], 'theatre.play'))
-    H.advance(25)
+    H.advance(lead + 5)
     for _, c in ipairs(C.COLOURS) do
         local s = Carnival.Rotation.sessionForColour(c)
         eq(s.status, s.attraction_id == 'puppets' and 'active' or 'completed', s.attraction_id)
@@ -800,7 +814,7 @@ test('resource restart pauses a running event and never replays interrupted work
     H.advance(settings().attractions.horror.lobbySeconds + 1)
     -- a reward stuck mid-delivery
     local pid = Carnival.Participants.idOfSource(PLAYERS[8])
-    local rw = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_treat_token', count = 1, key = 'test:stuck' })
+    local rw = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_bloodfloss', count = 1, key = 'test:stuck' })
     H.sql("UPDATE carnival_rewards SET status = 'delivering' WHERE id = ?", { rw.id })
     local totalBefore = Carnival.Participants.get(pid).total_score
     -- restart
@@ -889,36 +903,70 @@ test('second event in self-service mode starts with players registered', functio
     eq(Carnival.Rotation.currentRoundNumber(), 1)
 end)
 
-test('theatre: players take the stage, perform a random scenario and the audience vote awards points', function()
+test('theatre: each player has the stage alone in turn, then the group votes for the best', function()
     local tc = colourAt('puppets')
     local cast = membersOf(tc)
-    local loc = settings().attractions.puppets.location
+    local c = settings().attractions.puppets
+    local loc = c.location
     for _, s in ipairs(cast) do at(s, loc) end
-    local r1 = okRes(H.api(cast[1], 'theatre.play'))
-    eq(r1.cast, 1)
-    local r2 = okRes(H.api(cast[2], 'theatre.play'))
-    eq(r2.cast, 2, 'second player joined the cast')
+    eq(okRes(H.api(cast[1], 'theatre.play')).cast, 1)
+    eq(okRes(H.api(cast[2], 'theatre.play')).cast, 2, 'second player joined the show')
     H.pushes = {}
-    H.advance(6)
-    local card
-    for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'card' then card = p end end
-    truthy(card and card.performer and card.role, 'performer card with a role')
+    H.advance(c.lobbySeconds + 1)
     errRes(H.api(cast[1], 'theatre.play'), 'busy')
-    -- wait for the curtain and the vote
     local perf = H.sql("SELECT * FROM carnival_theatre_performances WHERE status = 'running' ORDER BY id DESC LIMIT 1")[1]
+    eq(perf.duration_seconds, 2 * (c.turnSeconds + c.turnGapSeconds), 'two turns')
+    local function lastCard(src)
+        local card
+        for _, p in ipairs(H.pushesFor(src, 'theatre')) do if p.action == 'card' then card = p end end
+        return card
+    end
+    local card = lastCard(cast[1])
+    eq(card.mode, 'turns')
+    eq(card.total, 2)
+    truthy(card.upNext and not card.onStage, 'an "up next" pause before the first turn')
+    -- first turn
     H.pushes = {}
-    H.advance(perf.duration_seconds + 1)
+    H.advance(c.turnGapSeconds + 1)
+    local a, b = lastCard(cast[1]), lastCard(cast[2])
+    truthy(a.onStage and b.onStage, 'both see who is on stage')
+    eq(a.onStage.name, b.onStage.name)
+    truthy(a.isYou ~= b.isYou, 'exactly one of them is performing')
+    local first = a.isYou and cast[1] or cast[2]
+    local second = first == cast[1] and cast[2] or cast[1]
+    local firstPrompt = a.onStage.title
+    truthy(a.onStage.description and #a.onStage.description > 0, 'the audience sees the prompt')
+    eq(a.order[1].now, true)
+    -- second turn, with a different prompt
+    H.pushes = {}
+    H.advance(c.turnSeconds + c.turnGapSeconds + 1)
+    local s2 = lastCard(second)
+    truthy(s2.isYou, 'second performer is on')
+    truthy(s2.onStage.title ~= firstPrompt, 'each performer gets their own prompt')
+    eq(s2.order[1].done, true, 'first turn ticked off')
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'running', 'no vote until everyone has performed')
+    -- vote
+    H.pushes = {}
+    H.advance(c.turnSeconds + 1)
     local vote
     for _, p in ipairs(H.pushesFor(cast[1], 'theatre')) do if p.action == 'vote' then vote = p end end
-    truthy(vote, 'vote opened')
+    truthy(vote and #vote.candidates == 2, 'the group votes after the last turn')
     local p1, p2 = Carnival.Participants.idOfSource(cast[1]), Carnival.Participants.idOfSource(cast[2])
-    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p1 }), 'invalid')
+    errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p1 }), 'invalid', 'no voting for yourself')
     okRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }))
     errRes(H.api(cast[1], 'theatre.vote', { performanceId = perf.id, participantId = p2 }), 'duplicate')
-    okRes(H.api(cast[2], 'theatre.vote', { performanceId = perf.id, participantId = p1 }))
-    H.advance(1)
-    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed', 'committed by the audience vote')
-    eq(count('SELECT COUNT(*) AS n FROM carnival_theatre_performers WHERE performance_id = ? AND is_winner = 1', { perf.id }), 2, 'tie: both win')
+    -- cast[2] abstains: the vote closes on time and p2 wins
+    H.advance(c.voteSeconds + 1)
+    eq(H.sql('SELECT status FROM carnival_theatre_performances WHERE id = ?', { perf.id })[1].status, 'committed', 'committed by the vote')
+    local rows = H.sql('SELECT participant_id, is_winner, points FROM carnival_theatre_performers WHERE performance_id = ?', { perf.id })
+    for _, r in ipairs(rows) do
+        if r.participant_id == p2 then
+            eq(r.is_winner == 1 or r.is_winner == true, true, 'most votes wins')
+            eq(r.points, c.winnerPoints)
+        else
+            eq(r.points, c.performerPoints, 'everyone else who performed')
+        end
+    end
     errRes(H.api(cast[1], 'theatre.play'), 'done')
 end)
 
@@ -981,7 +1029,7 @@ test('switching to walk-up opens a carnival automatically and sells tickets with
     local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
     eq(Carnival.Defaults.general.mode, 'scheduled', 'suite override')
     doc.general.mode = 'walkup'
-    doc.rotation.walkup = { enforceOrder = true, idleSeconds = 300, closeBooksSeconds = 120 }
+    doc.rotation.walkup.enforceOrder, doc.rotation.walkup.idleSeconds = true, 300
     okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
     H.advance(6)
     local e = Carnival.Events.active
@@ -1085,7 +1133,26 @@ test('house of horrors: a player opens the doors; nobody can barge into a run in
     local other = byFirst.wheel
     at(other, h.entry)
     errRes(H.api(other, 'horror.enter'), 'busy')
-    H.advance(h.durationSeconds + 2)
+    -- lost in the maze: grab a coin, then take an escape hatch
+    local st = okRes(H.api(s, 'horror.state'))
+    local token = st.tokens[1]
+    H.moveTo(s, token.coords)
+    local got = okRes(H.api(s, 'horror.collect', { runId = st.runId, tokenId = token.id })).points
+    local hatch = h.escapeHatches.points[1]
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }), 'too_far')
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = 'nope' }), 'invalid')
+    H.moveTo(s, hatch.coords)
+    local scoreBefore = Carnival.Participants.get(pidOf(s)).total_score
+    local b = okRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }))
+    eq(b.lost, math.floor(got * h.escapeHatches.forfeitPercent / 100 + 0.5), 'forfeits the configured share of the run points')
+    eq(b.points, got - b.lost)
+    eq(b.returnTo.x, h.escapeHatches.returnTo.x, 'told where to go')
+    eq(Carnival.Participants.get(pidOf(s)).total_score, scoreBefore - b.lost)
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }), 'escaped')
+    errRes(H.api(s, 'horror.exit', { runId = st.runId }), 'escaped')
+    eq(H.sql('SELECT status FROM carnival_horror_runners WHERE run_id = ? AND participant_id = ?', { st.runId, pidOf(s) })[1].status, 'bailed')
+    H.advance(2)
+    eq(H.sql('SELECT end_reason FROM carnival_horror_runs WHERE id = ?', { st.runId })[1].end_reason, 'all_escaped', 'the run ends once nobody is inside')
     truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'horror'), 'run over: visit completed')
     truthy(not Carnival.Rotation.hasCompleted(pidOf(other), 'horror'), 'the other player was not credited')
     doc.rotation.walkup.enforceOrder = true
@@ -1154,6 +1221,119 @@ test('after "End the night" the books close by themselves and a fresh carnival o
     truthy(e and e.id ~= night and e.state == 'running', 'a fresh carnival is open')
 end)
 
+test('the night ends on its own schedule; an empty night just starts over', function()
+    local function saveWalkup(patch)
+        local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+        for k, v in pairs(patch) do doc.rotation.walkup[k] = v end
+        okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    end
+    saveWalkup({ endNight = 'after_hours', endNightAfterHours = 1, endNightGraceMinutes = 15 })
+    local wk = settings().rotation.walkup
+    -- nobody registered: the night is cancelled quietly and a fresh one opens
+    local empty = Carnival.Events.activeId()
+    eq(Carnival.Participants.count(), 0, 'fresh night')
+    H.advance(3600 + 12)
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { empty })[1].state, 'cancelled', 'empty night rolled over')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { empty }), 0, 'no results for an empty night')
+    local night = Carnival.Events.activeId()
+    truthy(night and night ~= empty and Carnival.Events.state() == 'running', 'a new night is open')
+    local endsAt = Carnival.Events.publicState().nightEndsAt
+    truthy(endsAt and math.abs(endsAt - (os.time() + 3600)) <= 15, 'players see when the night ends')
+
+    -- somebody played: results are frozen by the system, then the books close
+    local s = WALKERS[1]
+    at(s, settings().registration.entrance)
+    okRes(H.api(s, 'registration.register'))
+    H.advance(3600 + 12)
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { night })[1].state, 'final_results', 'night ended on schedule')
+    eq(H.sql("SELECT actor FROM carnival_event_transitions WHERE event_id = ? AND to_state = 'final_results'", { night })[1].actor, 'system')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { night }), 1, 'results frozen')
+    H.advance(wk.closeBooksSeconds + 12)
+    truthy(Carnival.Events.activeId() ~= night, 'and a fresh carnival opened')
+
+    -- games in progress may finish first, up to the grace period
+    local realBusy, realFor = Carnival.Attractions.sessionBusy, Carnival.Rotation.sessionFor
+    Carnival.Attractions.sessionBusy = function() return true end
+    Carnival.Rotation.sessionFor = function() return { id = 1 } end
+    local due = os.time() + 3600 + 5
+    eq(Carnival.Events.walkupNightOver(due), false, 'waits while a game is running')
+    eq(Carnival.Events.walkupNightOver(due + 14 * 60), false, 'still within the grace period')
+    eq(Carnival.Events.walkupNightOver(due + 15 * 60 + 1), true, 'grace period over')
+    Carnival.Attractions.sessionBusy, Carnival.Rotation.sessionFor = realBusy, realFor
+
+    -- daily: ends at the next HH:MM after the night started
+    local inTwoHours = os.date('*t', os.time() + 7200)
+    saveWalkup({ endNight = 'daily', endNightAt = ('%02d:%02d'):format(inTwoHours.hour, inTwoHours.min) })
+    local ends = Carnival.Events.nightEndsAt()
+    truthy(ends and math.abs(ends - (os.time() + 7200)) < 60, 'next daily end is today at that time')
+    eq(Carnival.Events.walkupNightOver(), false, 'not yet')
+    local bad = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    bad.rotation.walkup.endNightAt = '25:99'
+    local r = H.api(OWNER, 'config.save', { scope = 'global', confirm = true, data = bad })
+    truthy(not r.ok or r.data.saved ~= true, 'a bad end time is refused')
+    saveWalkup({ endNight = 'manual' })
+    eq(Carnival.Events.nightEndsAt(), nil, 'manual nights have no end time')
+    eq(Carnival.Events.walkupNightOver(os.time() + 86400 * 3), false, 'manual nights never end by themselves')
+    saveWalkup({ endNight = 'daily', endNightAt = '04:00' })
+end)
+
+test('prizes nobody could hand over are retried automatically, from any night', function()
+    local s = WALKERS[3]
+    at(s, settings().registration.entrance)
+    okRes(H.api(s, 'registration.register'))
+    local pid = Carnival.Participants.getBySource(s).id
+    local cid = H.players[s].citizenid
+    -- pockets full when the prize is created
+    H.inventoryFull[s] = true
+    local r = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_bloodfloss', count = 2, key = 'test:retry1' })
+    eq(H.call(Carnival.Rewards.deliver, r.id, Carnival.Identity.SYSTEM), 'failed')
+    -- pretend it was won on an earlier night
+    local old = H.sql("SELECT id FROM carnival_events WHERE id <> ? ORDER BY id LIMIT 1", { Carnival.Events.activeId() })[1].id
+    H.sql('UPDATE carnival_rewards SET event_id = ? WHERE id = ?', { old, r.id })
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r.id })[1].status, 'failed', 'still full: still owed')
+    H.inventoryFull[s] = nil
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r.id })[1].status, 'delivered', 'delivered by the automatic retry')
+    eq(#H.itemsOf(s, 'carnival_bloodfloss') > 0, true)
+
+    -- logging in also collects anything owed
+    local r2 = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_grave_shake', count = 1, key = 'test:retry2' })
+    H.sql("UPDATE carnival_rewards SET event_id = ?, status = 'pending' WHERE id = ?", { old, r2.id })
+    H.call(Carnival.Participants.bind, s)
+    H.advance(1)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r2.id })[1].status, 'delivered', 'delivered on login')
+    -- a delivery cut off by a restart is never retried automatically
+    local r3 = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_web_cake', count = 1, key = 'test:retry3' })
+    H.sql("UPDATE carnival_rewards SET status = 'unknown' WHERE id = ?", { r3.id })
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r3.id })[1].status, 'unknown', 'left for a human check')
+    eq(cid ~= nil, true)
+end)
+
+test('the setup checklist lists what still needs a human, and clears as it is done', function()
+    errRes(H.api(WALKERS[1], 'setup.checklist'), 'forbidden')
+    local list = okRes(H.api(ADMIN, 'setup.checklist'))
+    local by = {}
+    for _, i in ipairs(list.items) do by[i.id] = i end
+    eq(list.done, false)
+    eq(by.items.ok, true, 'items registered')
+    eq(by.locations.ok, false, 'placeholder positions spotted')
+    truthy(by.locations.detail:find('ticket booth'), by.locations.detail)
+    eq(by.schedule.ok, true, 'nights end by themselves (daily)')
+    -- place everything somewhere real
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    local function moved(v) local c = Carnival.U.deepCopy(v); c.x = c.x + 500; return c end
+    doc.registration.entrance = moved(doc.registration.entrance)
+    doc.shop.location = moved(doc.shop.location)
+    for _, id in ipairs(Carnival.C.ATTRACTIONS) do doc.attractions[id].location = moved(doc.attractions[id].location) end
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    list = okRes(H.api(ADMIN, 'setup.checklist'))
+    for _, i in ipairs(list.items) do by[i.id] = i end
+    eq(by.locations.ok, true, 'locations done')
+    eq(okRes(H.api(ADMIN, 'admin.dashboard')).setup ~= nil, true, 'shown on the Overview')
+end)
+
 ---------------------------------------------------------------------------
 section('World props (prop placer)')
 ---------------------------------------------------------------------------
@@ -1211,6 +1391,72 @@ test('props persist across a restart', function()
     eq(all[1].rz, 180)
     eq(all[1].collision, false)
     eq(Carnival.Push.bootstrapData(PLAYERS[1]).props[1].model, 'carnival_gate')
+end)
+
+---------------------------------------------------------------------------
+section('In-world layout (/carnivallayout)')
+---------------------------------------------------------------------------
+test('only settings editors can move things; every NPC spot, maze door and coin is listed', function()
+    errRes(H.api(OBSERVER, 'layout.get'), 'forbidden')
+    errRes(H.api(OBSERVER, 'layout.set', { path = 'shop.location', coords = { x = 1, y = 2, z = 3, w = 0 } }), 'forbidden')
+    local pts = okRes(H.api(OWNER, 'layout.get')).points
+    local by = {}
+    for _, p in ipairs(pts) do by[p.path] = p end
+    truthy(by['registration.entrance'] and by['registration.entrance'].kind == 'ped', 'ticket booth')
+    truthy(by['attractions.wheel.location'], 'wheel NPC')
+    eq(by['attractions.horror.exit'].kind, 'exit')
+    eq(by['attractions.horror.boundaryCentre'].radius, settings().attractions.horror.boundaryRadius)
+    local coins = 0
+    for _, p in ipairs(pts) do if p.kind == 'token' then coins = coins + 1 end end
+    eq(coins, #settings().attractions.horror.tokens)
+end)
+
+test('moving a point saves a config version and pushes the new spot to everyone', function()
+    local before = Carnival.Config.versionInfo().global.version
+    errRes(H.api(OWNER, 'layout.set', { path = 'general.mode', coords = { x = 1, y = 2, z = 3, w = 0 } }), 'invalid')
+    errRes(H.api(OWNER, 'layout.set', { path = 'shop.location', coords = { x = 1e9, y = 2, z = 3, w = 0 } }), 'invalid')
+    H.pushes = {}
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.wheel.location', coords = { x = -1600.5, y = -1100.25, z = 13.0, w = 370 } }))
+    local loc = settings().attractions.wheel.location
+    eq(loc.x, -1600.5) eq(loc.w, 10)
+    truthy(Carnival.Config.versionInfo().global.version > before, 'new version')
+    truthy(#H.pushesFor(PLAYERS[1], 'settings') > 0, 'players get the new spot')
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.horror.exit', coords = { x = -1590, y = -1130, z = 13.1, w = 90 }, radius = 3 }))
+    eq(settings().attractions.horror.exitRadius, 3)
+    eq(settings().attractions.horror.exit.x, -1590)
+end)
+
+test('coins can be added, recoloured, moved and removed in the world', function()
+    local n = #settings().attractions.horror.tokens
+    local r = okRes(H.api(OWNER, 'layout.token', { op = 'add', type = 'gold', coords = { x = -1605, y = -1125, z = 13.1 } }))
+    local tokens = settings().attractions.horror.tokens
+    eq(#tokens, n + 1)
+    local added = tokens[#tokens]
+    eq(added.type, 'gold')
+    truthy(added.id:match('^g%d+$'), 'id ' .. added.id)
+    local listed = false
+    for _, p in ipairs(r.points) do if p.id == added.id then listed = true end end
+    truthy(listed, 'response has the new list')
+    okRes(H.api(OWNER, 'layout.token', { op = 'retype', id = added.id, type = 'silver' }))
+    okRes(H.api(OWNER, 'layout.token', { op = 'move', id = added.id, coords = { x = -1606, y = -1126, z = 13.2 } }))
+    tokens = settings().attractions.horror.tokens
+    eq(tokens[#tokens].type, 'silver') eq(tokens[#tokens].coords.x, -1606)
+    okRes(H.api(OWNER, 'layout.token', { op = 'remove', id = added.id }))
+    eq(#settings().attractions.horror.tokens, n)
+    errRes(H.api(OWNER, 'layout.token', { op = 'remove', id = added.id }), 'not_found')
+    errRes(H.api(OWNER, 'layout.token', { op = 'add', type = 'platinum', coords = { x = 1, y = 1, z = 1 } }), 'invalid')
+    -- escape hatches and where they drop players
+    local hn = #settings().attractions.horror.escapeHatches.points
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'add', coords = { x = -1603, y = -1124, z = 13.1 } }))
+    local hatches = settings().attractions.horror.escapeHatches.points
+    eq(#hatches, hn + 1)
+    local hid = hatches[#hatches].id
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'move', id = hid, coords = { x = -1602, y = -1124, z = 13.1 } }))
+    eq(settings().attractions.horror.escapeHatches.points[hn + 1].coords.x, -1602)
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'remove', id = hid }))
+    eq(#settings().attractions.horror.escapeHatches.points, hn)
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.horror.escapeHatches.returnTo', coords = { x = -1615, y = -1110, z = 13.1, w = 10 } }))
+    eq(settings().attractions.horror.escapeHatches.returnTo.x, -1615)
 end)
 
 ---------------------------------------------------------------------------
@@ -1301,12 +1547,12 @@ test('buying checks distance, stock rules and balance, and retries never charge 
     for _, it in ipairs(open.items) do truthy(not C.TICKET_ITEM_COLOUR[it.item], 'no tickets listed') end
 
     -- daily limit
-    local limited = shopItem('carnival_trick_token')
+    local limited = shopItem('carnival_prize_box')
     okRes(H.api(ADMIN, 'shop.adjust', { citizenid = cid, delta = limited.price * (limited.dailyLimit + 1), reason = 'limit test', requestId = 'shopadj000003' }))
-    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = limited.dailyLimit, requestId = 'buy000000006' }))
-    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000007' }), 'limit')
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = limited.dailyLimit, requestId = 'buy000000006' }))
+    errRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000007' }), 'limit')
     H.advance(86401)
-    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_trick_token', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
+    okRes(H.api(BUYER, 'shop.buy', { item = 'carnival_prize_box', count = 1, requestId = 'buy000000008' }), 'limit resets after a day')
 end)
 
 test('a failed hand-over refunds the points; wallets are admin-only to change', function()
@@ -1391,6 +1637,110 @@ test('food effects come from consumables.lua and eating is checked by the server
     give('carnival_web_cake')
     eq(use('carnival_web_cake'), nil, 'unconfigured treat does nothing')
     eq(#H.itemsOf(src, 'carnival_web_cake'), 1, 'and is not taken')
+end)
+
+test('prize boxes give what the admin set: item count range, percentage chances and quantities', function()
+    local src = BUYER
+    local box = settings().prizeBox
+    local saved = Carnival.U.deepCopy(box)
+    box.minItems, box.maxItems = 2, 3
+    box.contents = {
+        { item = 'carnival_bloodfloss', minCount = 1, maxCount = 2, chance = 70 },
+        { item = 'carnival_token_gold', minCount = 1, maxCount = 1, chance = 30 },
+    }
+    local usePrizeBox = H.ownExports.usePrizeBox
+    truthy(usePrizeBox, 'usePrizeBox export registered')
+    local function count(item) local n = 0 for _, s in ipairs(H.itemsOf(src, item)) do n = n + s.count end return n end
+    local before = count('carnival_bloodfloss') + count('carnival_token_gold')
+    H.pushes = {}
+    H.ms = H.ms + 5000
+    eq(H.call(usePrizeBox, 'usingItem', { name = 'carnival_prize_box' }, { id = src }, 1), true, 'box opens')
+    H.call(usePrizeBox, 'usedItem', { name = 'carnival_prize_box' }, { id = src }, 1)
+    local pushed = H.pushesFor(src, 'prize')
+    local got = pushed[#pushed].contents
+    truthy(#got >= 1, 'something inside')
+    local total = 0
+    for _, g in ipairs(got) do
+        truthy(g.item == 'carnival_bloodfloss' or g.item == 'carnival_token_gold', 'only configured prizes')
+        total = total + g.count
+    end
+    truthy(total >= 2 and total <= 6, 'between 2 and 3 prizes, each 1-2: ' .. total)
+    eq(count('carnival_bloodfloss') + count('carnival_token_gold') - before, total, 'prizes handed over')
+    -- a full inventory keeps the box closed
+    H.inventoryFull[src] = true
+    H.ms = H.ms + 5000
+    eq(H.call(usePrizeBox, 'usingItem', { name = 'carnival_prize_box' }, { id = src }, 1), false, 'no room, box stays shut')
+    H.inventoryFull[src] = nil
+
+    -- the odds preview matches the chances (admin only)
+    errRes(H.api(src, 'prizebox.simulate', { boxes = 2000 }), 'forbidden')
+    box.minItems, box.maxItems = 1, 1
+    local sim = okRes(H.api(ADMIN, 'prizebox.simulate', { boxes = 4000 }))
+    eq(sim.avgItems > 1 and sim.avgItems < 2, true, 'one prize of 1-2 floss or 1 token: ' .. sim.avgItems)
+    for _, r in ipairs(sim.rows) do
+        local expected = r.item == 'carnival_bloodfloss' and 70 or 30
+        truthy(math.abs(r.inBoxes - expected) < 4, ('%s found in %s%% of boxes, expected about %d%%'):format(r.item, r.inBoxes, expected))
+    end
+    settings().prizeBox = saved
+end)
+
+test('prize box settings: chances must add up to 100%, ranges must make sense, no boxes inside boxes', function()
+    local function errorsFor(mutate)
+        local tree = Carnival.U.deepCopy(settings())
+        mutate(tree.prizeBox)
+        local _, errors = Carnival.Validate.config(tree)
+        local paths = {}
+        for _, e in ipairs(errors or {}) do paths[e.path] = e.message end
+        return paths
+    end
+    truthy(errorsFor(function(b) b.contents[1].chance = b.contents[1].chance + 5 end)['prizeBox.contents'], 'chances over 100%')
+    truthy(errorsFor(function(b) b.minItems, b.maxItems = 4, 2 end)['prizeBox.minItems'], 'min above max')
+    truthy(errorsFor(function(b) b.contents[1].minCount, b.contents[1].maxCount = 3, 1 end)['prizeBox.contents.1.minCount'], 'quantity range')
+    truthy(errorsFor(function(b) b.contents[1].item = 'carnival_prize_box' end)['prizeBox.contents.1.item'], 'box in a box')
+    local ok = errorsFor(function() end)
+    eq(next(ok), nil, 'factory prize box is valid')
+end)
+
+test('saved settings that still use trick/treat tokens are upgraded on load', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    -- what an older version saved
+    doc.prizeBox = nil
+    doc.rewards.prizeBox = {
+        { item = 'carnival_treat_token', count = 2, weight = 50 },
+        { item = 'carnival_grave_shake', count = 1, weight = 30 },
+        { item = 'carnival_eyeball_pop', count = 3, weight = 10 },
+    }
+    doc.rewards.treatHeal = 25
+    doc.attractions.wheel.outcomes[6].item, doc.attractions.wheel.outcomes[6].count = 'carnival_trick_token', 1
+    doc.prizes.tiers[4].items = { { item = 'carnival_treat_token', count = 3 } }
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    local cfg = settings()
+    local contents = cfg.prizeBox.contents
+    eq(#contents, 2, 'token dropped from the prize box')
+    eq(contents[1].item, 'carnival_grave_shake')
+    eq(contents[1].chance + contents[2].chance, 100, 'remaining chances rescaled to 100%')
+    eq(contents[2].minCount, 3)
+    for _, o in ipairs(cfg.attractions.wheel.outcomes) do truthy(not Carnival.C.RETIRED_ITEMS[o.item], 'wheel token removed: ' .. o.id) end
+    eq(cfg.prizes.tiers[4].items[1].item, 'carnival_prize_box', 'prize tier gives a box instead')
+    eq(cfg.rewards.treatHeal, nil)
+end)
+
+test('saved settings with the old shooting points are rebalanced to fit the cap', function()
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    local sh = doc.attractions.shooting
+    sh.targetPoints, sh.bullseyeBonus, sh.specialPoints, sh.decoyPenalty, sh.maxScore = 5, 3, 15, 10, 250
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    local c = settings().attractions.shooting
+    eq(c.targetPoints, 1) eq(c.bullseyeBonus, 1) eq(c.specialPoints, 4) eq(c.decoyPenalty, 3) eq(c.maxScore, 200)
+    -- an admin's own numbers are left alone
+    doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    doc.attractions.shooting.targetPoints, doc.attractions.shooting.maxScore = 7, 300
+    H.sql("UPDATE carnival_config_versions SET data = ? WHERE scope = 'global' AND is_active = 1", { H.json.encode(doc) })
+    H.start({ configure = configure })
+    eq(settings().attractions.shooting.targetPoints, 7)
+    eq(settings().attractions.shooting.maxScore, 300)
 end)
 
 test('tickets cannot be put on sale and ambient zones are validated', function()

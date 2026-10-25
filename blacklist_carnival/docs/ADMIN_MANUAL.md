@@ -14,6 +14,20 @@ The games run themselves and staff are actors, so the panel is only for running 
 
 What you see depends on your role (see PERMISSIONS.md); every action is checked again on the server.
 
+## Running with no staff
+
+In walk-up mode (the default) the whole cycle runs by itself:
+
+1. **Opens.** A carnival night opens on its own and the ticket booth sells tickets.
+2. **Plays.** Players walk up to each game on their ticket and play; every game runs itself.
+3. **Ends the night.** At *Rotation → Walk-up mode → end the night* (default: **daily at 04:00 server time**; or after a number of hours; or `manual`). Games still in progress get up to *grace minutes* (default 15) to finish. A night nobody played simply starts over with no results.
+4. **Hands out prizes.** The results are frozen, the final results banner shows for 30 seconds and the prize tiers are delivered. A prize that cannot be handed over (full pockets, or the winner is offline) is retried every *retry minutes* (default 5) while they are online and when they log in, from any night.
+5. **Opens again.** After *close the books* (default 2 minutes) a fresh night opens and players buy new tickets. Prize tickets and the prize counter carry on between nights.
+
+**First-time setup.** The Overview shows a **Finish setting up** card until the carnival can run on its own: dependencies running, items added to ox_inventory, the booth, prize counter and attractions moved off the placeholder pier positions, the House of Horrors maze and coins placed, the ambient zones placed, and nights ending by themselves.
+
+**What still needs a person, rarely:** a prize delivery cut off by a server restart (status *unknown*) is never retried automatically, because it may already have reached the player. Check those under *Players → Prize deliveries*. Everything else is optional: actors can roleplay around the games, and admins can still pause, end a night early, close an attraction or adjust scores from the panel.
+
 ## Carnival mode: walk-up or scheduled
 
 *General → Carnival mode* decides how the carnival runs.
@@ -26,7 +40,7 @@ What you see depends on your role (see PERMISSIONS.md); every action is checked 
 * An attraction that is disabled or closed from the Overview is passed over; the player plays the next one and comes back to it later.
 * A visit nobody is playing is closed after *idle seconds* without counting as played, so the player can start again.
 * Restarts do not pause a walk-up event.
-* To end the night, press **End the night** on the Overview. The results are frozen and every player sees the final results banner for 30 seconds (it closes by itself); the HUD disappears. After *Rotation → Walk-up mode → open a fresh carnival after* (default 120 s) the books close by themselves and a fresh carnival opens (players buy a new ticket). Set it to 0 to keep the results up until an admin presses *Close the books*.
+* The night ends by itself on schedule (see *Running with no staff*). To end it early, press **End the night** on the Overview. The results are frozen and every player sees the final results banner for 30 seconds (it closes by itself); the HUD disappears. After *Rotation → Walk-up mode → open a fresh carnival after* (default 120 s) the books close by themselves and a fresh carnival opens (players buy a new ticket). Set it to 0 to keep the results up until an admin presses *Close the books*.
 * To stop the carnival opening again, switch the mode to *scheduled* first. While the walk-up event runs, the rotation matrix and colours may still be edited, because players progress individually.
 
 **Scheduled (timed rounds).** An admin creates the night and moves it through the lifecycle below; each colour group visits one attraction per round. The games still run themselves; a round that ends while a show, mystery or maze run is in progress waits for it to finish ("overtime").
@@ -56,7 +70,11 @@ Recovery tools (Nights & results, active night): reload state from the database,
 * **Preview** shows exactly which settings change (secret values hidden), flags settings that need an attraction reset (`reset`) and settings locked while the event is in progress (`locked live`: rotation matrix, colour enable flags, virtual tickets).
 * **Save** validates everything on the server (types, ranges, rotation matrix, wheel weights, fortune answers, mystery liar counts, item names in ox_inventory…). Errors are highlighted on the fields. Large or reset-requiring changes ask for confirmation.
 * **Versions** lists every saved version; *Roll back* creates a new version with the old values (nothing is deleted). All saves are audited.
-* **Use my position** on any coordinate field captures your current position (feet level) and heading.
+* **Layout mode** (`/carnivallayout`, or **Lay out in the world** at the top of the panel) is the quickest way to set the carnival up: the panel closes and every NPC spot, the maze entry, exit and boundary, and every coin spot appear as labelled markers in the world.
+  * Aim at a marker and press **E** to pick it up; look where it should go (scroll turns it, arrow up/down resizes the exit or boundary) and press **Enter** or left click to put it down. Right click cancels.
+  * **1 / 2 / 3** add a bronze / silver / gold coin where you are looking and **4** adds an escape hatch; aim at a coin and press **G** to change its colour, or **X** to remove a coin or hatch.
+  * Every change is saved straight away as a normal settings version (so it shows in the history and can be rolled back) and NPCs move for everyone at once. **Backspace** leaves layout mode.
+* **Use my position** on any coordinate field still captures your current position (feet level) and heading, and **Place in world** next to it opens layout mode.
 * Secret fields (mystery answer keys, briefs, statements, fortune answers, wheel weights) are hidden from users without the matching permission and preserved when they save.
 
 ### Attraction settings at a glance
@@ -69,18 +87,19 @@ Recovery tools (Nights & results, active night): reload state from the database,
   | 2 · Quickfire | 20 | 3 | 2.5 s | 85 % | 14 % | straight | ×1.5 |
   | 3 · Dead Eye | 24 | 3 | 1.9 s | 70 % | 22 % | wave | ×2 |
 
-  Between rounds the screen shows the next round's name, what got harder and its multiplier, with a countdown; clicks during the break are ignored. The result lists the points and hits of every round. Also: games per visit, simultaneous players (player limit), base points per target, bullseye bonus, golden target points, lantern penalty (all multiplied by the round), accuracy bonus, miss penalty, minimum time between shots, max score (default 500).
-* **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, colour), spins per participant, cooldown, animation length, first-spin bonus.
+  Between rounds the screen shows the next round's name, what got harder and its multiplier, with a countdown; clicks during the break are ignored. The result lists the points and hits of every round. Also: games per visit, simultaneous players (player limit), base points per target, bullseye bonus, golden target points, lantern penalty (all multiplied by the round), accuracy bonus, miss penalty, minimum time between shots, max score (default 200). Defaults are 1 point per target, +1 for a bullseye, 4 for a golden target and -3 for a lantern, so a great three-round run lands around 150-190 and only an exceptional one hits the cap. If a run is worth more than the max score, the player's result screen says so ("Your run was worth 532 - the gallery pays out at most 200 points"). Saved settings that still have the old factory scoring (5/3/15/10, max 250 or 500) are rebalanced automatically on start; numbers you changed yourself are kept.
+* **Wheel of Misfortune** — outcomes (label, type, weight, points ±, item + quantity, colour), spins per participant, cooldown, animation length, first-spin bonus. Points, prize tickets and any prize item are announced and handed over only once the wheel stops, not while it is still turning.
 * **Fortune Teller** — questions per reading, readings per player, cooldown, answer time limit, question pool (multiple choice or riddle with accepted answers, points, wrong-answer penalty, lines), fortunes and whether a fortune scores.
-* **Puppet Master's Theatre** — time for players to join the cast, audience vote time, solo points, scenario library (category, difficulty, performer counts, time limit, points range, roles), default length, participation bonus, max award.
+* **Puppet Master's Theatre** — a **solo showcase**. Players whose next game is the theatre gather during the lobby (*time to join*, default 20 s). The running order is shuffled and each performer is dealt their own random prompt from the *solo prompts* list. One at a time, each has the stage for *time on stage* (default **60 s**), after an *"up next" pause* (default 5 s); everyone in the show sees who is on, their prompt, the timer and the running order. A performer who has left the server is skipped. When everyone has performed, the group gets *voting time* (default 30 s) to vote for the best performance — one vote each, never for yourself; the vote closes early once everyone has voted. Most votes wins *winner points* (ties: every tied performer wins); everyone else who performed gets *performer points*; a show with only one performer skips the vote and gives *solo points*. Everyone who performed also gets the participation bonus. Edit the prompts (title, what to act out, difficulty) under the theatre's settings.
 * **Hall of Deception** — clue unlock interval, questioning time, accusations per player, default mystery, mysteries (suspects with public profile, testimony and liar flag; clues; rules; liar count; scoring: per correct, penalty, perfect bonus, partial credit, tie-break).
-* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, prop model, collection distance, respawn, float height, bob, spin speed, glow colour/radius/brightness) and positions.
+* **House of Horrors** — entry, exit + radius, boundary centre + radius, duration, warning thresholds (any list of seconds), sounds and volume, collection rule (once per player / once globally), token visibility, completion and time bonuses, penalties, keepsake items, token types (points, active quantity, prop model, collection distance, respawn, float height, bob, spin speed, glow colour/radius/brightness) and positions. Players see a glowing purple circle at the maze entry (step in to open the doors) and, during a run, a green EXIT circle with a light column (step in to escape - no third-eye needed). When the timer runs out the run ends for everyone even if part of the scoring fails, and the player's HUD says "Time's up!".
+  * **Escape hatches** (*House of Horrors → Escape hatches*): orange glowing spots inside the maze for players who get lost. Stepping into one asks the player to confirm, then takes them to the drop-off point and removes **forfeit %** of the points they won in that run (factory 50%; it never touches points from other games). They get no escape or time bonus, and once everyone is out the run ends. Turn them off, change the share or the size there; place them in layout mode (**4** adds one, **X** removes it, the drop-off point is a marker you can move like an NPC).
 
 ### House of Horrors coins
 
 The bronze, silver and gold coins are bundled in `stream/props/` (`carnivalcoinbronze`, `carnivalcoinsilver`, `carnivalcoingold`) and loaded by the resource's manifest. Each coin floats above its token position, bobs, spins and glows in its type's colour. If a model cannot load, a glowing spinning ring is shown instead so tokens are never invisible.
 
-Tune them under *Settings → Attractions → House of Horrors → Token types* (float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place token positions with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
+Tune them under *Settings → Attractions → House of Horrors → Token types* (**coin size**: 1 = the model's own size, factory 0.5 = half size; float height, bob, spin speed, glow colour/radius/brightness; a glow radius of 0 turns the light off). Place coin spots in layout mode (`/carnivallayout`, keys 1/2/3) or with **Use my position** while standing where the coin should hover: the position is feet level and the coin floats *float height* above it. To use your own coins instead, drop them into `stream/props/` (see *World props* below) and enter their model names.
 
 Coins are created only within about 60 m of the player, so they are always placed after the area has streamed in.
 
@@ -165,6 +184,21 @@ The food pictures are your own artwork (256×256 transparent PNGs in `images/inv
 ## Prizes
 
 *Prizes & results* defines rank tiers (from/to rank, label, items). When results freeze, a reward row is created per winner and item (idempotent: re-freezing never duplicates a prize). Offline winners receive prizes when they next log in (if *retry on login* is on) or via Players → Prize deliveries.
+
+### Prize boxes
+
+The **Carnival Prize Box** is handed out by the prize tiers (ranks 1–10 by default), the wheel's prize segments and the prize counter. A player uses it from their inventory to open it, and a card shows what was inside. You decide what is inside in *Settings → Scoring & prizes → Prize box*:
+
+| Setting | Meaning |
+|---|---|
+| *Fewest / Most prizes in a box* | Each box gives a random number of prizes in this range (factory: 1–3). |
+| *Possible prizes* | A list of items, each with a **chance per prize (%)** and a **quantity from / up to**. Every prize in a box is drawn separately by these chances (so the same item can come up twice and is then added together), then gets a random quantity in its range. |
+
+The chances must add up to exactly 100%: the list shows a running total, and the save is refused otherwise. A prize box cannot contain a prize box, and tickets cannot be prizes. Below the settings, **What players will get** opens 2,000 boxes on the server with the saved settings and shows how often each prize turns up and how many of it a box gives on average, so you can check the odds before players see them.
+
+The factory box holds 1–3 carnival foods, with a 2% chance per prize of a Gold Horror Token. A box only opens if the player has room for everything inside; otherwise it stays shut with a message.
+
+The old trick and treat tokens have been removed. Saved settings that still mention them are upgraded automatically on start: they disappear from the prize box list (the remaining chances are rescaled to 100%), prize tiers give a prize box instead, the wheel's *Treat!* segment gives candy floss, and *Trick!* only plays its spooky screen effect.
 
 ## Group allocation
 

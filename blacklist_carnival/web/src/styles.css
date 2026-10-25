@@ -85,7 +85,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .overlay-center { position: fixed; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; background: transparent; pointer-events: none; animation: fade-in 0.25s ease; }
 .overlay-full { position: fixed; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; background: transparent; pointer-events: none; animation: fade-in 0.25s ease; }
 .overlay-center > *, .overlay-full > * { pointer-events: auto; }
-.overlay-center > :not(.shooting-frame), .overlay-full > *, .app > .modal-backdrop > .modal, .hud, .side-card, .horror-hud, .results-banner, .toasts { zoom: var(--ui-zoom); }
+.overlay-center > :not(.shooting-frame), .overlay-full > *, .app > .modal-backdrop > .modal, .hud, .side-card, .horror-hud, .results-banner, .prize-reveal, .toasts { zoom: var(--ui-zoom); }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
 
@@ -652,3 +652,42 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 .crash-card h2 { color: var(--blood-hi); }
 .results-timer { height: 3px; margin-top: 14px; border-radius: 3px; background: var(--gold); transform-origin: left; animation: results-shrink linear forwards; }
 @keyframes results-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Prize box reveal (no focus, closes by itself) */
+.prize-reveal { position: fixed; left: 50%; bottom: 14vh; transform: translateX(-50%); width: 360px; padding: 14px 18px; border-radius: 16px; pointer-events: none;
+  border: 1px solid var(--gold); background: linear-gradient(180deg, rgba(30, 14, 20, 0.96), rgba(12, 6, 9, 0.95)); box-shadow: 0 0 50px rgba(214, 174, 96, 0.25), 0 12px 30px rgba(0, 0, 0, 0.6); animation: rise-in 0.35s; }
+.prize-reveal-head { display: flex; align-items: center; justify-content: center; color: var(--gold-hi); font-family: var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; font-size: 13px; margin-bottom: 10px; }
+.prize-reveal-head .icon { margin-right: 8px; }
+.prize-reveal-item { display: flex; align-items: center; padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); margin-top: 6px; opacity: 0; animation: rise-in 0.35s forwards; }
+.prize-reveal-img { width: 40px; height: 40px; object-fit: contain; margin-right: 10px; flex-shrink: 0; }
+.prize-reveal-count { font-family: var(--font-display); color: var(--gold-hi); font-size: 18px; margin-right: 8px; }
+.prize-reveal-name { color: var(--text); }
+
+.odds-bar { display: inline-block; vertical-align: middle; width: 90px; height: 8px; margin-right: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.odds-bar span { display: block; height: 100%; background: linear-gradient(90deg, #8e1626, #d6ae60); }
+
+.cfg-item-summary { margin-left: 10px; color: var(--gold); font-size: 12px; }
+.cfg-sum { margin: 8px 0; font-size: 13px; font-weight: 600; }
+.cfg-sum-ok { color: #a6e4bb; } .cfg-sum-bad { color: var(--blood-hi); }
+
+.setup-card { border-color: var(--line-strong); }
+.setup-list { list-style: none; margin: 0; padding: 0; }
+.setup-list li { display: flex; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.setup-list li:first-child { border-top: 0; }
+.setup-mark { width: 22px; flex-shrink: 0; font-weight: 700; }
+.setup-ok .setup-mark { color: #a6e4bb; } .setup-ok strong { color: var(--muted); font-weight: 500; }
+.setup-todo .setup-mark { color: var(--gold-hi); }
+.setup-where { color: var(--gold); font-size: 12px; margin-top: 2px; }
+/* Theatre solo turns */
+.theatre-prompt { margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: rgba(214, 174, 96, 0.08); border: 1px solid var(--line); }
+.theatre-prompt-title { font-family: var(--font-display); color: var(--gold-hi); font-size: 15px; }
+.theatre-prompt-title .pill { margin-left: 6px; font-size: 10px; }
+.theatre-prompt p { margin: 6px 0 0; font-family: var(--font-read); font-size: 16px; line-height: 1.3; }
+.theatre-order { list-style: none; margin: 8px 0; padding: 0; }
+.theatre-order li { display: flex; align-items: center; padding: 3px 0; color: var(--muted); }
+.order-mark { width: 22px; text-align: center; margin-right: 6px; font-weight: 700; }
+.order-done { color: var(--text); } .order-done .order-mark { color: #a6e4bb; }
+.order-now { color: var(--gold-hi); font-weight: 600; } .order-now .order-mark { color: var(--gold-hi); }
+.order-skipped { text-decoration: line-through; opacity: 0.6; }
+.order-you { font-weight: 600; }
+.sg-capped { color: #f6d48d; font-size: 13px; }

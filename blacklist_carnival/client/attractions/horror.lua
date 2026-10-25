@@ -3,6 +3,7 @@
 -- sounds and scare effects. Collection and escape are requests the server
 -- validates (distance, run state, duplicates).
 
+local C = Carnival.C
 local Horror = {}
 Carnival.Horror = Horror
 
@@ -25,9 +26,9 @@ end
 
 function Horror.info()
     if run and run.status == 'running' then
-        return lib.notify({ title = 'House of Horrors', description = 'Find the tokens and reach the exit before time runs out!', type = 'inform' })
+        return lib.notify({ title = 'House of Horrors', description = 'Grab the coins and step into the glowing green EXIT circle before time runs out!', type = 'inform' })
     end
-    lib.notify({ title = 'House of Horrors', description = 'Wait at the entrance. The doors open when the keeper is ready...', type = 'inform' })
+    lib.notify({ title = 'House of Horrors', description = 'Step into the purple circle at the maze entry to open the doors.', type = 'inform' })
 end
 
 local function deleteProp(t)
@@ -52,6 +53,7 @@ local function collect(id)
     if res then
         removeToken(id)
         Carnival.playSound('treat_sparkle', 0.7)
+        if run then run.points = (run.points or 0) + (res.points or 0) end
         Carnival.nui('horror', { collected = res.collected, gained = res.points, tokenType = res.type })
     else
         if code == 'collected' or code == 'invalid' then removeToken(id) end
@@ -84,7 +86,7 @@ local function typeCfg(ttype)
     local r, g, b = hexToRgb(c.glowColour or FALLBACK_COLOURS[ttype])
     return {
         model = (c.model and c.model ~= '') and c.model or nil,
-        float = c.floatHeight or 0.9, bob = c.bobHeight or 0.12, spin = c.spinSpeed or 90,
+        float = c.floatHeight or 0.9, bob = c.bobHeight or 0.12, spin = c.spinSpeed or 90, scale = c.scale or 1.0,
         r = r, g = g, b = b, range = c.glowRange or 2.5, intensity = c.glowIntensity or 6.0,
     }
 end
@@ -125,9 +127,28 @@ local function clearRun()
     Carnival.nui('horror', { active = false })
 end
 
+-- If the countdown has run out but the end of the run never arrived (a lost
+-- message), ask the server where things stand and tidy up.
+local function checkStale()
+    if not run or run.status ~= 'running' or not run.endsAt then return end
+    if Carnival.serverNow() < run.endsAt + 3 then return end
+    if run.lastCheck and GetGameTimer() - run.lastCheck < 3000 then return end
+    run.lastCheck = GetGameTimer()
+    local id = run.id
+    CreateThread(function()
+        local st = Carnival.api('horror.state', {})
+        if not run or run.id ~= id then return end
+        if not st or not st.active or st.runId ~= id or (st.status ~= 'running' and st.status ~= 'paused') then
+            if run.ambient then Carnival.stopSound(run.ambient) end
+            clearRun()
+        end
+    end)
+end
+
 local function renderLoop()
     CreateThread(function()
         while run do
+            checkStale()
             local pos = GetEntityCoords(PlayerPedId())
             local now = GetGameTimer() / 1000.0
             for _, t in pairs(run.tokens) do
@@ -148,8 +169,16 @@ local function renderLoop()
                     local z = c.z + cfg.float + math.sin(now * 2.2 + t.phase) * cfg.bob
                     local heading = (now * cfg.spin + t.phase * 57.3) % 360.0
                     if t.entity then
-                        SetEntityCoordsNoOffset(t.entity, c.x, c.y, z, false, false, false)
-                        SetEntityHeading(t.entity, heading)
+                        if cfg.scale ~= 1.0 then
+                            -- GTA has no prop scale: draw it with a scaled transform
+                            -- matrix (forward, right, up, position) every frame
+                            local rad, s = math.rad(heading), cfg.scale
+                            local sinH, cosH = math.sin(rad), math.cos(rad)
+                            SetEntityMatrix(t.entity, -sinH * s, cosH * s, 0.0, cosH * s, sinH * s, 0.0, 0.0, 0.0, s, c.x, c.y, z)
+                        else
+                            SetEntityCoordsNoOffset(t.entity, c.x, c.y, z, false, false, false)
+                            SetEntityHeading(t.entity, heading)
+                        end
                     else
                         -- a spinning upright ring reads as a coin from any angle
                         DrawMarker(6, c.x, c.y, z, 0.0, 0.0, 0.0, 0.0, 0.0, heading, 0.45, 0.45, 0.45, cfg.r, cfg.g, cfg.b, 220, false, false, 2, false, nil, nil, false)
@@ -158,7 +187,8 @@ local function renderLoop()
                         DrawLightWithRange(c.x, c.y, z, cfg.r, cfg.g, cfg.b, cfg.range, cfg.intensity)
                     end
                     -- soft halo on the floor beneath the token
-                    DrawMarker(25, c.x, c.y, c.z + 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.7, 0.7, cfg.r, cfg.g, cfg.b, 70, false, false, 2, false, nil, nil, false)
+                    local halo = math.max(0.3, 0.7 * math.min(cfg.scale, 1.0))
+                    DrawMarker(25, c.x, c.y, c.z + 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, halo, halo, halo, cfg.r, cfg.g, cfg.b, 70, false, false, 2, false, nil, nil, false)
                 end
             end
             Wait(0)
@@ -174,6 +204,9 @@ local function applyState(data)
         renderLoop()
     end
     run.status = data.status
+    run.endsAt = data.endsAt
+    run.ambient = data.sounds and data.sounds.ambient or run.ambient
+    run.points = data.runner and data.runner.points or 0
     run.runnerStatus = data.runner and data.runner.status or 'inside'
     run.visibility = data.visibility
     run.visibilityDistance = data.visibilityDistance or 25.0
@@ -228,17 +261,148 @@ Carnival.onPush('horror', function(data)
 end)
 
 function Horror.escape()
-    if not run then return end
+    if not run or run.escaping then return end
+    run.escaping = true
     local res, code, msg = Carnival.api('horror.exit', { runId = run.id })
-    if res then
+    if run then run.escaping = nil end
+    if res and run then
         run.runnerStatus = 'escaped'
         for id in pairs(run.tokens) do removeToken(id) end
         Carnival.nui('horror', { runnerStatus = 'escaped', points = res.points, collected = res.collected })
         lib.notify({ title = 'You escaped!', description = ('Bonus: %d points'):format(res.bonus or 0), type = 'success' })
-    else
+    elseif not res then
         lib.notify({ title = 'House of Horrors', description = msg or code, type = 'error' })
     end
 end
+
+-- Escape hatch: confirm, then the server takes a share of the run's points and
+-- the player is brought back out.
+function Horror.bailOut(hatch, eh)
+    if not run or run.escaping or not Horror.inRun() then return end
+    run.escaping = true
+    local share = ('%d%%'):format(eh.forfeitPercent or 0)
+    local ok = lib.alertDialog({
+        header = 'Take the escape hatch?',
+        content = ('You will be taken out of the maze and lose **%s** of the points you won in this run (%d so far).'):format(share, run.points or 0),
+        centered = true, cancel = true, labels = { confirm = 'Get me out', cancel = 'Keep going' },
+    })
+    if not run then return end
+    if ok ~= 'confirm' then run.escaping = nil return end
+    local res, code, msg = Carnival.api('horror.bailout', { runId = run.id, hatchId = hatch.id })
+    if run then run.escaping = nil end
+    if not res then
+        return lib.notify({ title = 'House of Horrors', description = msg or code, type = 'error' })
+    end
+    if run then
+        run.runnerStatus = 'bailed'
+        for id in pairs(run.tokens) do removeToken(id) end
+    end
+    Carnival.nui('horror', { runnerStatus = 'bailed', points = res.points, collected = res.collected })
+    local to = res.returnTo
+    if to then
+        DoScreenFadeOut(400)
+        while not IsScreenFadedOut() do Wait(0) end
+        local ped = PlayerPedId()
+        SetEntityCoords(ped, to.x + 0.0, to.y + 0.0, to.z + 0.0, false, false, false, false)
+        SetEntityHeading(ped, (to.w or 0.0) + 0.0)
+        Wait(300)
+        DoScreenFadeIn(600)
+    end
+    lib.notify({ title = 'You bailed out', description = res.lost > 0 and ('The house kept %d of your points.'):format(res.lost) or 'You made it out.', type = 'warning' })
+end
+
+---------------------------------------------------------------------------
+-- Maze doors: glowing circles at the entry and exit. Step into the entry to
+-- open the doors; step into the exit during a run to escape. The server checks
+-- the distance either way.
+---------------------------------------------------------------------------
+local DOOR_DRAW_DISTANCE = 60.0
+local inside = { entry = false, exit = false }
+local lastEnter = 0
+
+local function text3d(x, y, z, label, r, g, b)
+    SetTextScale(0.0, 0.36)
+    SetTextFont(4)
+    SetTextProportional(true)
+    SetTextColour(r, g, b, 235)
+    SetTextOutline()
+    SetTextCentre(true)
+    SetDrawOrigin(x, y, z, 0)
+    BeginTextCommandDisplayText('STRING')
+    AddTextComponentSubstringPlayerName(label)
+    EndTextCommandDisplayText(0.0, 0.0)
+    ClearDrawOrigin()
+end
+
+local function drawDoor(c, radius, r, g, b, label, beam)
+    local pulse = 0.75 + math.sin(GetGameTimer() / 300.0) * 0.25
+    local d = radius * 2.0
+    -- floor disc, a soft column and a bouncing arrow so it reads from a distance
+    DrawMarker(25, c.x, c.y, c.z + 0.04, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, d, d, d, r, g, b, math.floor(170 * pulse), false, false, 2, false, nil, nil, false)
+    DrawMarker(1, c.x, c.y, c.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, d, d, beam and 6.0 or 1.0, r, g, b, beam and 40 or 60, false, false, 2, false, nil, nil, false)
+    DrawMarker(2, c.x, c.y, c.z + 2.0 + math.sin(GetGameTimer() / 400.0) * 0.15, 0.0, 0.0, 0.0, 180.0, 0.0, 0.0, 0.45, 0.45, 0.45, r, g, b, 210, false, false, 2, true, nil, nil, false)
+    text3d(c.x, c.y, c.z + 2.6, label, r, g, b)
+end
+
+local function stepped(key, c, radius, pos)
+    local now = #(vector2(pos.x, pos.y) - vector2(c.x, c.y)) <= radius and math.abs(pos.z - c.z) < 2.5
+    local was = inside[key]
+    inside[key] = now
+    return now and not was
+end
+
+CreateThread(function()
+    while true do
+        local s = Carnival.Client.settings
+        local h = s and s.attractions and s.attractions.horror
+        local p = Carnival.Client.participant
+        if not h or not h.enabled or not h.entry or not h.exit or not (p and p.registered) then
+            Wait(1500)
+        else
+            local pos = GetEntityCoords(PlayerPedId())
+            local feet = pos - vector3(0.0, 0.0, 1.0)
+            local nearEntry = #(pos - vector3(h.entry.x, h.entry.y, h.entry.z)) < DOOR_DRAW_DISTANCE
+            local nearExit = #(pos - vector3(h.exit.x, h.exit.y, h.exit.z)) < DOOR_DRAW_DISTANCE + (Horror.inRun() and 100.0 or 0.0)
+            if not nearEntry and not nearExit then
+                inside = { entry = false, exit = false }
+                Wait(1000)
+            else
+                local running = Horror.inRun()
+                local exitRadius = math.max(1.0, h.exitRadius or 2.0)
+                if nearEntry and not running then
+                    drawDoor(h.entry, C.HORROR_DOOR_RADIUS, 150, 60, 220, 'Step in to open the doors')
+                    if stepped('entry', h.entry, C.HORROR_DOOR_RADIUS, feet) and GetGameTimer() - lastEnter > 5000 then
+                        lastEnter = GetGameTimer()
+                        CreateThread(Horror.enter)
+                    end
+                else
+                    inside.entry = false
+                end
+                if running then
+                    drawDoor(h.exit, exitRadius, 60, 220, 110, 'EXIT - step in to escape', true)
+                    if stepped('exit', h.exit, exitRadius, feet) then CreateThread(Horror.escape) end
+                    local eh = h.escapeHatches
+                    if eh and eh.enabled then
+                        local label = ('Escape hatch - lose %d%% of your run points'):format(eh.forfeitPercent or 0)
+                        for _, hp in ipairs(eh.points or {}) do
+                            local c = hp.coords
+                            if #(pos - vector3(c.x, c.y, c.z)) < DOOR_DRAW_DISTANCE then
+                                drawDoor(c, eh.radius or 1.5, 255, 140, 30, label)
+                                if stepped('hatch:' .. hp.id, c, eh.radius or 1.5, feet) then
+                                    CreateThread(function() Horror.bailOut(hp, eh) end)
+                                end
+                            end
+                        end
+                    end
+                elseif nearExit then
+                    drawDoor(h.exit, exitRadius, 120, 120, 120, 'Maze exit')
+                    inside.exit = false
+                end
+                Wait(0)
+            end
+        end
+    end
+end)
 
 -- Recover the run view after the resource restarts on the client.
 Carnival.onPush('bootstrap', function()

@@ -263,6 +263,9 @@ export function ShootingGame({ data, onClose }: { data: any; onClose: () => void
               <div className="muted">{result.hits} hits from {result.shots} shots ({result.accuracy}%)
                 {result.bullseyes ? ` · ${result.bullseyes} bullseyes` : ''}{result.specials ? ` · ${result.specials} golden` : ''}
                 {result.decoys ? ` · ${result.decoys} lanterns shot` : ''}{result.accuracyBonus ? ` · accuracy +${result.accuracyBonus}` : ''}</div>
+              {result.capped ? (
+                <div className="sg-capped">Your run was worth {result.total} - the gallery pays out at most {result.maxScore} points.</div>
+              ) : null}
               {result.rounds && result.rounds.length > 1 ? (
                 <div className="sg-rounds">
                   {result.rounds.map((r: any) => (

@@ -143,7 +143,7 @@ export function WheelGame({ data, onClose }: { data: any; onClose: () => void })
               <div className="wheel-result-title">{result.outcome.label}</div>
               <div>
                 {result.points ? `${signed(result.points)} points` : 'No points'}
-                {result.reward ? ` · ${result.reward.count}x ${result.reward.label ?? result.reward.item} (${result.reward.status === 'delivered' ? 'in your pockets' : 'held at the ticket booth'})` : ''}
+                {result.reward ? ` · ${result.reward.count}x ${result.reward.label ?? result.reward.item} (${result.reward.status === 'pending' || result.reward.status === 'delivered' ? 'in your pockets' : result.reward.status === 'awaiting_approval' ? 'waiting on approval' : 'held at the ticket booth'})` : ''}
               </div>
             </div>
           ) : error ? <div className="state-error">{error}</div> : <div className="muted">The wheel remembers every hand that spins it…</div>}

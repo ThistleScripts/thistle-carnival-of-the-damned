@@ -14,6 +14,7 @@ All commands are checked on the server with the same permission as the equivalen
 | `/carnivalstop` | `<reason>` | `events.manage` | Cancels the event (reason required). During final results it completes the event instead. |
 | `/carnivalitems` | – | `panel.admin` | Checks every carnival + configured reward item in ox_inventory. |
 | `/carnivalverify` | – | `scores.adjust` | Verifies the active event's score ledger. |
+| `/carnivallayout` | – | `panel.admin` + `config.edit` | Layout mode: move NPCs, the maze entry/exit/boundary and coins in the world; saves as you go. |
 | `/carnivalcoords` | – | `config.edit` | Copies your position + heading to the clipboard. |
 | `/carnivalwhere` | – | participant | Waypoint to your current attraction. |
 | `/carnivalhud` | – | participant | Toggle the participant HUD. |

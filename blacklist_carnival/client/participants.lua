@@ -46,7 +46,7 @@ RegisterCommand('carnivalwhere', function()
 end, false)
 
 ---------------------------------------------------------------------------
--- Prize item effects (server consumed the item and decided the effect)
+-- Wheel effects (Trick! / Treat! segments) and the prize box reveal
 ---------------------------------------------------------------------------
 Carnival.effects = Carnival.effects or {}
 
@@ -66,22 +66,15 @@ function Carnival.effects.treat(data)
     AnimpostfxPlay('SuccessNeutral', 1500, false)
 end
 
+-- A prize box was opened: show what was inside (no mouse focus, closes by itself).
 Carnival.onPush('prize', function(data)
-    if data.kind == 'trick' then
-        Carnival.effects.trick(data)
-        lib.notify({ title = 'Trick!', description = 'The token cackles and the world spins...', type = 'warning' })
-    elseif data.kind == 'treat' then
-        local ped = PlayerPedId()
-        local heal = tonumber(data.heal) or 0
-        if heal > 0 then
-            SetEntityHealth(ped, math.min(GetEntityMaxHealth(ped), GetEntityHealth(ped) + heal))
-        end
-        Carnival.effects.treat(data)
-        lib.notify({ title = 'Treat!', description = 'Sweet relief.', type = 'success' })
-    elseif data.kind == 'box' then
-        Carnival.playSound('treat_sparkle', 0.9)
-        lib.notify({ title = 'Prize box', description = ('Inside: %dx %s'):format(data.count or 1, data.label or data.item), type = 'success' })
+    if data.kind ~= 'box' then return end
+    Carnival.playSound('treat_sparkle', 0.9)
+    local images = {}
+    for _, c in ipairs(data.contents or {}) do
+        images[#images + 1] = Carnival.Shop and Carnival.Shop.itemImage(c.item) or nil
     end
+    Carnival.openView('prizeReveal', { contents = data.contents or {}, images = images }, { focus = false })
 end)
 
 Carnival.onPush('results', function(data)

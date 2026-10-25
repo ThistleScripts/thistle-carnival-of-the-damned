@@ -169,20 +169,18 @@ function Scoring.award(opts)
             participantId = p.id, attractionId = opts.attractionId, actor = actor, result = clampNote or 'ok',
             details = { delta = delta, requested = requested, total = resulting, type = txType, source = opts.source, key = key },
         })
+        -- quiet: the caller announces the score itself later (e.g. once the wheel stops)
+        local notice = { delta = delta, total = resulting, attraction = opts.attractionId, reason = opts.publicReason or opts.source, type = txType }
         local s = Carnival.Participants.sourceOf(p.id)
-        if s then
-            Carnival.Push.send(s, 'score', {
-                delta = delta, total = resulting, attraction = opts.attractionId, reason = opts.publicReason or opts.source, type = txType,
-            })
-        end
+        if s and not opts.quiet then Carnival.Push.send(s, 'score', notice) end
         Carnival.Leaderboard.markDirty()
         Carnival.Push.invalidate('scores')
         -- prize tickets for the prize counter (game scores only, never staff changes)
         if delta > 0 and not isStaff and txId and Carnival.Shop then
-            local cok, cerr = pcall(Carnival.Shop.credit, p, { id = txId, delta = delta, attractionId = opts.attractionId, txType = txType }, e.id)
+            local cok, cerr = pcall(Carnival.Shop.credit, p, { id = txId, delta = delta, attractionId = opts.attractionId, txType = txType }, e.id, opts.quiet)
             if not cok then Carnival.Monitor.log('error', 'shop', 'prize_credit_failed', { participantId = p.id, details = { error = tostring(cerr), txId = txId } }) end
         end
-        return true, { id = txId, delta = delta, requested = requested, previous = total, total = resulting, clamped = clampNote, duplicate = false }
+        return true, { id = txId, delta = delta, requested = requested, previous = total, total = resulting, clamped = clampNote, duplicate = false, notice = notice }
     end)
 end
 

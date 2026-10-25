@@ -40,7 +40,8 @@ export function PlayerHub({ onClose }: { onClose: () => void }) {
           <div>
             <h2>{e?.name ?? settings?.general.eventName ?? 'Carnival of the Damned'}</h2>
             <span className="muted">{e?.active ? (walkup && e.state === 'running' ? 'Open — play at your own pace' : e.stateLabel) : 'No event tonight'}{e?.round ? ` · Round ${e.round}/${e.totalRounds}` : ''}
-              {e?.roundEndsAt ? <> · <Countdown endsAt={e.roundEndsAt} /></> : null}</span>
+              {e?.roundEndsAt ? <> · <Countdown endsAt={e.roundEndsAt} /></> : null}
+              {walkup && e?.nightEndsAt ? <> · tonight's prizes are given out in <Countdown endsAt={e.nightEndsAt} /></> : null}</span>
           </div>
           <Button variant="ghost" onClick={onClose}>Close</Button>
         </header>

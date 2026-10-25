@@ -111,6 +111,41 @@ function Rewards.deliver(rewardId, actor)
     return finish('delivered')
 end
 
+-- Statuses an automatic retry may pick up (never 'unknown': a delivery cut off
+-- by a restart may already have reached the player and needs a human check).
+local RETRYABLE_ERRORS_SKIP = { item_no_longer_permitted = true, item_not_registered = true }
+
+-- Retry every undelivered prize of one character, from any night.
+function Rewards.retryForCitizen(cid)
+    if not cid then return 0 end
+    local rows = Carnival.Db.query([[SELECT id, last_error FROM carnival_rewards
+        WHERE citizenid = ? AND status IN ('pending', 'failed', 'approved') ORDER BY id]], { cid }) or {}
+    local n = 0
+    for _, r in ipairs(rows) do
+        if not RETRYABLE_ERRORS_SKIP[r.last_error or ''] then
+            Rewards.deliver(r.id, Carnival.Identity.SYSTEM)
+            n = n + 1
+        end
+    end
+    return n
+end
+
+-- Every few minutes, try again for everyone online who is still owed a prize
+-- (full pockets, or offline when the night ended) - no staff needed.
+local lastSweep = 0
+function Rewards.sweep(now)
+    now = now or os.time()
+    local every = (Carnival.Config.get().rewards.retryMinutes or 0) * 60
+    if every <= 0 or now - lastSweep < every then return end
+    lastSweep = now
+    local rows = Carnival.Db.query([[SELECT DISTINCT citizenid FROM carnival_rewards
+        WHERE status IN ('pending', 'failed', 'approved')]]) or {}
+    for _, r in ipairs(rows) do
+        if sourceForCitizen(r.citizenid) then Rewards.retryForCitizen(r.citizenid) end
+    end
+end
+Carnival.onTick('rewards_retry', function(now) Rewards.sweep(now) end)
+
 function Rewards.retryPendingFor(pid)
     local rows = Carnival.Db.query("SELECT id FROM carnival_rewards WHERE participant_id = ? AND status IN ('pending', 'failed', 'approved')", { pid }) or {}
     for _, r in ipairs(rows) do Rewards.deliver(r.id, Carnival.Identity.SYSTEM) end

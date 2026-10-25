@@ -154,7 +154,8 @@ local function finishGame(g, reason)
         if ok then applied = tx.delta end
     end
     g.result = {
-        gameId = g.id, points = applied, targetPoints = g.points, hits = g.hits, shots = g.shots, bullseyes = g.bullseyes,
+        gameId = g.id, points = applied, total = total, maxScore = c.maxScore, capped = rid ~= nil and applied < total,
+        targetPoints = g.points, hits = g.hits, shots = g.shots, bullseyes = g.bullseyes,
         specials = g.specials, decoys = g.decoys, accuracy = math.floor(accuracy * 100), accuracyBonus = accBonus, penalty = penalty,
         rounds = U.map(g.rounds, function(r)
             local pr = g.perRound[r.number]

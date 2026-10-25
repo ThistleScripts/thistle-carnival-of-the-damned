@@ -45,7 +45,7 @@ ox_inventory cannot register items at runtime, so:
 3. Copy every PNG from `ox_inventory_additions/web/images/` to `ox_inventory/web/images/`.
 4. Restart ox_inventory (or the server), then run `/carnivalitems` (or the *Items & health* page in `/carnivaladmin`). It must report all items registered.
 
-The twenty-two items are: `carnival_ticket_{red,blue,green,yellow,purple,orange}`, `carnival_token_{bronze,silver,gold}`, `carnival_trick_token`, `carnival_treat_token`, `carnival_prize_box`, and the ten foods sold at the prize counter: `carnival_bloodfloss`, `carnival_poison_apple`, `carnival_finger_dog`, `carnival_grave_popcorn`, `carnival_bone_pretzel`, `carnival_web_cake`, `carnival_eyeball_pop`, `carnival_witch_brew`, `carnival_blood_slushie`, `carnival_grave_shake`. If you pasted an earlier version of the snippet, replace its food entries with the current ones (they now point at `blacklist_carnival.useFood`). What the food does is configured in `blacklist_carnival/consumables.lua`, not in ox_inventory. The image manifest is `items/item-manifest.json`.
+The twenty items are: `carnival_ticket_{red,blue,green,yellow,purple,orange}`, `carnival_token_{bronze,silver,gold}`, `carnival_prize_box`, and the ten foods sold at the prize counter: `carnival_bloodfloss`, `carnival_poison_apple`, `carnival_finger_dog`, `carnival_grave_popcorn`, `carnival_bone_pretzel`, `carnival_web_cake`, `carnival_eyeball_pop`, `carnival_witch_brew`, `carnival_blood_slushie`, `carnival_grave_shake`. **Upgrading:** delete the old `carnival_trick_token` and `carnival_treat_token` entries (they are no longer used) and replace the `carnival_prize_box` entry with the current one. If you pasted an earlier version of the snippet, replace its food entries with the current ones (they now point at `blacklist_carnival.useFood`). What the food does is configured in `blacklist_carnival/consumables.lua`, not in ox_inventory. The image manifest is `items/item-manifest.json`.
 
 Registration refuses to open while the ticket items are missing (unless virtual tickets are enabled in the configurator, or you set `Config.Inventory.RequireItemDefinitions = false`).
 
@@ -96,7 +96,7 @@ Webhook URLs live only in convars; they are never written to the database or sen
 1. Start the server and watch the console for `resource_ready`.
 2. `/carnivalitems` → all items registered.
 3. `/carnivaladmin` → *System → Health & items*: database healthy, ox_inventory/ox_target/qbx_core running.
-4. Walk to each location and use **Use my position** on the configuration pages (entrance, each attraction, horror entry/exit/boundary and coin positions). The shipped coordinates are placeholders around the Del Perro pier.
+4. Type `/carnivallayout` and walk the carnival: aim at each marker, press **E**, and put it down where it belongs (ticket booth, each attraction, prize counter, maze entry/exit/boundary); add coins with **1/2/3**. Each change saves itself. The shipped coordinates are placeholders around the Del Perro pier.
 5. Create an event on *Events & history* and follow the [Administrator manual](ADMIN_MANUAL.md).
 
 ## 9. Backgrounds (optional artwork)

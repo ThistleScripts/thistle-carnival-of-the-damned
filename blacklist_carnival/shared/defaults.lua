@@ -64,7 +64,19 @@ Carnival.Defaults = {
         autoFinalise = false,
         warningSeconds = { 120, 60 },
         unavailableBehaviour = 'hold',
-        walkup = { enforceOrder = true, idleSeconds = 600, closeBooksSeconds = 120 },
+        walkup = {
+            enforceOrder = true,
+            idleSeconds = 600,
+            -- The night ends by itself: 'daily' at endNightAt (server time,
+            -- 24h HH:MM), 'after_hours' once it has run endNightAfterHours, or
+            -- 'manual' (an admin presses End the night). Games in progress may
+            -- finish first, up to endNightGraceMinutes.
+            endNight = 'daily',
+            endNightAt = '04:00',
+            endNightAfterHours = 6,
+            endNightGraceMinutes = 15,
+            closeBooksSeconds = 120,
+        },
     },
 
     scoring = {
@@ -91,7 +103,7 @@ Carnival.Defaults = {
             { label = 'Ringmaster', fromRank = 1, toRank = 1, items = { { item = 'carnival_prize_box', count = 5 } } },
             { label = 'Headliner', fromRank = 2, toRank = 2, items = { { item = 'carnival_prize_box', count = 3 } } },
             { label = 'Showstopper', fromRank = 3, toRank = 3, items = { { item = 'carnival_prize_box', count = 2 } } },
-            { label = 'Crowd Favourite', fromRank = 4, toRank = 10, items = { { item = 'carnival_treat_token', count = 3 } } },
+            { label = 'Crowd Favourite', fromRank = 4, toRank = 10, items = { { item = 'carnival_prize_box', count = 1 } } },
         },
     },
 
@@ -99,13 +111,29 @@ Carnival.Defaults = {
         maxCount = 50,
         allowedItems = {},
         retryOnLogin = true,
-        prizeBox = {
-            { item = 'carnival_treat_token', count = 2, weight = 50 },
-            { item = 'carnival_trick_token', count = 2, weight = 35 },
-            { item = 'carnival_treat_token', count = 5, weight = 15 },
-        },
-        treatHeal = 25,
+        retryMinutes = 5,
         trickEffectSeconds = 12,
+    },
+
+    -- What a prize box gives when opened: between minItems and maxItems prizes,
+    -- each one drawn from `contents` by its percentage chance (chances add up to
+    -- 100), with a random quantity between minCount and maxCount.
+    prizeBox = {
+        minItems = 1,
+        maxItems = 3,
+        contents = {
+            { item = 'carnival_bloodfloss', minCount = 1, maxCount = 1, chance = 12 },
+            { item = 'carnival_eyeball_pop', minCount = 1, maxCount = 2, chance = 12 },
+            { item = 'carnival_grave_popcorn', minCount = 1, maxCount = 1, chance = 12 },
+            { item = 'carnival_poison_apple', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_bone_pretzel', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_finger_dog', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_web_cake', minCount = 1, maxCount = 1, chance = 7 },
+            { item = 'carnival_witch_brew', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_blood_slushie', minCount = 1, maxCount = 1, chance = 10 },
+            { item = 'carnival_grave_shake', minCount = 1, maxCount = 1, chance = 5 },
+            { item = 'carnival_token_gold', minCount = 1, maxCount = 1, chance = 2 },
+        },
     },
 
     audio = {
@@ -146,8 +174,6 @@ Carnival.Defaults = {
             { item = 'carnival_witch_brew', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
             { item = 'carnival_blood_slushie', price = 15, dailyLimit = 0, category = 'drink', enabled = true },
             { item = 'carnival_grave_shake', price = 30, dailyLimit = 0, category = 'drink', enabled = true },
-            { item = 'carnival_trick_token', price = 40, dailyLimit = 5, category = 'prize', enabled = true },
-            { item = 'carnival_treat_token', price = 50, dailyLimit = 5, category = 'prize', enabled = true },
             { item = 'carnival_prize_box', price = 250, dailyLimit = 2, category = 'prize', enabled = true },
         },
     },
@@ -174,7 +200,7 @@ Carnival.Defaults = {
             interactDistance = 2.5,
             validationDistance = 15.0,
             maxPlayers = 4,
-            maxScore = 500,
+            maxScore = 200,
             blip = { enabled = true, sprite = 313, colour = 1 },
             playsPerVisit = 1,
             -- A game is several rounds, each harder than the last; points in a
@@ -188,10 +214,10 @@ Carnival.Defaults = {
                 { label = 'Dead Eye', durationSeconds = 20, targetCount = 24, lanes = 3, targetLifetimeMs = 1900, targetSize = 70,
                     specialChance = 12, decoyChance = 22, motion = 'wave', pointsPercent = 200 },
             },
-            targetPoints = 5,
-            bullseyeBonus = 3,
-            specialPoints = 15,
-            decoyPenalty = 10,
+            targetPoints = 1,
+            bullseyeBonus = 1,
+            specialPoints = 4,
+            decoyPenalty = 3,
             accuracyScoring = true,
             accuracyBonusMax = 20,
             missPenalty = 0,
@@ -219,8 +245,8 @@ Carnival.Defaults = {
                 { id = 'lucky', label = 'Lucky Spin', type = 'bonus', weight = 120, points = 20, item = '', count = 0, colour = '#2a2a2a' },
                 { id = 'void', label = 'The Void', type = 'nothing', weight = 180, points = 0, item = '', count = 0, colour = '#0d0d0d' },
                 { id = 'cursed', label = 'Cursed!', type = 'penalty', weight = 100, points = -10, item = '', count = 0, colour = '#6e0f1d' },
-                { id = 'trick', label = 'Trick!', type = 'trick', weight = 80, points = 0, item = 'carnival_trick_token', count = 1, colour = '#3b1452' },
-                { id = 'treat', label = 'Treat!', type = 'treat', weight = 80, points = 5, item = 'carnival_treat_token', count = 1, colour = '#7a3a12' },
+                { id = 'trick', label = 'Trick!', type = 'trick', weight = 80, points = 0, item = '', count = 0, colour = '#3b1452' },
+                { id = 'treat', label = 'Treat!', type = 'treat', weight = 80, points = 5, item = 'carnival_bloodfloss', count = 1, colour = '#7a3a12' },
                 { id = 'prize_box', label = 'Prize Box', type = 'common_prize', weight = 40, points = 0, item = 'carnival_prize_box', count = 1, colour = '#1d3b2a' },
                 { id = 'rare_box', label = 'Cursed Hoard', type = 'rare_prize', weight = 15, points = 0, item = 'carnival_prize_box', count = 3, colour = '#c9a54a' },
                 { id = 'favour', label = "Ringmaster's Favour", type = 'special_prize', weight = 5, points = 50, item = 'carnival_prize_box', count = 5, colour = '#e8d7a0' },
@@ -281,25 +307,31 @@ Carnival.Defaults = {
             maxPlayers = 12,
             maxScore = 120,
             blip = { enabled = true, sprite = 136, colour = 27 },
-            lobbySeconds = 15,
+            -- A show: the group gathers in the lobby, then each player takes the
+            -- stage alone for turnSeconds with their own random prompt, one after
+            -- another. When everyone has performed, the group votes for the best
+            -- (nobody can vote for themselves).
+            lobbySeconds = 20,
+            turnSeconds = 60,
+            turnGapSeconds = 5,
             voteSeconds = 30,
+            winnerPoints = 40,
+            performerPoints = 10,
             soloPoints = 15,
-            defaultDurationSeconds = 120,
             participationBonus = 5,
-            maxPointsPerAward = 50,
-            scenarios = {
-                { id = 'ventriloquist', title = 'The Broken Ventriloquist', description = 'You are a ventriloquist whose dummy has started speaking on its own - and it is far more popular than you. Win back the crowd.', category = 'solo', difficulty = 'easy', minPlayers = 1, maxPlayers = 1, timeLimit = 90, minPoints = 5, maxPoints = 25, roles = { 'Ventriloquist' } },
-                { id = 'lion_tamer', title = 'The Reluctant Lion Tamer', description = 'You are the lion tamer. Your partner is the lion. The lion has decided to unionise and is presenting its demands.', category = 'duo', difficulty = 'medium', minPlayers = 2, maxPlayers = 2, timeLimit = 120, minPoints = 10, maxPoints = 30, roles = { 'Lion Tamer', 'Unionised Lion' } },
-                { id = 'haunted_auction', title = 'Auction of Haunted Goods', description = 'An auctioneer sells cursed carnival objects to bidders who each secretly want the same item for a ridiculous reason.', category = 'group', difficulty = 'medium', minPlayers = 3, maxPlayers = 6, timeLimit = 180, minPoints = 10, maxPoints = 35, roles = { 'Auctioneer', 'Bidder', 'Bidder', 'Bidder', 'Bidder', 'Bidder' } },
-                { id = 'slow_motion', title = 'The Slow-Motion Heist', description = 'Rob the carnival ticket booth - but everything you do must be in dramatic slow motion, with your own sound effects.', category = 'group', difficulty = 'hard', minPlayers = 2, maxPlayers = 5, timeLimit = 150, minPoints = 10, maxPoints = 40, roles = { 'Mastermind', 'Getaway Driver', 'Lookout', 'Safe Cracker', 'Confused Tourist' } },
-                { id = 'opera_complaint', title = 'Operatic Complaint', description = 'Return a faulty candy floss machine to the vendor. The entire complaint must be sung as an opera.', category = 'duo', difficulty = 'hard', minPlayers = 2, maxPlayers = 2, timeLimit = 120, minPoints = 15, maxPoints = 40, roles = { 'Customer', 'Vendor' } },
-                { id = 'puppet_strings', title = 'Cut the Strings', description = 'You are a marionette. The Puppet Master controls your movements by calling out body parts. Tell your life story while obeying.', category = 'solo', difficulty = 'medium', minPlayers = 1, maxPlayers = 1, timeLimit = 90, minPoints = 5, maxPoints = 30, roles = { 'Marionette' } },
-                { id = 'ghost_interview', title = 'Job Interview for a Ghost', description = 'A ghost interviews for the role of carnival haunter. The panel is very concerned about its lack of experience.', category = 'group', difficulty = 'easy', minPlayers = 2, maxPlayers = 4, timeLimit = 150, minPoints = 5, maxPoints = 30, roles = { 'Ghost Applicant', 'Panel Chair', 'HR Representative', 'Skeptical Ringmaster' } },
-                { id = 'silent_rescue', title = 'Silent Rescue Team', description = 'A rescue team must save a cat from an imaginary tree without making a single sound.', category = 'group', difficulty = 'absurd', minPlayers = 2, maxPlayers = 6, timeLimit = 120, minPoints = 10, maxPoints = 40, roles = { 'Team Leader', 'Rope Specialist', 'Medic', 'The Cat', 'Ladder', 'Bystander' } },
-                { id = 'nature_doc', title = 'Carnival Nature Documentary', description = 'Narrate the mating rituals of the wild carnival-goer while your partner acts it out.', category = 'duo', difficulty = 'medium', minPlayers = 2, maxPlayers = 2, timeLimit = 120, minPoints = 10, maxPoints = 30, roles = { 'Narrator', 'Wild Carnival-Goer' } },
-                { id = 'time_traveller', title = 'Time Traveller at the Funfair', description = 'You have arrived from 1890 and must buy a churro using only Victorian vocabulary.', category = 'solo', difficulty = 'easy', minPlayers = 1, maxPlayers = 1, timeLimit = 90, minPoints = 5, maxPoints = 20, roles = { 'Time Traveller' } },
-                { id = 'cursed_jury', title = 'The Cursed Jury', description = 'Put the Wheel of Misfortune on trial for crimes against luck. Lawyers, witnesses and a very biased judge.', category = 'group', difficulty = 'hard', minPlayers = 3, maxPlayers = 6, timeLimit = 240, minPoints = 15, maxPoints = 45, roles = { 'Judge', 'Prosecutor', 'Defence', 'Witness', 'Witness', 'The Wheel' } },
-                { id = 'escalating_dare', title = 'The Escalating Introduction', description = 'Introduce yourself to the crowd. Every ten seconds the Puppet Master adds a new ridiculous condition you must obey.', category = 'solo', difficulty = 'absurd', minPlayers = 1, maxPlayers = 1, timeLimit = 120, minPoints = 10, maxPoints = 40, roles = { 'Victim' } },
+            prompts = {
+                { id = 'ventriloquist', title = 'The Broken Ventriloquist', description = 'Your dummy has started talking on its own, and the crowd loves it more than you. Win them back.', difficulty = 'easy' },
+                { id = 'fortune_fraud', title = 'Fortune Teller on Her First Day', description = 'Read the future of an invisible customer. You have no idea what you are doing and the crystal ball keeps fogging up.', difficulty = 'easy' },
+                { id = 'ringmaster_voice', title = 'The Ringmaster Lost His Voice', description = 'Introduce tonight\'s grand finale without saying a single word: only gestures, faces and dramatic pointing.', difficulty = 'medium' },
+                { id = 'haunted_mirror', title = 'The Haunted Mirror', description = 'You are a funhouse mirror that has seen too much. Tell the audience what you saw last night.', difficulty = 'medium' },
+                { id = 'last_ticket', title = 'The Last Ticket', description = 'You are selling the very last ticket to the House of Horrors. Convince someone in the crowd they need it.', difficulty = 'easy' },
+                { id = 'escape_artist', title = 'The Escape Artist', description = 'Escape from a locked trunk, chains and a straitjacket. Things are not going to plan.', difficulty = 'medium' },
+                { id = 'strongman', title = 'The Strongman\'s Bad Day', description = 'Lift something impossibly heavy. Then something light. Then fail spectacularly at the light one.', difficulty = 'easy' },
+                { id = 'wax_figure', title = 'The Wax Figure', description = 'You are a wax figure in the Hall of Horrors who keeps moving when nobody is looking. Freeze whenever the audience looks at you.', difficulty = 'hard' },
+                { id = 'slow_motion', title = 'Slow-Motion Heist', description = 'Rob the ticket booth, but everything you do must be in dramatic slow motion with your own sound effects.', difficulty = 'hard' },
+                { id = 'carnival_ghost', title = 'The Carnival Ghost', description = 'You haunt the carousel and want new friends to ride with you forever. Make your pitch.', difficulty = 'medium' },
+                { id = 'cotton_candy', title = 'The Candy Floss Critic', description = 'Review a stick of candy floss like it is the finest dish in the world. It is not.', difficulty = 'easy' },
+                { id = 'tightrope', title = 'The Tightrope', description = 'Walk an invisible tightrope above the crowd. Halfway across, you realise you are afraid of heights.', difficulty = 'medium' },
             },
         },
 
@@ -390,6 +422,18 @@ Carnival.Defaults = {
             exitRadius = 3.0,
             boundaryCentre = v3(-1604.0, -1126.0, 13.15),
             boundaryRadius = 30.0,
+            -- Escape hatches: a lost player steps into one, is taken back to
+            -- returnTo and forfeits a share of the points they won in the run.
+            escapeHatches = {
+                enabled = true,
+                forfeitPercent = 50,
+                radius = 1.5,
+                returnTo = v4(-1614.0, -1112.0, 13.15, 140.0),
+                points = {
+                    { id = 'h1', coords = v3(-1607.5, -1127.5, 13.15) },
+                    { id = 'h2', coords = v3(-1599.5, -1121.0, 13.15) },
+                },
+            },
             durationSeconds = 300,
             warnings = { 120, 60, 30, 10, 5 },
             ambientSound = 'horror_ambient',
@@ -408,11 +452,11 @@ Carnival.Defaults = {
             tokenTypes = {
                 -- coin props streamed from stream/ (a glowing ring is shown if a model fails to load)
                 bronze = { points = 5, quantity = 0, model = 'carnivalcoinbronze', distance = 2.0, respawnSeconds = 0,
-                    floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 90, glowColour = '#cd7f32', glowRange = 2.5, glowIntensity = 6.0 },
+                    scale = 0.5, floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 90, glowColour = '#cd7f32', glowRange = 2.5, glowIntensity = 6.0 },
                 silver = { points = 10, quantity = 0, model = 'carnivalcoinsilver', distance = 2.0, respawnSeconds = 0,
-                    floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 110, glowColour = '#c8d2e6', glowRange = 2.5, glowIntensity = 7.0 },
+                    scale = 0.5, floatHeight = 0.9, bobHeight = 0.12, spinSpeed = 110, glowColour = '#c8d2e6', glowRange = 2.5, glowIntensity = 7.0 },
                 gold = { points = 25, quantity = 2, model = 'carnivalcoingold', distance = 2.0, respawnSeconds = 0,
-                    floatHeight = 1.0, bobHeight = 0.15, spinSpeed = 140, glowColour = '#ffc83c', glowRange = 3.5, glowIntensity = 10.0 },
+                    scale = 0.5, floatHeight = 1.0, bobHeight = 0.15, spinSpeed = 140, glowColour = '#ffc83c', glowRange = 3.5, glowIntensity = 10.0 },
             },
             tokens = {
                 { id = 'b1', type = 'bronze', coords = v3(-1607.2, -1121.4, 13.1) },
