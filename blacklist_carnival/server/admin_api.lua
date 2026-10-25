@@ -42,6 +42,7 @@ local function dashboard(ctx, full)
         out.recentTransactions = e and (Carnival.Db.query([[SELECT t.id, p.display_name, t.attraction_id, t.delta, t.resulting_total, t.tx_type, t.source, t.staff_name, t.created_at
             FROM carnival_score_transactions t JOIN carnival_participants p ON p.id = t.participant_id WHERE t.event_id = ? ORDER BY t.id DESC LIMIT 15]], { e.id }) or {}) or {}
         out.outstandingRewards = Carnival.Rewards.outstandingCount(e and e.id)
+        out.setup = Carnival.Setup and Carnival.Setup.checklist() or nil
         out.recentStaffActions = Carnival.Db.query('SELECT id, actor_name, action, target_type, target_id, reason, created_at FROM carnival_audit_log ORDER BY id DESC LIMIT 15') or {}
         out.recentProblems = Carnival.Monitor.recent(15)
         out.countdowns = {}

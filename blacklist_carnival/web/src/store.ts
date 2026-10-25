@@ -36,6 +36,7 @@ export interface EventState {
   registrationOpen?: boolean;
   participantCount?: number;
   maxParticipants?: number;
+  nightEndsAt?: number;
 }
 
 export interface State {

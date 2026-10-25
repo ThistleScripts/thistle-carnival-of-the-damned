@@ -326,6 +326,12 @@ local function crossValidate(cfg, errors)
         end
     end
 
+    local wk = cfg.rotation and cfg.rotation.walkup
+    if wk and wk.endNightAt then
+        local h, m = tostring(wk.endNightAt):match('^(%d%d):(%d%d)$')
+        if not h or tonumber(h) > 23 or tonumber(m) > 59 then err('rotation.walkup.endNightAt', 'use 24-hour HH:MM, e.g. 04:00') end
+    end
+
     local a = cfg.attractions or {}
     if a.shooting and a.shooting.rounds then
         for i, r in ipairs(a.shooting.rounds) do

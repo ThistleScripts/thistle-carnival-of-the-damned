@@ -60,6 +60,7 @@ server_scripts {
     'server/props.lua',
     'server/shop.lua',
     'server/consumables.lua',
+    'server/setup.lua',
     'server/admin_api.lua',
     'server/commands.lua',
     'server/exports.lua',

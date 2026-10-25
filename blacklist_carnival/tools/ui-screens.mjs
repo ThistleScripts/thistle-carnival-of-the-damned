@@ -87,6 +87,13 @@ const dashboard = {
   leaderboard: board.entries.slice(0, 10).map((e) => ({ id: e.participantId, rank: e.rank, name: e.name, colour: e.colour, total: e.total })),
   health: { ready: true, uptime: 7400, schemaVersion: 4, resourceVersion: '1.0.0', inventoryRunning: true, targetRunning: true, qbxRunning: true, discordEnabled: false,
     database: { healthy: true }, counters: { warning: 3, error: 0 }, config: { source: 'global', global: { version: 7 } } },
+  setup: { done: false, items: [
+    { id: 'dependencies', ok: true, label: 'ox_inventory and ox_target are running' },
+    { id: 'items', ok: true, label: 'Carnival items are added to ox_inventory' },
+    { id: 'locations', ok: false, label: 'Ticket booth, prize counter and attractions are placed', detail: 'Still at the placeholder pier position: prize counter, The House of Horrors. Stand where each should be and press "Use my position".', where: 'Settings -> Carnival / Attractions / Scoring & prizes -> Prize counter' },
+    { id: 'horror', ok: false, label: 'House of Horrors maze is set up', detail: 'Still at the placeholder: exit, 12 coin position(s).', where: 'Settings -> Attractions -> House of Horrors' },
+    { id: 'schedule', ok: true, label: 'Nights end by themselves' },
+  ] },
   recentTransactions: names.slice(0, 8).map((n, i) => ({ id: 100 - i, display_name: n, attraction_id: ['shooting', 'wheel', 'fortune', 'horror', 'puppets', 'deception'][i % 6], delta: [25, 15, -10, 40, 30, 12, 5, 20][i], created_at: now() - i * 95 })),
   recentStaffActions: [], recentProblems: [],
 };

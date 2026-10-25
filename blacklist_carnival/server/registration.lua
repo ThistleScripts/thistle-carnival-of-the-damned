@@ -146,7 +146,7 @@ function P.bind(src)
     if not Carnival.ready then return end
     P.unbind(src, true)
     local cid = Carnival.Identity.citizenid(src)
-    if not cid then return end
+    if not cid then return Carnival.Push.bootstrap(src) end
     local id = byCitizen[cid]
     if id then
         srcById[id] = src
@@ -158,10 +158,11 @@ function P.bind(src)
             CreateThread(function() Carnival.Tickets.deliverPending(id, Carnival.Identity.SYSTEM) end)
         end
         Carnival.Attractions.playerLoaded(src, P.byId[id])
-        if Carnival.Config.get().rewards.retryOnLogin then
-            Carnival.Rewards.retryPendingFor(id)
-        end
         Carnival.Push.invalidate('participants', 'dashboard')
+    end
+    -- prizes still owed from tonight or any earlier night
+    if Carnival.Config.get().rewards.retryOnLogin then
+        CreateThread(function() Carnival.Rewards.retryForCitizen(cid) end)
     end
     Carnival.Push.bootstrap(src)
 end

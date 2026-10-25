@@ -14,6 +14,20 @@ The games run themselves and staff are actors, so the panel is only for running 
 
 What you see depends on your role (see PERMISSIONS.md); every action is checked again on the server.
 
+## Running with no staff
+
+In walk-up mode (the default) the whole cycle runs by itself:
+
+1. **Opens.** A carnival night opens on its own and the ticket booth sells tickets.
+2. **Plays.** Players walk up to each game on their ticket and play; every game runs itself.
+3. **Ends the night.** At *Rotation → Walk-up mode → end the night* (default: **daily at 04:00 server time**; or after a number of hours; or `manual`). Games still in progress get up to *grace minutes* (default 15) to finish. A night nobody played simply starts over with no results.
+4. **Hands out prizes.** The results are frozen, the final results banner shows for 30 seconds and the prize tiers are delivered. A prize that cannot be handed over (full pockets, or the winner is offline) is retried every *retry minutes* (default 5) while they are online and when they log in, from any night.
+5. **Opens again.** After *close the books* (default 2 minutes) a fresh night opens and players buy new tickets. Prize tickets and the prize counter carry on between nights.
+
+**First-time setup.** The Overview shows a **Finish setting up** card until the carnival can run on its own: dependencies running, items added to ox_inventory, the booth, prize counter and attractions moved off the placeholder pier positions, the House of Horrors maze and coins placed, the ambient zones placed, and nights ending by themselves.
+
+**What still needs a person, rarely:** a prize delivery cut off by a server restart (status *unknown*) is never retried automatically, because it may already have reached the player. Check those under *Players → Prize deliveries*. Everything else is optional: actors can roleplay around the games, and admins can still pause, end a night early, close an attraction or adjust scores from the panel.
+
 ## Carnival mode: walk-up or scheduled
 
 *General → Carnival mode* decides how the carnival runs.
@@ -26,7 +40,7 @@ What you see depends on your role (see PERMISSIONS.md); every action is checked 
 * An attraction that is disabled or closed from the Overview is passed over; the player plays the next one and comes back to it later.
 * A visit nobody is playing is closed after *idle seconds* without counting as played, so the player can start again.
 * Restarts do not pause a walk-up event.
-* To end the night, press **End the night** on the Overview. The results are frozen and every player sees the final results banner for 30 seconds (it closes by itself); the HUD disappears. After *Rotation → Walk-up mode → open a fresh carnival after* (default 120 s) the books close by themselves and a fresh carnival opens (players buy a new ticket). Set it to 0 to keep the results up until an admin presses *Close the books*.
+* The night ends by itself on schedule (see *Running with no staff*). To end it early, press **End the night** on the Overview. The results are frozen and every player sees the final results banner for 30 seconds (it closes by itself); the HUD disappears. After *Rotation → Walk-up mode → open a fresh carnival after* (default 120 s) the books close by themselves and a fresh carnival opens (players buy a new ticket). Set it to 0 to keep the results up until an admin presses *Close the books*.
 * To stop the carnival opening again, switch the mode to *scheduled* first. While the walk-up event runs, the rotation matrix and colours may still be edited, because players progress individually.
 
 **Scheduled (timed rounds).** An admin creates the night and moves it through the lifecycle below; each colour group visits one attraction per round. The games still run themselves; a round that ends while a show, mystery or maze run is in progress waits for it to finish ("overtime").

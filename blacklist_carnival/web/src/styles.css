@@ -669,3 +669,12 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--gold); width: 
 .cfg-item-summary { margin-left: 10px; color: var(--gold); font-size: 12px; }
 .cfg-sum { margin: 8px 0; font-size: 13px; font-weight: 600; }
 .cfg-sum-ok { color: #a6e4bb; } .cfg-sum-bad { color: var(--blood-hi); }
+
+.setup-card { border-color: var(--line-strong); }
+.setup-list { list-style: none; margin: 0; padding: 0; }
+.setup-list li { display: flex; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.setup-list li:first-child { border-top: 0; }
+.setup-mark { width: 22px; flex-shrink: 0; font-weight: 700; }
+.setup-ok .setup-mark { color: #a6e4bb; } .setup-ok strong { color: var(--muted); font-weight: 500; }
+.setup-todo .setup-mark { color: var(--gold-hi); }
+.setup-where { color: var(--gold); font-size: 12px; margin-top: 2px; }

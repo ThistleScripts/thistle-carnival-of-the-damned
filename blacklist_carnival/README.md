@@ -4,6 +4,8 @@ A self-running, roleplay-focused carnival for **Blacklist RP** (QBX/Qbox · ox_l
 
 Players buy a ticket at the booth and receive one of six coloured tickets; the colour sets the order in which they play the six attractions. **Scores are individual.** Players run every attraction themselves by targeting its ped; **no staff are needed to run any game**, so staff are free to be actors (see the [actor guide](docs/ACTOR_GUIDE.md)). Owners and admins manage everything from one in-game admin panel, with no Lua edits for ordinary setup, including a **prop placer** that saves props to the database so every player sees them and they survive restarts. The games also pay out **prize tickets** (for playing and for how well you score) to spend at the **prize counter** on ten horror-carnival treats (candy floss, a severed-finger corn dog, a blood moon slushie…), and **ambient sound zones** fill the grounds with an organ waltz, crowd murmur, chimes and wind.
 
+**Runs with no staff.** In walk-up mode the carnival opens itself, ends the night on a schedule (daily at 04:00 by default), freezes the results, hands out prizes (retrying anyone who was offline or had full pockets) and opens a fresh night. The admin Overview lists anything left to set up.
+
 **Two carnival modes** (*General → Carnival mode*):
 
 * **Walk-up** (default): the carnival opens itself and stays open. Nobody has to create, open or start an event. A player buys a ticket, walks to the first game on it and plays, then the next, at their own pace.

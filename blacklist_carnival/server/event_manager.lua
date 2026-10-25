@@ -72,6 +72,7 @@ function Events.publicState()
         registrationOpen = Carnival.Registration and Carnival.Registration.isOpen() or false,
         participantCount = Carnival.Participants and Carnival.Participants.count() or 0,
         maxParticipants = cfg and cfg.registration.maxParticipants or 0,
+        nightEndsAt = Events.nightEndsAt and Events.nightEndsAt() or nil,
     }
 end
 
@@ -371,6 +372,68 @@ end
 
 local walkupBusy = false
 
+-- The latest daily HH:MM (server time) at or before `now`.
+local function lastDaily(at, now)
+    local h, m = tostring(at or ''):match('^(%d%d):(%d%d)$')
+    if not h then return nil end
+    local t = os.date('*t', now)
+    t.hour, t.min, t.sec = tonumber(h), tonumber(m), 0
+    local stamp = os.time(t)
+    if stamp > now then stamp = stamp - 86400 end
+    return stamp
+end
+
+local function gamesInProgress()
+    for _, id in ipairs(C.ATTRACTIONS) do
+        local s = Carnival.Rotation.sessionFor(id)
+        if s and Carnival.Attractions.sessionBusy(s) then return true end
+    end
+    return false
+end
+
+-- When the running walk-up night is scheduled to end (nil for manual).
+function Events.nightEndsAt(now)
+    local e = Events.active
+    if not e or e.mode ~= 'walkup' or e.state ~= S.RUNNING then return nil end
+    now = now or os.time()
+    local wk = Carnival.Config.get().rotation.walkup
+    local started = tonumber(e.started_at) or tonumber(e.created_at) or now
+    if wk.endNight == 'daily' then
+        local boundary = lastDaily(wk.endNightAt, now)
+        if not boundary then return nil end
+        return boundary > started and boundary or boundary + 86400
+    elseif wk.endNight == 'after_hours' then
+        return math.floor(started + wk.endNightAfterHours * 3600)
+    end
+    return nil
+end
+
+local graceStartedAt = nil
+
+-- Is it time for the running walk-up night to end? Waits for games in
+-- progress (up to endNightGraceMinutes) so nobody is cut off mid-run.
+function Events.walkupNightOver(now)
+    local e = Events.active
+    if not e or e.mode ~= 'walkup' or e.state ~= S.RUNNING then return false end
+    now = now or os.time()
+    local wk = Carnival.Config.get().rotation.walkup
+    local started = tonumber(e.started_at) or tonumber(e.created_at) or now
+    local due
+    if wk.endNight == 'daily' then
+        local boundary = lastDaily(wk.endNightAt, now)
+        due = boundary ~= nil and boundary > started
+    elseif wk.endNight == 'after_hours' then
+        due = now - started >= wk.endNightAfterHours * 3600
+    end
+    if not due then graceStartedAt = nil return false end
+    if gamesInProgress() then
+        graceStartedAt = graceStartedAt or now
+        if now - graceStartedAt < (wk.endNightGraceMinutes or 0) * 60 then return false end
+    end
+    graceStartedAt = nil
+    return true
+end
+
 local function ensureWalkup()
     if Carnival.Config.get().general.mode ~= 'walkup' then return end
     local SYSTEM = Carnival.Identity.SYSTEM
@@ -391,6 +454,15 @@ local function ensureWalkup()
         local ok, code, msg = Events.transition(0, S.COMPLETED, 'Walk-up night closed automatically after the final results',
             { system = true, actor = SYSTEM })
         if not ok then return walkupFailed(S.COMPLETED, code, msg) end
+        return
+    end
+    if Events.active.state == S.RUNNING and Events.walkupNightOver() then
+        local quiet = (Carnival.Participants.count() or 0) == 0
+        local ok, code, msg = Events.transition(0, quiet and S.CANCELLED or S.FINAL,
+            quiet and 'Nobody played tonight; a fresh night starts' or 'The night ended on schedule',
+            { system = true, actor = SYSTEM })
+        if not ok then return walkupFailed(quiet and S.CANCELLED or S.FINAL, code, msg) end
+        Carnival.Monitor.log('info', 'event_state', quiet and 'walkup_night_rolled_over' or 'walkup_night_ended', { eventId = Events.active and Events.active.id })
         return
     end
     for _ = 1, 4 do

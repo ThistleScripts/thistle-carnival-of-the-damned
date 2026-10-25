@@ -981,7 +981,7 @@ test('switching to walk-up opens a carnival automatically and sells tickets with
     local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
     eq(Carnival.Defaults.general.mode, 'scheduled', 'suite override')
     doc.general.mode = 'walkup'
-    doc.rotation.walkup = { enforceOrder = true, idleSeconds = 300, closeBooksSeconds = 120 }
+    doc.rotation.walkup.enforceOrder, doc.rotation.walkup.idleSeconds = true, 300
     okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
     H.advance(6)
     local e = Carnival.Events.active
@@ -1152,6 +1152,119 @@ test('after "End the night" the books close by themselves and a fresh carnival o
     eq(H.sql("SELECT actor FROM carnival_event_transitions WHERE event_id = ? AND to_state = 'completed'", { night })[1].actor, 'system')
     local e = Carnival.Events.active
     truthy(e and e.id ~= night and e.state == 'running', 'a fresh carnival is open')
+end)
+
+test('the night ends on its own schedule; an empty night just starts over', function()
+    local function saveWalkup(patch)
+        local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+        for k, v in pairs(patch) do doc.rotation.walkup[k] = v end
+        okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    end
+    saveWalkup({ endNight = 'after_hours', endNightAfterHours = 1, endNightGraceMinutes = 15 })
+    local wk = settings().rotation.walkup
+    -- nobody registered: the night is cancelled quietly and a fresh one opens
+    local empty = Carnival.Events.activeId()
+    eq(Carnival.Participants.count(), 0, 'fresh night')
+    H.advance(3600 + 12)
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { empty })[1].state, 'cancelled', 'empty night rolled over')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { empty }), 0, 'no results for an empty night')
+    local night = Carnival.Events.activeId()
+    truthy(night and night ~= empty and Carnival.Events.state() == 'running', 'a new night is open')
+    local endsAt = Carnival.Events.publicState().nightEndsAt
+    truthy(endsAt and math.abs(endsAt - (os.time() + 3600)) <= 15, 'players see when the night ends')
+
+    -- somebody played: results are frozen by the system, then the books close
+    local s = WALKERS[1]
+    at(s, settings().registration.entrance)
+    okRes(H.api(s, 'registration.register'))
+    H.advance(3600 + 12)
+    eq(H.sql('SELECT state FROM carnival_events WHERE id = ?', { night })[1].state, 'final_results', 'night ended on schedule')
+    eq(H.sql("SELECT actor FROM carnival_event_transitions WHERE event_id = ? AND to_state = 'final_results'", { night })[1].actor, 'system')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_event_results WHERE event_id = ?', { night }), 1, 'results frozen')
+    H.advance(wk.closeBooksSeconds + 12)
+    truthy(Carnival.Events.activeId() ~= night, 'and a fresh carnival opened')
+
+    -- games in progress may finish first, up to the grace period
+    local realBusy, realFor = Carnival.Attractions.sessionBusy, Carnival.Rotation.sessionFor
+    Carnival.Attractions.sessionBusy = function() return true end
+    Carnival.Rotation.sessionFor = function() return { id = 1 } end
+    local due = os.time() + 3600 + 5
+    eq(Carnival.Events.walkupNightOver(due), false, 'waits while a game is running')
+    eq(Carnival.Events.walkupNightOver(due + 14 * 60), false, 'still within the grace period')
+    eq(Carnival.Events.walkupNightOver(due + 15 * 60 + 1), true, 'grace period over')
+    Carnival.Attractions.sessionBusy, Carnival.Rotation.sessionFor = realBusy, realFor
+
+    -- daily: ends at the next HH:MM after the night started
+    local inTwoHours = os.date('*t', os.time() + 7200)
+    saveWalkup({ endNight = 'daily', endNightAt = ('%02d:%02d'):format(inTwoHours.hour, inTwoHours.min) })
+    local ends = Carnival.Events.nightEndsAt()
+    truthy(ends and math.abs(ends - (os.time() + 7200)) < 60, 'next daily end is today at that time')
+    eq(Carnival.Events.walkupNightOver(), false, 'not yet')
+    local bad = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    bad.rotation.walkup.endNightAt = '25:99'
+    local r = H.api(OWNER, 'config.save', { scope = 'global', confirm = true, data = bad })
+    truthy(not r.ok or r.data.saved ~= true, 'a bad end time is refused')
+    saveWalkup({ endNight = 'manual' })
+    eq(Carnival.Events.nightEndsAt(), nil, 'manual nights have no end time')
+    eq(Carnival.Events.walkupNightOver(os.time() + 86400 * 3), false, 'manual nights never end by themselves')
+    saveWalkup({ endNight = 'daily', endNightAt = '04:00' })
+end)
+
+test('prizes nobody could hand over are retried automatically, from any night', function()
+    local s = WALKERS[3]
+    at(s, settings().registration.entrance)
+    okRes(H.api(s, 'registration.register'))
+    local pid = Carnival.Participants.getBySource(s).id
+    local cid = H.players[s].citizenid
+    -- pockets full when the prize is created
+    H.inventoryFull[s] = true
+    local r = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_bloodfloss', count = 2, key = 'test:retry1' })
+    eq(H.call(Carnival.Rewards.deliver, r.id, Carnival.Identity.SYSTEM), 'failed')
+    -- pretend it was won on an earlier night
+    local old = H.sql("SELECT id FROM carnival_events WHERE id <> ? ORDER BY id LIMIT 1", { Carnival.Events.activeId() })[1].id
+    H.sql('UPDATE carnival_rewards SET event_id = ? WHERE id = ?', { old, r.id })
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r.id })[1].status, 'failed', 'still full: still owed')
+    H.inventoryFull[s] = nil
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r.id })[1].status, 'delivered', 'delivered by the automatic retry')
+    eq(#H.itemsOf(s, 'carnival_bloodfloss') > 0, true)
+
+    -- logging in also collects anything owed
+    local r2 = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_grave_shake', count = 1, key = 'test:retry2' })
+    H.sql("UPDATE carnival_rewards SET event_id = ?, status = 'pending' WHERE id = ?", { old, r2.id })
+    H.call(Carnival.Participants.bind, s)
+    H.advance(1)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r2.id })[1].status, 'delivered', 'delivered on login')
+    -- a delivery cut off by a restart is never retried automatically
+    local r3 = H.call(Carnival.Rewards.create, { participantId = pid, source = 'manual', item = 'carnival_web_cake', count = 1, key = 'test:retry3' })
+    H.sql("UPDATE carnival_rewards SET status = 'unknown' WHERE id = ?", { r3.id })
+    H.advance(settings().rewards.retryMinutes * 60 + 2)
+    eq(H.sql('SELECT status FROM carnival_rewards WHERE id = ?', { r3.id })[1].status, 'unknown', 'left for a human check')
+    eq(cid ~= nil, true)
+end)
+
+test('the setup checklist lists what still needs a human, and clears as it is done', function()
+    errRes(H.api(WALKERS[1], 'setup.checklist'), 'forbidden')
+    local list = okRes(H.api(ADMIN, 'setup.checklist'))
+    local by = {}
+    for _, i in ipairs(list.items) do by[i.id] = i end
+    eq(list.done, false)
+    eq(by.items.ok, true, 'items registered')
+    eq(by.locations.ok, false, 'placeholder positions spotted')
+    truthy(by.locations.detail:find('ticket booth'), by.locations.detail)
+    eq(by.schedule.ok, true, 'nights end by themselves (daily)')
+    -- place everything somewhere real
+    local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
+    local function moved(v) local c = Carnival.U.deepCopy(v); c.x = c.x + 500; return c end
+    doc.registration.entrance = moved(doc.registration.entrance)
+    doc.shop.location = moved(doc.shop.location)
+    for _, id in ipairs(Carnival.C.ATTRACTIONS) do doc.attractions[id].location = moved(doc.attractions[id].location) end
+    okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
+    list = okRes(H.api(ADMIN, 'setup.checklist'))
+    for _, i in ipairs(list.items) do by[i.id] = i end
+    eq(by.locations.ok, true, 'locations done')
+    eq(okRes(H.api(ADMIN, 'admin.dashboard')).setup ~= nil, true, 'shown on the Overview')
 end)
 
 ---------------------------------------------------------------------------

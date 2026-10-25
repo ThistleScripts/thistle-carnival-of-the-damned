@@ -108,6 +108,11 @@ S.root = { type = 'group', fields = {
                 help = 'Off: any attraction the player has not completed yet may be played.' }),
             f('idleSeconds', { type = 'int', label = 'Close an idle attraction visit after (s)', min = 60, max = 7200,
                 help = 'A visit nobody is playing is closed (without completing it) so the next player can start fresh.' }),
+            f('endNight', { type = 'select', label = 'End the night automatically', options = { 'daily', 'after_hours', 'manual' },
+                help = 'daily: at the time below every day. after_hours: once the night has run for the hours below. manual: only when an admin presses End the night. Results are frozen and prizes handed out as usual; a night nobody played simply starts over.' }),
+            f('endNightAt', { type = 'string', label = 'Daily end time (server time, 24h HH:MM)', max = 5 }),
+            f('endNightAfterHours', { type = 'number', label = 'Hours a night lasts (after_hours)', min = 0.5, max = 168, step = 0.5 }),
+            f('endNightGraceMinutes', { type = 'int', label = 'Let games in progress finish for up to (min)', min = 0, max = 120 }),
             f('closeBooksSeconds', { type = 'int', label = 'After "End the night", open a fresh carnival after (s, 0 = wait for an admin)', min = 0, max = 86400,
                 help = 'The final results stay on screen this long, then the books close by themselves and a new carnival opens.' }),
         } }),
@@ -147,7 +152,9 @@ S.root = { type = 'group', fields = {
     f('rewards', { type = 'group', label = 'Reward delivery', fields = {
         f('maxCount', { type = 'int', label = 'Maximum quantity per reward', min = 1, max = 10000 }),
         f('allowedItems', { type = 'list', label = 'Additional permitted reward items', max = 100, item = { type = 'item' } }),
-        f('retryOnLogin', { type = 'bool', label = 'Retry pending rewards when the player logs in' }),
+        f('retryOnLogin', { type = 'bool', label = 'Retry undelivered prizes when the player logs in' }),
+        f('retryMinutes', { type = 'int', label = 'Retry undelivered prizes for online players every (min, 0 = never)', min = 0, max = 1440,
+            help = 'Prizes that could not be handed over (full pockets, or the winner was offline) are tried again automatically. Deliveries cut off by a server restart are never retried automatically; check those under Players -> Prize deliveries.' }),
         f('trickEffectSeconds', { type = 'int', label = 'Wheel "Trick!": screen effect duration (s)', min = 1, max = 60 }),
     } }),
 

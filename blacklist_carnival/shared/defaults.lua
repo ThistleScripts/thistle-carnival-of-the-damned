@@ -64,7 +64,19 @@ Carnival.Defaults = {
         autoFinalise = false,
         warningSeconds = { 120, 60 },
         unavailableBehaviour = 'hold',
-        walkup = { enforceOrder = true, idleSeconds = 600, closeBooksSeconds = 120 },
+        walkup = {
+            enforceOrder = true,
+            idleSeconds = 600,
+            -- The night ends by itself: 'daily' at endNightAt (server time,
+            -- 24h HH:MM), 'after_hours' once it has run endNightAfterHours, or
+            -- 'manual' (an admin presses End the night). Games in progress may
+            -- finish first, up to endNightGraceMinutes.
+            endNight = 'daily',
+            endNightAt = '04:00',
+            endNightAfterHours = 6,
+            endNightGraceMinutes = 15,
+            closeBooksSeconds = 120,
+        },
     },
 
     scoring = {
@@ -99,6 +111,7 @@ Carnival.Defaults = {
         maxCount = 50,
         allowedItems = {},
         retryOnLogin = true,
+        retryMinutes = 5,
         trickEffectSeconds = 12,
     },
 
