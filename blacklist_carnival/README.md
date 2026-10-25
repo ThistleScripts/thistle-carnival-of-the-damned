@@ -34,7 +34,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 1. Add the items from `../ox_inventory_additions/data/carnival_items.lua` to `ox_inventory/data/items.lua` and copy `../ox_inventory_additions/web/images/*.png` to `ox_inventory/web/images/`.
 2. Put your license in `Config.Security.Allowlist` (config.lua) as `owner`.
 3. `ensure blacklist_carnival` after its dependencies. Tables are created automatically.
-4. In game: `/carnivaladmin` → set the booth and attraction locations with **Use my position**. In walk-up mode (the default) the carnival is already open: players can buy a ticket and play. For a night in timed rounds, switch *Settings → Carnival → General → Carnival mode* to *scheduled*, then *Nights & results* → *Create event* → open registration.
+4. In game: `/carnivaladmin` → press **Lay out in the world** (or type `/carnivallayout`) and move the booth, attraction NPCs, maze doors and coins by walking up to them. In walk-up mode (the default) the carnival is already open: players can buy a ticket and play. For a night in timed rounds, switch *Settings → Carnival → General → Carnival mode* to *scheduled*, then *Nights & results* → *Create event* → open registration.
 
 ## Layout
 

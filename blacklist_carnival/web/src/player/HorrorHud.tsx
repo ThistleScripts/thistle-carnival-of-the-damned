@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useStore } from '../store';
+import { serverNow, useStore } from '../store';
 import { Countdown } from '../components/ui';
 import { Icon } from '../components/Art';
 
@@ -12,6 +12,12 @@ export function HorrorHud() {
     const t = setTimeout(() => setFlash(null), 2500);
     return () => clearTimeout(t);
   }, [h.warning, h.warningText]);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!h.active || !h.endsAt) return;
+    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [h.active, h.endsAt]);
   if (!h.active) return null;
   return (
     <div className={`horror-hud ${h.runnerStatus === 'escaped' ? 'horror-escaped' : ''}`}>
@@ -20,7 +26,9 @@ export function HorrorHud() {
         {h.status === 'paused' ? <span>Paused <Countdown remaining={h.remaining} /></span> : <Countdown endsAt={h.endsAt} />}
       </div>
       <div className="horror-stats"><span>Tokens {h.collected ?? 0}</span><span>{h.points ?? 0} pts</span></div>
-      {h.runnerStatus === 'escaped' ? <div className="horror-note">You escaped!</div> : <div className="horror-note">Find the exit before time runs out</div>}
+      {h.runnerStatus === 'escaped' ? <div className="horror-note">You escaped!</div>
+        : h.status !== 'paused' && h.endsAt && h.endsAt <= serverNow() ? <div className="horror-note">Time's up!</div>
+        : <div className="horror-note">Step into the green EXIT circle before time runs out</div>}
       {flash ? <div className="horror-flash">{flash}</div> : null}
     </div>
   );

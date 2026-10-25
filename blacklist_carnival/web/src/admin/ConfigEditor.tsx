@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, captureCoords } from '../nui';
+import { api, captureCoords, layoutMode } from '../nui';
 import { Async, Button, Card, Empty, Field, Modal, Pagination, StatusPill, Table, confirmAction, toast, useAction, useApi } from '../components/ui';
 import { errorText } from '../i18n';
 import { COLOURS, formatTime } from '../format';
@@ -59,6 +59,7 @@ function CoordsInput({ value, onChange, withHeading, disabled }: { value: any; o
         onChange(withHeading ? c : { x: c.x, y: c.y, z: c.z });
         toast('Captured your current position.', 'success');
       }}>Use my position</Button>
+      <Button small variant="ghost" title="Close the panel and drag it into place in the world (/carnivallayout)" onClick={() => layoutMode()}>Place in world</Button>
     </div>
   );
 }

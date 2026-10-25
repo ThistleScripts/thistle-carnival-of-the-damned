@@ -3,6 +3,7 @@
 -- sounds and scare effects. Collection and escape are requests the server
 -- validates (distance, run state, duplicates).
 
+local C = Carnival.C
 local Horror = {}
 Carnival.Horror = Horror
 
@@ -25,9 +26,9 @@ end
 
 function Horror.info()
     if run and run.status == 'running' then
-        return lib.notify({ title = 'House of Horrors', description = 'Find the tokens and reach the exit before time runs out!', type = 'inform' })
+        return lib.notify({ title = 'House of Horrors', description = 'Grab the coins and step into the glowing green EXIT circle before time runs out!', type = 'inform' })
     end
-    lib.notify({ title = 'House of Horrors', description = 'Wait at the entrance. The doors open when the keeper is ready...', type = 'inform' })
+    lib.notify({ title = 'House of Horrors', description = 'Step into the purple circle at the maze entry to open the doors.', type = 'inform' })
 end
 
 local function deleteProp(t)
@@ -125,9 +126,28 @@ local function clearRun()
     Carnival.nui('horror', { active = false })
 end
 
+-- If the countdown has run out but the end of the run never arrived (a lost
+-- message), ask the server where things stand and tidy up.
+local function checkStale()
+    if not run or run.status ~= 'running' or not run.endsAt then return end
+    if Carnival.serverNow() < run.endsAt + 3 then return end
+    if run.lastCheck and GetGameTimer() - run.lastCheck < 3000 then return end
+    run.lastCheck = GetGameTimer()
+    local id = run.id
+    CreateThread(function()
+        local st = Carnival.api('horror.state', {})
+        if not run or run.id ~= id then return end
+        if not st or not st.active or st.runId ~= id or (st.status ~= 'running' and st.status ~= 'paused') then
+            if run.ambient then Carnival.stopSound(run.ambient) end
+            clearRun()
+        end
+    end)
+end
+
 local function renderLoop()
     CreateThread(function()
         while run do
+            checkStale()
             local pos = GetEntityCoords(PlayerPedId())
             local now = GetGameTimer() / 1000.0
             for _, t in pairs(run.tokens) do
@@ -183,6 +203,8 @@ local function applyState(data)
         renderLoop()
     end
     run.status = data.status
+    run.endsAt = data.endsAt
+    run.ambient = data.sounds and data.sounds.ambient or run.ambient
     run.runnerStatus = data.runner and data.runner.status or 'inside'
     run.visibility = data.visibility
     run.visibilityDistance = data.visibilityDistance or 25.0
@@ -237,17 +259,99 @@ Carnival.onPush('horror', function(data)
 end)
 
 function Horror.escape()
-    if not run then return end
+    if not run or run.escaping then return end
+    run.escaping = true
     local res, code, msg = Carnival.api('horror.exit', { runId = run.id })
-    if res then
+    if run then run.escaping = nil end
+    if res and run then
         run.runnerStatus = 'escaped'
         for id in pairs(run.tokens) do removeToken(id) end
         Carnival.nui('horror', { runnerStatus = 'escaped', points = res.points, collected = res.collected })
         lib.notify({ title = 'You escaped!', description = ('Bonus: %d points'):format(res.bonus or 0), type = 'success' })
-    else
+    elseif not res then
         lib.notify({ title = 'House of Horrors', description = msg or code, type = 'error' })
     end
 end
+
+---------------------------------------------------------------------------
+-- Maze doors: glowing circles at the entry and exit. Step into the entry to
+-- open the doors; step into the exit during a run to escape. The server checks
+-- the distance either way.
+---------------------------------------------------------------------------
+local DOOR_DRAW_DISTANCE = 60.0
+local inside = { entry = false, exit = false }
+local lastEnter = 0
+
+local function text3d(x, y, z, label, r, g, b)
+    SetTextScale(0.0, 0.36)
+    SetTextFont(4)
+    SetTextProportional(true)
+    SetTextColour(r, g, b, 235)
+    SetTextOutline()
+    SetTextCentre(true)
+    SetDrawOrigin(x, y, z, 0)
+    BeginTextCommandDisplayText('STRING')
+    AddTextComponentSubstringPlayerName(label)
+    EndTextCommandDisplayText(0.0, 0.0)
+    ClearDrawOrigin()
+end
+
+local function drawDoor(c, radius, r, g, b, label, beam)
+    local pulse = 0.75 + math.sin(GetGameTimer() / 300.0) * 0.25
+    local d = radius * 2.0
+    -- floor disc, a soft column and a bouncing arrow so it reads from a distance
+    DrawMarker(25, c.x, c.y, c.z + 0.04, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, d, d, d, r, g, b, math.floor(170 * pulse), false, false, 2, false, nil, nil, false)
+    DrawMarker(1, c.x, c.y, c.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, d, d, beam and 6.0 or 1.0, r, g, b, beam and 40 or 60, false, false, 2, false, nil, nil, false)
+    DrawMarker(2, c.x, c.y, c.z + 2.0 + math.sin(GetGameTimer() / 400.0) * 0.15, 0.0, 0.0, 0.0, 180.0, 0.0, 0.0, 0.45, 0.45, 0.45, r, g, b, 210, false, false, 2, true, nil, nil, false)
+    text3d(c.x, c.y, c.z + 2.6, label, r, g, b)
+end
+
+local function stepped(key, c, radius, pos)
+    local now = #(vector2(pos.x, pos.y) - vector2(c.x, c.y)) <= radius and math.abs(pos.z - c.z) < 2.5
+    local was = inside[key]
+    inside[key] = now
+    return now and not was
+end
+
+CreateThread(function()
+    while true do
+        local s = Carnival.Client.settings
+        local h = s and s.attractions and s.attractions.horror
+        local p = Carnival.Client.participant
+        if not h or not h.enabled or not h.entry or not h.exit or not (p and p.registered) then
+            Wait(1500)
+        else
+            local pos = GetEntityCoords(PlayerPedId())
+            local feet = pos - vector3(0.0, 0.0, 1.0)
+            local nearEntry = #(pos - vector3(h.entry.x, h.entry.y, h.entry.z)) < DOOR_DRAW_DISTANCE
+            local nearExit = #(pos - vector3(h.exit.x, h.exit.y, h.exit.z)) < DOOR_DRAW_DISTANCE + (Horror.inRun() and 100.0 or 0.0)
+            if not nearEntry and not nearExit then
+                inside.entry, inside.exit = false, false
+                Wait(1000)
+            else
+                local running = Horror.inRun()
+                local exitRadius = math.max(1.0, h.exitRadius or 2.0)
+                if nearEntry and not running then
+                    drawDoor(h.entry, C.HORROR_DOOR_RADIUS, 150, 60, 220, 'Step in to open the doors')
+                    if stepped('entry', h.entry, C.HORROR_DOOR_RADIUS, feet) and GetGameTimer() - lastEnter > 5000 then
+                        lastEnter = GetGameTimer()
+                        CreateThread(Horror.enter)
+                    end
+                else
+                    inside.entry = false
+                end
+                if running then
+                    drawDoor(h.exit, exitRadius, 60, 220, 110, 'EXIT - step in to escape', true)
+                    if stepped('exit', h.exit, exitRadius, feet) then CreateThread(Horror.escape) end
+                elseif nearExit then
+                    drawDoor(h.exit, exitRadius, 120, 120, 120, 'Maze exit')
+                    inside.exit = false
+                end
+                Wait(0)
+            end
+        end
+    end
+end)
 
 -- Recover the run view after the resource restarts on the client.
 Carnival.onPush('bootstrap', function()

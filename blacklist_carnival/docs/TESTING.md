@@ -7,7 +7,7 @@ Environment: Lua 5.4.6, MariaDB 10.11 / luasql-mysql, Node 22, Vite 5, Vitest 2 
 | Suite | Result |
 |---|---|
 | Static checks (manifest paths, Lua compiles, items ↔ definitions ↔ manifest ↔ 256×256 RGBA PNGs ↔ ox_inventory copies, every client/NUI endpoint registered on the server, sounds present in source and build, every food has a consumables.lua entry and uses useFood, no clown content) | **1032 checks, 0 failures** (also: every column the server writes exists in the schema; every prop in stream/props has its archetype loaded) |
-| Server integration (real server scripts, real database) | **81 tests, 81 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
+| Server integration (real server scripts, real database) | **84 tests, 84 passed** (no game has a staff control; a self-service event and a walk-up carnival that nobody starts; the prize counter) |
 | NUI typecheck (`tsc --noEmit`) + jsdom tests | **clean; 33 tests passed** |
 | `sql/schema.sql` imported twice into an empty MariaDB database | **40 tables, no errors (idempotent)** |
 

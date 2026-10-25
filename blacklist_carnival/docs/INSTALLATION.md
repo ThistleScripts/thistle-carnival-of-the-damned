@@ -96,7 +96,7 @@ Webhook URLs live only in convars; they are never written to the database or sen
 1. Start the server and watch the console for `resource_ready`.
 2. `/carnivalitems` → all items registered.
 3. `/carnivaladmin` → *System → Health & items*: database healthy, ox_inventory/ox_target/qbx_core running.
-4. Walk to each location and use **Use my position** on the configuration pages (entrance, each attraction, horror entry/exit/boundary and coin positions). The shipped coordinates are placeholders around the Del Perro pier.
+4. Type `/carnivallayout` and walk the carnival: aim at each marker, press **E**, and put it down where it belongs (ticket booth, each attraction, prize counter, maze entry/exit/boundary); add coins with **1/2/3**. Each change saves itself. The shipped coordinates are placeholders around the Del Perro pier.
 5. Create an event on *Events & history* and follow the [Administrator manual](ADMIN_MANUAL.md).
 
 ## 9. Backgrounds (optional artwork)

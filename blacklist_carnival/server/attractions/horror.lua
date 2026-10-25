@@ -144,15 +144,13 @@ local function endRun(reason, actor)
     if not run or (run.status ~= 'running' and run.status ~= 'paused') then return nil, 'invalid', 'No run in progress.' end
     local now = os.time()
     run.status = 'ended'
-    persistRun({ status = 'ended', ended_at = now, end_reason = reason, paused_remaining = Carnival.Db.NULL })
-    local penalty = run.settings.penalties.notEscaped
+    -- Tell the players first: whatever happens below, nobody is left staring at
+    -- a finished countdown.
+    local trapped = {}
     for pid, r in pairs(run.runners) do
         if r.status == 'inside' then
             r.status = 'trapped'
-            Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'trapped' WHERE run_id = ? AND participant_id = ?", { run.id, pid })
-            if reason == 'expired' and penalty > 0 then
-                award(pid, -penalty, pid .. ':not_escaped', 'penalty', 'horror_not_escaped', 'Did not escape the House of Horrors', 'Trapped inside!')
-            end
+            trapped[#trapped + 1] = pid
         end
     end
     pushRunners({ action = 'audio_stop', sound = run.settings.ambientSound })
@@ -161,6 +159,17 @@ local function endRun(reason, actor)
         local s = Carnival.Participants.sourceOf(pid)
         if s then Carnival.Push.send(s, 'horror', { action = 'result', status = r.status, collected = r.collected, points = r.points }) end
     end
+    local ok, err = pcall(function()
+        persistRun({ status = 'ended', ended_at = now, end_reason = reason, paused_remaining = Carnival.Db.NULL })
+        local penalty = run.settings.penalties.notEscaped
+        for _, pid in ipairs(trapped) do
+            Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'trapped' WHERE run_id = ? AND participant_id = ?", { run.id, pid })
+            if reason == 'expired' and penalty > 0 then
+                award(pid, -penalty, pid .. ':not_escaped', 'penalty', 'horror_not_escaped', 'Did not escape the House of Horrors', 'Trapped inside!')
+            end
+        end
+    end)
+    if not ok then Carnival.Monitor.log('error', 'attraction', 'horror_end_failed', { attractionId = ID, details = { runId = run.id, error = tostring(err) } }) end
     Carnival.Monitor.log('info', 'countdown', 'horror_run_ended', { attractionId = ID, actor = actor, result = reason, details = { runId = run.id } })
     if actor then Carnival.Audit.record(actor, 'horror_run_ended', { targetType = 'horror_run', targetId = run.id, reason = reason }) end
     Carnival.Push.invalidate('horror')
@@ -288,6 +297,7 @@ Carnival.onTick('horror', function(now)
     end
     if not run or run.status ~= 'running' or Carnival.Events.state() ~= C.STATES.RUNNING then return end
     local left = run.endsAt - now
+    if left <= 0 then return endRun('expired', nil) end
     local warnings = U.deepCopy(run.settings.warnings)
     table.sort(warnings, function(a, b) return a > b end)
     for _, w in ipairs(warnings) do
@@ -330,7 +340,6 @@ Carnival.onTick('horror', function(now)
             end
         end
     end
-    if left <= 0 then endRun('expired', nil) end
 end)
 
 ---------------------------------------------------------------------------

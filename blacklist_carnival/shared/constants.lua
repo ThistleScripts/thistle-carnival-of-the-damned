@@ -33,6 +33,8 @@ C.TOKEN_ITEMS = {
     gold = 'carnival_token_gold',
 }
 C.TOKEN_TYPES = { 'bronze', 'silver', 'gold' }
+-- Players step into a glowing circle this wide (m) to open the maze doors or escape.
+C.HORROR_DOOR_RADIUS = 1.5
 
 -- The prize box: an ox_inventory container that arrives filled with prizes.
 C.PRIZE_BOX = 'carnival_prize_box'

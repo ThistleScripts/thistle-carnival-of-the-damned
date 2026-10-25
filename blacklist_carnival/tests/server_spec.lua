@@ -687,7 +687,14 @@ test('escape awards completion + time bonus once; timer expiry ends the run', fu
     truthy(e.bonus >= h.completionBonus, 'bonus')
     errRes(H.api(runners[1], 'horror.exit', { runId = runId }), 'escaped')
     H.pushes = {}
+    -- even if scoring the trapped players blows up, everyone is told the run is over
+    local realAward = Carnival.Scoring.award
+    Carnival.Scoring.award = function(o)
+        if o.source == 'horror_not_escaped' then error('scoring offline') end
+        return realAward(o)
+    end
     H.advance(40)
+    Carnival.Scoring.award = realAward
     eq(H.sql('SELECT status, end_reason FROM carnival_horror_runs WHERE id = ?', { runId })[1].end_reason, 'expired')
     local ends = 0
     for _, p in ipairs(H.pushesFor(runners[2], 'horror')) do if p.action == 'end' then ends = ends + 1 end end
@@ -1365,6 +1372,60 @@ test('props persist across a restart', function()
     eq(all[1].rz, 180)
     eq(all[1].collision, false)
     eq(Carnival.Push.bootstrapData(PLAYERS[1]).props[1].model, 'carnival_gate')
+end)
+
+---------------------------------------------------------------------------
+section('In-world layout (/carnivallayout)')
+---------------------------------------------------------------------------
+test('only settings editors can move things; every NPC spot, maze door and coin is listed', function()
+    errRes(H.api(OBSERVER, 'layout.get'), 'forbidden')
+    errRes(H.api(OBSERVER, 'layout.set', { path = 'shop.location', coords = { x = 1, y = 2, z = 3, w = 0 } }), 'forbidden')
+    local pts = okRes(H.api(OWNER, 'layout.get')).points
+    local by = {}
+    for _, p in ipairs(pts) do by[p.path] = p end
+    truthy(by['registration.entrance'] and by['registration.entrance'].kind == 'ped', 'ticket booth')
+    truthy(by['attractions.wheel.location'], 'wheel NPC')
+    eq(by['attractions.horror.exit'].kind, 'exit')
+    eq(by['attractions.horror.boundaryCentre'].radius, settings().attractions.horror.boundaryRadius)
+    local coins = 0
+    for _, p in ipairs(pts) do if p.kind == 'token' then coins = coins + 1 end end
+    eq(coins, #settings().attractions.horror.tokens)
+end)
+
+test('moving a point saves a config version and pushes the new spot to everyone', function()
+    local before = Carnival.Config.versionInfo().global.version
+    errRes(H.api(OWNER, 'layout.set', { path = 'general.mode', coords = { x = 1, y = 2, z = 3, w = 0 } }), 'invalid')
+    errRes(H.api(OWNER, 'layout.set', { path = 'shop.location', coords = { x = 1e9, y = 2, z = 3, w = 0 } }), 'invalid')
+    H.pushes = {}
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.wheel.location', coords = { x = -1600.5, y = -1100.25, z = 13.0, w = 370 } }))
+    local loc = settings().attractions.wheel.location
+    eq(loc.x, -1600.5) eq(loc.w, 10)
+    truthy(Carnival.Config.versionInfo().global.version > before, 'new version')
+    truthy(#H.pushesFor(PLAYERS[1], 'settings') > 0, 'players get the new spot')
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.horror.exit', coords = { x = -1590, y = -1130, z = 13.1, w = 90 }, radius = 3 }))
+    eq(settings().attractions.horror.exitRadius, 3)
+    eq(settings().attractions.horror.exit.x, -1590)
+end)
+
+test('coins can be added, recoloured, moved and removed in the world', function()
+    local n = #settings().attractions.horror.tokens
+    local r = okRes(H.api(OWNER, 'layout.token', { op = 'add', type = 'gold', coords = { x = -1605, y = -1125, z = 13.1 } }))
+    local tokens = settings().attractions.horror.tokens
+    eq(#tokens, n + 1)
+    local added = tokens[#tokens]
+    eq(added.type, 'gold')
+    truthy(added.id:match('^g%d+$'), 'id ' .. added.id)
+    local listed = false
+    for _, p in ipairs(r.points) do if p.id == added.id then listed = true end end
+    truthy(listed, 'response has the new list')
+    okRes(H.api(OWNER, 'layout.token', { op = 'retype', id = added.id, type = 'silver' }))
+    okRes(H.api(OWNER, 'layout.token', { op = 'move', id = added.id, coords = { x = -1606, y = -1126, z = 13.2 } }))
+    tokens = settings().attractions.horror.tokens
+    eq(tokens[#tokens].type, 'silver') eq(tokens[#tokens].coords.x, -1606)
+    okRes(H.api(OWNER, 'layout.token', { op = 'remove', id = added.id }))
+    eq(#settings().attractions.horror.tokens, n)
+    errRes(H.api(OWNER, 'layout.token', { op = 'remove', id = added.id }), 'not_found')
+    errRes(H.api(OWNER, 'layout.token', { op = 'add', type = 'platinum', coords = { x = 1, y = 1, z = 1 } }), 'invalid')
 end)
 
 ---------------------------------------------------------------------------

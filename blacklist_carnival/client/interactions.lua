@@ -171,16 +171,7 @@ function Interactions.build()
         })
         addBlip(shop.location, shop.blip, shop.label)
     end
-
-    -- House of Horrors exit point (escape is validated by the server).
-    local h = s.attractions.horror
-    if h.enabled then
-        addZone(h.exit, math.max(1.0, h.exitRadius), { {
-            name = 'carnival_horror_exit', icon = 'fa-solid fa-door-open', label = 'ESCAPE!', distance = h.exitRadius + 1.0,
-            canInteract = function() return Carnival.Horror and Carnival.Horror.inRun() end,
-            onSelect = function() Carnival.Horror.escape() end,
-        } })
-    end
+    -- The maze entry and exit are glowing circles (client/attractions/horror.lua).
 end
 
 Carnival.onPush('bootstrap', function() Interactions.build() end)
