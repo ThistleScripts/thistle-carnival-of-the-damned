@@ -53,6 +53,7 @@ local function collect(id)
     if res then
         removeToken(id)
         Carnival.playSound('treat_sparkle', 0.7)
+        if run then run.points = (run.points or 0) + (res.points or 0) end
         Carnival.nui('horror', { collected = res.collected, gained = res.points, tokenType = res.type })
     else
         if code == 'collected' or code == 'invalid' then removeToken(id) end
@@ -205,6 +206,7 @@ local function applyState(data)
     run.status = data.status
     run.endsAt = data.endsAt
     run.ambient = data.sounds and data.sounds.ambient or run.ambient
+    run.points = data.runner and data.runner.points or 0
     run.runnerStatus = data.runner and data.runner.status or 'inside'
     run.visibility = data.visibility
     run.visibilityDistance = data.visibilityDistance or 25.0
@@ -273,6 +275,42 @@ function Horror.escape()
     end
 end
 
+-- Escape hatch: confirm, then the server takes a share of the run's points and
+-- the player is brought back out.
+function Horror.bailOut(hatch, eh)
+    if not run or run.escaping or not Horror.inRun() then return end
+    run.escaping = true
+    local share = ('%d%%'):format(eh.forfeitPercent or 0)
+    local ok = lib.alertDialog({
+        header = 'Take the escape hatch?',
+        content = ('You will be taken out of the maze and lose **%s** of the points you won in this run (%d so far).'):format(share, run.points or 0),
+        centered = true, cancel = true, labels = { confirm = 'Get me out', cancel = 'Keep going' },
+    })
+    if not run then return end
+    if ok ~= 'confirm' then run.escaping = nil return end
+    local res, code, msg = Carnival.api('horror.bailout', { runId = run.id, hatchId = hatch.id })
+    if run then run.escaping = nil end
+    if not res then
+        return lib.notify({ title = 'House of Horrors', description = msg or code, type = 'error' })
+    end
+    if run then
+        run.runnerStatus = 'bailed'
+        for id in pairs(run.tokens) do removeToken(id) end
+    end
+    Carnival.nui('horror', { runnerStatus = 'bailed', points = res.points, collected = res.collected })
+    local to = res.returnTo
+    if to then
+        DoScreenFadeOut(400)
+        while not IsScreenFadedOut() do Wait(0) end
+        local ped = PlayerPedId()
+        SetEntityCoords(ped, to.x + 0.0, to.y + 0.0, to.z + 0.0, false, false, false, false)
+        SetEntityHeading(ped, (to.w or 0.0) + 0.0)
+        Wait(300)
+        DoScreenFadeIn(600)
+    end
+    lib.notify({ title = 'You bailed out', description = res.lost > 0 and ('The house kept %d of your points.'):format(res.lost) or 'You made it out.', type = 'warning' })
+end
+
 ---------------------------------------------------------------------------
 -- Maze doors: glowing circles at the entry and exit. Step into the entry to
 -- open the doors; step into the exit during a run to escape. The server checks
@@ -326,7 +364,7 @@ CreateThread(function()
             local nearEntry = #(pos - vector3(h.entry.x, h.entry.y, h.entry.z)) < DOOR_DRAW_DISTANCE
             local nearExit = #(pos - vector3(h.exit.x, h.exit.y, h.exit.z)) < DOOR_DRAW_DISTANCE + (Horror.inRun() and 100.0 or 0.0)
             if not nearEntry and not nearExit then
-                inside.entry, inside.exit = false, false
+                inside = { entry = false, exit = false }
                 Wait(1000)
             else
                 local running = Horror.inRun()
@@ -343,6 +381,19 @@ CreateThread(function()
                 if running then
                     drawDoor(h.exit, exitRadius, 60, 220, 110, 'EXIT - step in to escape', true)
                     if stepped('exit', h.exit, exitRadius, feet) then CreateThread(Horror.escape) end
+                    local eh = h.escapeHatches
+                    if eh and eh.enabled then
+                        local label = ('Escape hatch - lose %d%% of your run points'):format(eh.forfeitPercent or 0)
+                        for _, hp in ipairs(eh.points or {}) do
+                            local c = hp.coords
+                            if #(pos - vector3(c.x, c.y, c.z)) < DOOR_DRAW_DISTANCE then
+                                drawDoor(c, eh.radius or 1.5, 255, 140, 30, label)
+                                if stepped('hatch:' .. hp.id, c, eh.radius or 1.5, feet) then
+                                    CreateThread(function() Horror.bailOut(hp, eh) end)
+                                end
+                            end
+                        end
+                    end
                 elseif nearExit then
                     drawDoor(h.exit, exitRadius, 120, 120, 120, 'Maze exit')
                     inside.exit = false

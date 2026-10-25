@@ -1133,7 +1133,26 @@ test('house of horrors: a player opens the doors; nobody can barge into a run in
     local other = byFirst.wheel
     at(other, h.entry)
     errRes(H.api(other, 'horror.enter'), 'busy')
-    H.advance(h.durationSeconds + 2)
+    -- lost in the maze: grab a coin, then take an escape hatch
+    local st = okRes(H.api(s, 'horror.state'))
+    local token = st.tokens[1]
+    H.moveTo(s, token.coords)
+    local got = okRes(H.api(s, 'horror.collect', { runId = st.runId, tokenId = token.id })).points
+    local hatch = h.escapeHatches.points[1]
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }), 'too_far')
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = 'nope' }), 'invalid')
+    H.moveTo(s, hatch.coords)
+    local scoreBefore = Carnival.Participants.get(pidOf(s)).total_score
+    local b = okRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }))
+    eq(b.lost, math.floor(got * h.escapeHatches.forfeitPercent / 100 + 0.5), 'forfeits the configured share of the run points')
+    eq(b.points, got - b.lost)
+    eq(b.returnTo.x, h.escapeHatches.returnTo.x, 'told where to go')
+    eq(Carnival.Participants.get(pidOf(s)).total_score, scoreBefore - b.lost)
+    errRes(H.api(s, 'horror.bailout', { runId = st.runId, hatchId = hatch.id }), 'escaped')
+    errRes(H.api(s, 'horror.exit', { runId = st.runId }), 'escaped')
+    eq(H.sql('SELECT status FROM carnival_horror_runners WHERE run_id = ? AND participant_id = ?', { st.runId, pidOf(s) })[1].status, 'bailed')
+    H.advance(2)
+    eq(H.sql('SELECT end_reason FROM carnival_horror_runs WHERE id = ?', { st.runId })[1].end_reason, 'all_escaped', 'the run ends once nobody is inside')
     truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'horror'), 'run over: visit completed')
     truthy(not Carnival.Rotation.hasCompleted(pidOf(other), 'horror'), 'the other player was not credited')
     doc.rotation.walkup.enforceOrder = true
@@ -1426,6 +1445,18 @@ test('coins can be added, recoloured, moved and removed in the world', function(
     eq(#settings().attractions.horror.tokens, n)
     errRes(H.api(OWNER, 'layout.token', { op = 'remove', id = added.id }), 'not_found')
     errRes(H.api(OWNER, 'layout.token', { op = 'add', type = 'platinum', coords = { x = 1, y = 1, z = 1 } }), 'invalid')
+    -- escape hatches and where they drop players
+    local hn = #settings().attractions.horror.escapeHatches.points
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'add', coords = { x = -1603, y = -1124, z = 13.1 } }))
+    local hatches = settings().attractions.horror.escapeHatches.points
+    eq(#hatches, hn + 1)
+    local hid = hatches[#hatches].id
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'move', id = hid, coords = { x = -1602, y = -1124, z = 13.1 } }))
+    eq(settings().attractions.horror.escapeHatches.points[hn + 1].coords.x, -1602)
+    okRes(H.api(OWNER, 'layout.hatch', { op = 'remove', id = hid }))
+    eq(#settings().attractions.horror.escapeHatches.points, hn)
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.horror.escapeHatches.returnTo', coords = { x = -1615, y = -1110, z = 13.1, w = 10 } }))
+    eq(settings().attractions.horror.escapeHatches.returnTo.x, -1615)
 end)
 
 ---------------------------------------------------------------------------

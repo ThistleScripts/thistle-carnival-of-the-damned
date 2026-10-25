@@ -388,6 +388,11 @@ local function crossValidate(cfg, errors)
             seen[w] = true
             if w >= (a.horror.durationSeconds or 0) then err('attractions.horror.warnings', ('warning at %ds is not shorter than the run'):format(w)) end
         end
+        local ids = {}
+        for i, hp in ipairs(a.horror.escapeHatches and a.horror.escapeHatches.points or {}) do
+            if ids[hp.id] then err(('attractions.horror.escapeHatches.points.%d.id'):format(i), 'duplicate hatch id ' .. tostring(hp.id)) end
+            ids[hp.id] = true
+        end
     end
     if cfg.prizes and cfg.prizes.tiers then
         for i, t in ipairs(cfg.prizes.tiers) do

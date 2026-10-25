@@ -282,6 +282,42 @@ local function escape(src, payload)
     end)
 end
 
+-- Escape hatch: the player gives up, is taken back to the return point and
+-- forfeits a share of the points they won in this run.
+local function bailOut(src, payload)
+    local p, r, msg = runnerCheck(src, payload)
+    if not p then return nil, r, msg end
+    local eh = run.settings.escapeHatches
+    if not eh or not eh.enabled then return nil, 'disabled', 'The escape hatches are sealed.' end
+    local hatch
+    for _, hp in ipairs(eh.points or {}) do
+        if hp.id == payload.hatchId then hatch = hp end
+    end
+    if not hatch then return nil, 'invalid', 'There is no hatch here.' end
+    if not Carnival.Identity.within(src, hatch.coords, eh.radius + 1.5) then return nil, 'too_far', 'Get closer to the hatch.' end
+    return Carnival.withLock('horror:runner:' .. p.id, function()
+        if r.status ~= 'inside' then return nil, 'escaped', 'You already left the maze.' end
+        r.status = 'bailed'
+        Carnival.Db.update("UPDATE carnival_horror_runners SET status = 'bailed', exited_at = ?, seconds_remaining = ? WHERE run_id = ? AND participant_id = ?",
+            { os.time(), remaining(), run.id, p.id })
+        local forfeit = math.floor(math.max(0, r.points) * eh.forfeitPercent / 100 + 0.5)
+        local lost = 0
+        if forfeit > 0 then
+            local ok, tx = award(p.id, -forfeit, p.id .. ':bailout', 'penalty', 'horror_bailout',
+                ('Used escape hatch %s (%d%% of %d run points)'):format(hatch.id, eh.forfeitPercent, r.points), 'Escape hatch')
+            if ok then lost = -tx.delta end
+        end
+        r.points = r.points - lost
+        Carnival.Monitor.log('info', 'attraction', 'horror_bailout', { participantId = p.id, attractionId = ID, details = { hatch = hatch.id, lost = lost } })
+        Carnival.Push.send(src, 'horror', { action = 'audio_stop', sound = run.settings.ambientSound })
+        Carnival.Push.invalidate('horror')
+        local allOut = true
+        for _, rr in pairs(run.runners) do if rr.status == 'inside' then allOut = false end end
+        if allOut then CreateThread(function() endRun('all_escaped', nil) end) end
+        return { bailed = true, lost = lost, points = r.points, collected = r.collected, returnTo = eh.returnTo }
+    end)
+end
+
 ---------------------------------------------------------------------------
 -- Ticker: timer, warnings, respawns, boundary
 ---------------------------------------------------------------------------
@@ -417,6 +453,7 @@ Carnival.Attractions.register({
 ---------------------------------------------------------------------------
 Api.register('horror.collect', { rate = 'action', handler = function(ctx, payload) return collect(ctx.source, payload) end })
 Api.register('horror.exit', { rate = 'action', handler = function(ctx, payload) return escape(ctx.source, payload) end })
+Api.register('horror.bailout', { rate = 'action', handler = function(ctx, payload) return bailOut(ctx.source, payload) end })
 Api.register('horror.state', {
     rate = 'participant',
     handler = function(ctx)

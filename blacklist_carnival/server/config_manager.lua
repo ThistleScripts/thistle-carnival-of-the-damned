@@ -449,6 +449,7 @@ function Cfg.publicSettings()
         'warningSound', 'finalWarningSound', 'endSound', 'volume', 'visibility', 'visibilityDistance' }) do
         attractions.horror[k] = h[k]
     end
+    attractions.horror.escapeHatches = U.deepCopy(h.escapeHatches)
     attractions.horror.tokenTypes = {}
     for _, t in ipairs(C.TOKEN_TYPES) do
         attractions.horror.tokenTypes[t] = U.deepCopy(h.tokenTypes[t])

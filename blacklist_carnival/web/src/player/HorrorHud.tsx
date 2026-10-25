@@ -20,13 +20,14 @@ export function HorrorHud() {
   }, [h.active, h.endsAt]);
   if (!h.active) return null;
   return (
-    <div className={`horror-hud ${h.runnerStatus === 'escaped' ? 'horror-escaped' : ''}`}>
+    <div className={`horror-hud ${h.runnerStatus === 'escaped' || h.runnerStatus === 'bailed' ? 'horror-escaped' : ''}`}>
       <div className="horror-title"><Icon name="horror" size={18} /> House of Horrors</div>
       <div className="horror-timer">
         {h.status === 'paused' ? <span>Paused <Countdown remaining={h.remaining} /></span> : <Countdown endsAt={h.endsAt} />}
       </div>
       <div className="horror-stats"><span>Tokens {h.collected ?? 0}</span><span>{h.points ?? 0} pts</span></div>
       {h.runnerStatus === 'escaped' ? <div className="horror-note">You escaped!</div>
+        : h.runnerStatus === 'bailed' ? <div className="horror-note">You bailed out</div>
         : h.status !== 'paused' && h.endsAt && h.endsAt <= serverNow() ? <div className="horror-note">Time's up!</div>
         : <div className="horror-note">Step into the green EXIT circle before time runs out</div>}
       {flash ? <div className="horror-flash">{flash}</div> : null}
@@ -39,7 +40,7 @@ export function HorrorResult({ data }: { data: any }) {
     <div className="side-card">
       <Icon name="horror" size={22} />
       <div>
-        <strong>{data.status === 'escaped' ? 'You survived the House of Horrors' : 'The house kept you…'}</strong>
+        <strong>{data.status === 'escaped' ? 'You survived the House of Horrors' : data.status === 'bailed' ? 'You took the escape hatch' : 'The house kept you…'}</strong>
         <div className="muted">Tokens: {data.collected} · Points: {data.points}</div>
       </div>
     </div>

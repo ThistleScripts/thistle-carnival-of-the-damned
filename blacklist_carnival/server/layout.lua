@@ -32,6 +32,11 @@ local function points(cfg)
         add('attractions.horror.entry', 'Maze entry', 'entry', h.entry, { radius = Carnival.C.HORROR_DOOR_RADIUS })
         add('attractions.horror.exit', 'Maze exit', 'exit', h.exit, { radius = h.exitRadius })
         add('attractions.horror.boundaryCentre', 'Maze boundary', 'boundary', h.boundaryCentre, { radius = h.boundaryRadius })
+        local eh = h.escapeHatches
+        add('attractions.horror.escapeHatches.returnTo', 'Escape hatch drop-off', 'return', eh.returnTo)
+        for _, hp in ipairs(eh.points) do
+            add('hatch:' .. hp.id, 'Escape hatch ' .. hp.id, 'hatch', hp.coords, { id = hp.id, radius = eh.radius })
+        end
         for _, t in ipairs(h.tokens) do
             add('token:' .. t.id, ('%s coin %s'):format(t.type:gsub('^%l', string.upper), t.id), 'token', t.coords,
                 { id = t.id, type = t.type, model = h.tokenTypes[t.type] and h.tokenTypes[t.type].model })
@@ -47,7 +52,7 @@ local function movable(path)
     if path == 'registration.entrance' or path == 'shop.location' then return { heading = true } end
     local id = path:match('^attractions%.([%w_]+)%.location$')
     if id and Cfg.get().attractions[id] then return { heading = true } end
-    if path == 'attractions.horror.entry' then return { heading = true } end
+    if path == 'attractions.horror.entry' or path == 'attractions.horror.escapeHatches.returnTo' then return { heading = true } end
     if path == 'attractions.horror.exit' then return { heading = true, radius = 'exitRadius' } end
     if path == 'attractions.horror.boundaryCentre' then return { radius = 'boundaryRadius' } end
     return nil
@@ -142,6 +147,37 @@ Api.register('layout.token', {
                 end
             end
             return nil, 'not_found', 'That coin spot no longer exists.'
+        end)
+    end,
+})
+
+Api.register('layout.hatch', {
+    perm = PERM, rate = 'admin',
+    handler = function(ctx, payload)
+        local op = V.oneOf(payload.op, { 'add', 'move', 'remove' })
+        if not op then return nil, 'invalid', 'op must be add, move or remove' end
+        local coords, err
+        if op ~= 'remove' then
+            coords, err = V.vec3(payload.coords)
+            if not coords then return nil, 'invalid', 'coords ' .. err end
+        end
+        local id = type(payload.id) == 'string' and payload.id:sub(1, 32) or nil
+        local newId
+        return save(ctx.source, 'Layout: escape hatch ' .. op, function(doc)
+            local list = doc.attractions.horror.escapeHatches.points
+            if op == 'add' then
+                if #list >= 20 then return nil, 'invalid', 'The maze already has 20 escape hatches.' end
+                newId = newId or nextTokenId(list, 'hatch')
+                list[#list + 1] = { id = newId, coords = coords }
+                return true
+            end
+            for i, hp in ipairs(list) do
+                if hp.id == id then
+                    if op == 'remove' then table.remove(list, i) else hp.coords = coords end
+                    return true
+                end
+            end
+            return nil, 'not_found', 'That escape hatch no longer exists.'
         end)
     end,
 })

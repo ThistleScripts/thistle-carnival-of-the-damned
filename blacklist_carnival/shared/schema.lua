@@ -350,6 +350,18 @@ S.root = { type = 'group', fields = {
             f('exitRadius', { type = 'number', label = 'Exit radius (m)', min = 0.5, max = 15, step = 0.5 }),
             f('boundaryCentre', { type = 'vec3', label = 'Boundary centre', restart = true }),
             f('boundaryRadius', { type = 'number', label = 'Boundary radius (m)', min = 5, max = 500, step = 1 }),
+            f('escapeHatches', { type = 'group', label = 'Escape hatches (bail out)',
+                help = 'Glowing spots inside the maze. A player who steps in (and confirms) is taken back to the return point and loses a share of the points they won in this run. Move them with /carnivallayout.',
+                fields = {
+                f('enabled', { type = 'bool', label = 'Escape hatches open' }),
+                f('forfeitPercent', { type = 'int', label = 'Points lost when bailing out (% of this run\'s points)', min = 0, max = 100 }),
+                f('radius', { type = 'number', label = 'Hatch size (m)', min = 0.5, max = 5, step = 0.1 }),
+                f('returnTo', { type = 'vec4', label = 'Players are taken to' }),
+                f('points', { type = 'list', label = 'Hatch positions', max = 20, itemLabel = 'id', item = { type = 'group', fields = {
+                    f('id', { type = 'string', label = 'ID', max = 32 }),
+                    f('coords', { type = 'vec3', label = 'Position' }),
+                } } }),
+            } }),
             f('durationSeconds', { type = 'int', label = 'Run duration (s)', min = 30, max = 3600 }),
             f('warnings', { type = 'list', label = 'Countdown warnings (seconds remaining)', max = 12, item = { type = 'int', min = 1, max = 3600 } }),
             f('ambientSound', { type = 'sound', label = 'Ambient loop' }),

@@ -422,6 +422,18 @@ Carnival.Defaults = {
             exitRadius = 3.0,
             boundaryCentre = v3(-1604.0, -1126.0, 13.15),
             boundaryRadius = 30.0,
+            -- Escape hatches: a lost player steps into one, is taken back to
+            -- returnTo and forfeits a share of the points they won in the run.
+            escapeHatches = {
+                enabled = true,
+                forfeitPercent = 50,
+                radius = 1.5,
+                returnTo = v4(-1614.0, -1112.0, 13.15, 140.0),
+                points = {
+                    { id = 'h1', coords = v3(-1607.5, -1127.5, 13.15) },
+                    { id = 'h2', coords = v3(-1599.5, -1121.0, 13.15) },
+                },
+            },
             durationSeconds = 300,
             warnings = { 120, 60, 30, 10, 5 },
             ambientSound = 'horror_ambient',

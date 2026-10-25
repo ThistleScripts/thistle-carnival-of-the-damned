@@ -13,20 +13,22 @@ local carrying = nil   -- { point, ghost, heading, radius }
 local busy = false
 
 local DRAW_DISTANCE = 150.0
-local TYPE_KEYS = { { key = 157, type = 'bronze' }, { key = 158, type = 'silver' }, { key = 160, type = 'gold' } }
+local TYPE_KEYS = { { key = 157, type = 'bronze' }, { key = 158, type = 'silver' }, { key = 160, type = 'gold' }, { key = 164, type = 'hatch' } }
 local TYPES = { 'bronze', 'silver', 'gold' }
 local COLOURS = {
     ped = { 170, 90, 255 }, entry = { 150, 60, 220 }, exit = { 60, 220, 110 }, boundary = { 255, 120, 40 },
+    hatch = { 255, 140, 30 }, ['return'] = { 255, 140, 30 },
     bronze = { 205, 127, 50 }, silver = { 200, 210, 230 }, gold = { 255, 200, 60 },
 }
-local BLOCKED = { 24, 25, 37, 44, 45, 47, 73, 140, 141, 142, 157, 158, 160, 257, 263 }
+local BLOCKED = { 24, 25, 37, 44, 45, 47, 73, 140, 141, 142, 157, 158, 160, 164, 257, 263 }
 local BLOCKED_CARRY = { 14, 15, 16, 17, 172, 173, 191, 194, 199, 200, 177 }
 
 local HELP = table.concat({
     '**Carnival layout**',
     'Aim at a marker · E: pick it up',
     '1 / 2 / 3: add a bronze / silver / gold coin',
-    'G: change coin colour · X: remove coin',
+    '4: add an escape hatch',
+    'G: change coin colour · X: remove coin or hatch',
     'Backspace: leave layout mode',
 }, '  \n')
 
@@ -66,7 +68,7 @@ local function drawPoint(p, highlight, at, heading, radius)
     local c = at or vec(p.coords)
     local r, g, b = table.unpack(colourOf(p))
     local a = highlight and 230 or 150
-    if p.kind == 'ped' then
+    if p.kind == 'ped' or p.kind == 'return' then
         DrawMarker(1, c.x, c.y, c.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.9, 0.9, 1.9, r, g, b, highlight and 120 or 60, false, false, 2, false, nil, nil, false)
         -- facing arrow
         DrawMarker(2, c.x, c.y, c.z + 2.2, 0.0, 0.0, 0.0, 90.0, 0.0, (heading or p.coords.w or 0.0) + 90.0, 0.4, 0.4, 0.4, r, g, b, a, false, false, 2, false, nil, nil, false)
@@ -85,7 +87,7 @@ local function drawPoint(p, highlight, at, heading, radius)
     end
     local label = p.label
     if highlight and not carrying then
-        label = label .. (p.kind == 'token' and '~n~E: move · G: colour · X: remove' or '~n~E: move')
+        label = label .. (p.kind == 'token' and '~n~E: move · G: colour · X: remove' or p.kind == 'hatch' and '~n~E: move · X: remove' or '~n~E: move')
     end
     text3d(c.x, c.y, c.z + (p.kind == 'token' and 1.4 or 2.6), label, highlight and 0.36 or 0.3)
 end
@@ -159,6 +161,8 @@ local function putDown(ok, at)
     local p = c.point
     if p.kind == 'token' then
         send('layout.token', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z } }, p.label .. ' moved.')
+    elseif p.kind == 'hatch' then
+        send('layout.hatch', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z } }, p.label .. ' moved.')
     else
         send('layout.set', { path = p.path, coords = { x = at.x, y = at.y, z = at.z, w = c.heading }, radius = c.radius },
             p.label .. ' moved. Everyone sees it now.')
@@ -224,8 +228,8 @@ function Layout.start()
                 end
                 if IsControlJustPressed(0, 38) and t then
                     pickUp(t)
-                elseif IsDisabledControlJustPressed(0, 73) and t and t.kind == 'token' then
-                    send('layout.token', { op = 'remove', id = t.id }, t.label .. ' removed.')
+                elseif IsDisabledControlJustPressed(0, 73) and t and (t.kind == 'token' or t.kind == 'hatch') then
+                    send(t.kind == 'hatch' and 'layout.hatch' or 'layout.token', { op = 'remove', id = t.id }, t.label .. ' removed.')
                 elseif IsDisabledControlJustPressed(0, 47) and t and t.kind == 'token' then
                     local nextType = TYPES[1]
                     for i, ty in ipairs(TYPES) do if ty == t.type then nextType = TYPES[i % #TYPES + 1] end end
@@ -237,7 +241,9 @@ function Layout.start()
                     for _, k in ipairs(TYPE_KEYS) do
                         if IsDisabledControlJustPressed(0, k.key) then
                             local at = aim()
-                            if at then
+                            if at and k.type == 'hatch' then
+                                send('layout.hatch', { op = 'add', coords = { x = at.x, y = at.y, z = at.z } }, 'Escape hatch added.')
+                            elseif at then
                                 send('layout.token', { op = 'add', type = k.type, coords = { x = at.x, y = at.y, z = at.z } }, ('%s coin added.'):format(k.type:gsub('^%l', string.upper)))
                             else
                                 lib.notify({ title = 'Layout', description = 'Look at the ground where the coin should go.', type = 'error' })
