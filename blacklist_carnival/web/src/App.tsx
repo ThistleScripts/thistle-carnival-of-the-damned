@@ -8,7 +8,7 @@ import { TicketCard } from './player/TicketCard';
 import { LeaderboardView } from './player/LeaderboardView';
 import { WheelGame } from './player/WheelGame';
 import { FortuneGame, FortuneCard } from './player/FortuneGame';
-import { DeceptionTerminal, DeceptionReveal } from './player/DeceptionTerminal';
+import { MazeHud, MazeResult } from './player/MazeHud';
 import { TheatreCard } from './player/TheatreCard';
 import { HorrorHud, HorrorResult } from './player/HorrorHud';
 import { ShootingGame } from './player/ShootingGame';
@@ -20,7 +20,7 @@ import { ShopView } from './player/ShopView';
 import { PrizeReveal } from './player/PrizeReveal';
 
 // Views that hold NUI focus; Escape closes the top-most one.
-const FOCUS_ORDER = ['shop', 'ticket', 'wheel', 'fortune', 'deception', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
+const FOCUS_ORDER = ['shop', 'ticket', 'wheel', 'fortune', 'shootingGame', 'theatreVote', 'leaderboard', 'player', 'admin'];
 
 export function close(view: string) {
   closeViewState(view);
@@ -54,9 +54,10 @@ export default function App() {
     <div className={`app ${isNui ? '' : 'app-browser'}`}>
       <Hud />
       <HorrorHud />
+      <MazeHud />
       {show('theatre') && <TheatreCard data={views.theatre} />}
       {show('fortuneCard') && <FortuneCard data={views.fortuneCard} />}
-      {show('deceptionReveal') && <DeceptionReveal data={views.deceptionReveal} />}
+      {show('mazeResult') && <MazeResult data={views.mazeResult} />}
       {show('horrorResult') && <HorrorResult data={views.horrorResult} />}
       {show('prizeReveal') && <PrizeReveal data={views.prizeReveal} onClose={() => close('prizeReveal')} />}
       {show('results') && <ResultsBanner data={views.results} onClose={() => close('results')} />}
@@ -67,7 +68,6 @@ export default function App() {
       {show('leaderboard') && <LeaderboardView initial={views.leaderboard} onClose={() => close('leaderboard')} />}
       {show('wheel') && <WheelGame data={views.wheel} onClose={() => close('wheel')} />}
       {show('fortune') && <FortuneGame data={views.fortune} onClose={() => close('fortune')} />}
-      {show('deception') && <DeceptionTerminal data={views.deception} onClose={() => close('deception')} />}
       {show('shootingGame') && <ShootingGame data={views.shootingGame} onClose={() => close('shootingGame')} />}
       {show('theatreVote') && <TheatreVote data={views.theatreVote} onClose={() => close('theatreVote')} />}
       {show('admin') && <AdminApp onClose={() => close('admin')} />}

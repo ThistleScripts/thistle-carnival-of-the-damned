@@ -65,11 +65,6 @@ const sgRounds = []; const plan = [];
   });
 }
 const sgDuration = sgRounds[sgRounds.length - 1].endMs;
-const mystery = settings.attractions.deception.mysteries[0];
-const deceptionState = { active: true, roundId: 4, status: 'questioning', endsAt: now() + 412, serverTime: now(), submissionsUsed: 0, maxSubmissions: 2,
-  mystery: { id: mystery.id, title: mystery.title, description: mystery.description, rules: mystery.rules, liarCount: mystery.liarCount,
-    performers: mystery.performers.map((p) => ({ id: p.id, name: p.name, profile: p.profile, statements: p.statements })) },
-  clues: [{ id: 'c1', text: 'Sawdust was found on the Ringmaster\'s boots.' }] };
 const fortuneVisit = { visitId: 1, greeting: settings.attractions.fortune.greeting, fortune: 'A stranger in a red coat will cost you dearly.',
   question: { id: 'q1', kind: 'choice', prompt: 'What walks on four legs at dawn, two at noon and three at dusk?', choices: ['A man', 'A ghost', 'A clockwork horse', 'The moon'], index: 1, total: 3, timeout: 30 } };
 const attractionsOverview = ['shooting', 'wheel', 'fortune', 'puppets', 'deception', 'horror'].map((id, i) => ({
@@ -101,7 +96,6 @@ const responses = {
   'leaderboard.public': { ok: true, data: board },
   'wheel.spin': { ok: true, data: { index: 3, outcome: { id: 'treat', label: 'Sweet Treat', type: 'points' }, points: 15, spinsUsed: 1, maxSpins: 2, animationMs: 4000 } },
   'fortune.begin': { ok: true, data: fortuneVisit },
-  'deception.public': { ok: true, data: deceptionState },
   'admin.dashboard': { ok: true, data: dashboard },
   'rotation.state': { ok: true, data: { walkup: true, round: 0, totalRounds: 6, walkupSessions } },
   'system.health': { ok: true, data: dashboard.health },
@@ -143,7 +137,7 @@ const scenes = {
   shootingresult: [['open', { view: 'shootingGame', data: { gameId: 3, duration: sgDuration, rounds: sgRounds, countdownMs: 3000, elapsedMs: sgDuration - 300, plan, total: 186, hits: 41, shots: 49, hitIds: [], label: 'The Shooting Gallery' } }],
     ['push', { channel: 'shooting', data: { action: 'result', result: { gameId: 3, points: 202, targetPoints: 186, hits: 41, shots: 49, bullseyes: 9, specials: 5, decoys: 1, accuracy: 83, accuracyBonus: 16,
       rounds: sgRounds.map((r, i) => ({ number: r.number, label: r.label, points: [62, 72, 52][i], hits: [12, 15, 14][i], targets: r.targets, pointsPercent: r.pointsPercent })) } } }]],
-  deception: [['open', { view: 'deception', data: deceptionState }]],
+  deception: [['maze', { active: true, endsAt: now() + 212, serverTime: now(), doorsUsed: 6, resets: 2 }], ['open', { view: 'mazeResult', data: { reason: 'finished', points: 60, doors: 9, resets: 2, seconds: 143 } }]],
   vote: [['open', { view: 'theatreVote', data: { performanceId: 2, title: 'The Lion Tamer\'s Last Bow', endsAt: now() + 20, serverTime: now(), self: 1, candidates: [{ participantId: 2, name: 'Marlo Vance', role: 'Lion Tamer' }, { participantId: 3, name: 'Juno Reyes', role: 'Unionised Lion' }] } }]],
   theatre: [['open', { view: 'theatre', data: { action: 'card', mode: 'turns', status: 'running', turn: 2, total: 4, myTurn: 3, serverTime: now(), endsAt: now() + 42,
     onStage: { name: 'Juno Reyes', title: 'The Haunted Mirror', description: 'You are a funhouse mirror that has seen too much. Tell the audience what you saw last night.', difficulty: 'medium' }, isYou: false,

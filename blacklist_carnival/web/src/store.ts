@@ -52,6 +52,7 @@ export interface State {
   hudHidden: boolean;
   shooting: any;
   horror: any;
+  maze: any;
   leaderboard: any;
   lastScore: any;
   wallet: Wallet | null;
@@ -72,6 +73,7 @@ let state: State = {
   hudHidden: false,
   shooting: { active: false },
   horror: { active: false },
+  maze: { active: false },
   leaderboard: null,
   lastScore: null,
   wallet: null,

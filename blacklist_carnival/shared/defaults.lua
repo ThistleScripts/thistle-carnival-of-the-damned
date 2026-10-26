@@ -345,64 +345,38 @@ Carnival.Defaults = {
             maxPlayers = 24,
             maxScore = 120,
             blip = { enabled = true, sprite = 590, colour = 40 },
-            clueIntervalSeconds = 90,
-            durationSeconds = 600,
-            maxSubmissions = 2,
-            defaultMystery = 'vanishing_ringmaster',
-            mysteries = {
-                {
-                    id = 'vanishing_ringmaster',
-                    title = 'The Vanishing Ringmaster',
-                    description = 'The Ringmaster disappeared from the big top between the second and third bells. Six performers were backstage. Three of them are lying about where they were. Find the liars.',
-                    rules = 'Question each performer in character. Performers must answer every question but may refuse to touch their props. No more than two questions in a row to the same performer.',
-                    liarCount = 3,
-                    pointsPerCorrect = 15,
-                    penaltyPerIncorrect = 5,
-                    perfectBonus = 20,
-                    partialCredit = true,
-                    tieBreak = 'earliest_submission',
-                    tieBreakBonus = 5,
-                    performers = {
-                        { id = 'strongman', name = 'Bruno the Strongman', profile = 'Lifts anvils, cries at sad songs. Claims he never leaves the weights tent.', statements = { 'I was lifting the anvil in the weights tent all evening.', 'I heard the calliope stop at the second bell.', 'The Ringmaster owed me three weeks of wages.' }, isLiar = true },
-                        { id = 'contortionist', name = 'Madame Twist', profile = 'Contortionist. Speaks only in whispers. Fiercely loyal to the Ringmaster.', statements = { 'I was rehearsing in the mirror room.', 'The mirror room door squeaks; anyone would have heard me.', 'I saw Bruno near the caravans.' }, isLiar = false },
-                        { id = 'fireeater', name = 'Lady Ash', profile = 'The fire-eater. Has never been seen without her veil.', statements = { 'I was at the candy floss stand the whole time.', 'The candy floss machine broke at the second bell.', 'I never go near the big top after dark.' }, isLiar = true },
-                        { id = 'fortune', name = 'Old Zelda', profile = 'Fortune teller. Claims to have foreseen the disappearance.', statements = { 'I was reading cards for a couple from out of town.', 'My lantern was lit the entire evening.', 'The cards warned me about the third bell.' }, isLiar = false },
-                        { id = 'knife', name = 'The Great Valentino', profile = 'Knife thrower. Arrogant. Never misses - or so he says.', statements = { 'I was sharpening knives in my wagon.', 'My assistant was with me the whole time.', 'I have not spoken to the Ringmaster in days.' }, isLiar = true },
-                        { id = 'organ', name = 'Silent Pete', profile = 'Plays the calliope. Rarely speaks, always hums.', statements = { 'I played the calliope until the second bell.', 'I stopped because a key jammed.', 'I saw Lady Ash go into the big top.' }, isLiar = false },
-                    },
-                    clues = {
-                        { id = 'c1', text = 'Muddy boot prints lead from the weights tent to the Ringmaster\'s caravan.' },
-                        { id = 'c2', text = 'The candy floss vendor swears the machine worked perfectly all night.' },
-                        { id = 'c3', text = 'Valentino\'s assistant was seen buying cough medicine in town at 9pm.' },
-                        { id = 'c4', text = 'The mirror room door has been oiled recently. It no longer squeaks.' },
-                    },
-                },
-                {
-                    id = 'poisoned_floss',
-                    title = 'The Poisoned Candy Floss',
-                    description = 'Someone dyed the candy floss black and the whole crowd turned green. Six stall-holders handled the sugar. Three of them are lying.',
-                    rules = 'Each performer may be asked one question per investigator per minute. Accusations must be submitted through the hall terminal.',
-                    liarCount = 3,
-                    pointsPerCorrect = 15,
-                    penaltyPerIncorrect = 5,
-                    perfectBonus = 20,
-                    partialCredit = true,
-                    tieBreak = 'none',
-                    tieBreakBonus = 0,
-                    performers = {
-                        { id = 'baker', name = 'Sugar Sal', profile = 'Runs the candy floss stand.', statements = { 'I never left my stand.', 'The sugar delivery came at six.' }, isLiar = false },
-                        { id = 'courier', name = 'Dusty Jim', profile = 'Delivers supplies to every stall.', statements = { 'I delivered the sugar sealed.', 'I did not open any sacks.' }, isLiar = true },
-                        { id = 'painter', name = 'Ink', profile = 'Paints the carnival signs.', statements = { 'I only use red and gold paint.', 'I was painting the horror house all day.' }, isLiar = true },
-                        { id = 'juggler', name = 'Pip', profile = 'Juggler. Easily distracted.', statements = { 'I saw someone with black hands near the stand.' }, isLiar = false },
-                        { id = 'medic', name = 'Doc Mortimer', profile = 'Carnival medic.', statements = { 'Nobody was seriously harmed.', 'The dye was harmless food colouring.' }, isLiar = false },
-                        { id = 'manager', name = 'Mister Grin', profile = 'Stall manager.', statements = { 'I was counting money in the office.', 'I have no reason to sabotage Sal.' }, isLiar = true },
-                    },
-                    clues = {
-                        { id = 'c1', text = 'A receipt for black food dye was found in the paint store.' },
-                        { id = 'c2', text = 'One sugar sack had been opened and resealed with tape.' },
-                        { id = 'c3', text = 'The office cash box was untouched all afternoon.' },
-                    },
-                },
+            -- A maze of doors. Players start at `start`; every door sends them to
+            -- another door (or back to the start), hidden traps send them back
+            -- to the start, and stepping into the finish circle ends the run.
+            -- Where each door leads is never sent to players.
+            durationSeconds = 300,
+            finishPoints = 60,
+            start = v4(-1630.0, -1095.0, 13.15, 230.0),
+            finish = v4(-1650.0, -1110.0, 13.15, 230.0),
+            finishRadius = 2.0,
+            exitTo = v4(-1620.0, -1100.0, 13.15, 30.0),
+            doorDistance = 2.0,
+            trapRadius = 1.2,
+            showTraps = false,
+            doors = {
+                -- room 1 (the start)
+                { id = 'a', label = 'Red door', coords = v4(-1633.0, -1093.0, 13.15, 230.0), to = 'start' },
+                { id = 'b', label = 'Green door', coords = v4(-1634.0, -1096.0, 13.15, 230.0), to = 'd' },
+                { id = 'c', label = 'Blue door', coords = v4(-1633.0, -1099.0, 13.15, 230.0), to = 'e' },
+                -- room 2
+                { id = 'd', label = 'Mirror door', coords = v4(-1638.0, -1100.0, 13.15, 230.0), to = 'b' },
+                { id = 'e', label = 'Cracked door', coords = v4(-1639.0, -1103.0, 13.15, 230.0), to = 'start' },
+                { id = 'f', label = 'Velvet door', coords = v4(-1641.0, -1101.0, 13.15, 230.0), to = 'h' },
+                -- room 3
+                { id = 'h', label = 'Golden door', coords = v4(-1644.0, -1104.0, 13.15, 230.0), to = 'f' },
+                { id = 'i', label = 'Painted door', coords = v4(-1645.0, -1107.0, 13.15, 230.0), to = 'start' },
+                { id = 'j', label = 'Bone door', coords = v4(-1646.0, -1105.0, 13.15, 230.0), to = 'k' },
+                -- the last room, next to the finish
+                { id = 'k', label = 'Exit door', coords = v4(-1648.0, -1108.0, 13.15, 230.0), to = 'j' },
+            },
+            traps = {
+                { id = 't1', coords = v3(-1639.5, -1101.5, 13.15) },
+                { id = 't2', coords = v3(-1644.5, -1105.5, 13.15) },
             },
         },
 

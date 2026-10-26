@@ -1,4 +1,4 @@
-import { closeViewState, getState, invalidate, openView, setState, syncServerTime } from './store';
+import { closeViewState, invalidate, openView, setState, syncServerTime } from './store';
 import { playSound, setAmbient, stopAll, stopSound } from './audio';
 import { toast } from './components/ui';
 import { ATTRACTION_SHORT, signed } from './format';
@@ -53,12 +53,6 @@ function handlePush(channel: string, data: any) {
     case 'invalidate':
       if (Array.isArray(data)) invalidate(data);
       break;
-    case 'deception': {
-      // keep the open terminal in sync with server pushes
-      const v = getState().views.deception;
-      if (v && data && data.roundId) openView('deception', { ...v, ...data });
-      break;
-    }
     default:
       break;
   }
@@ -102,6 +96,10 @@ export function onLuaMessage(ev: MessageEvent) {
     case 'shooting':
       if (data.serverTime) syncServerTime(data.serverTime);
       setState((s) => ({ shooting: data.active === false ? { active: false } : { ...s.shooting, ...data } }));
+      break;
+    case 'maze':
+      if (data.serverTime) syncServerTime(data.serverTime);
+      setState((s) => ({ maze: data.active === false ? { active: false } : { ...s.maze, ...data } }));
       break;
     case 'horror':
       if (data.serverTime) syncServerTime(data.serverTime);

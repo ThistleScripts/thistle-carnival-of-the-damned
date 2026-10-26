@@ -49,7 +49,7 @@ function lua(action: string, data: any) {
 beforeEach(() => {
   calls.length = 0;
   for (const k of Object.keys(responses)) delete responses[k];
-  setState({ views: {}, minimised: {}, hudVisible: false, shooting: { active: false }, horror: { active: false } });
+  setState({ views: {}, minimised: {}, hudVisible: false, shooting: { active: false }, horror: { active: false }, maze: { active: false } });
   lua('push', {
     channel: 'bootstrap',
     data: {
@@ -157,17 +157,15 @@ describe('player screens', () => {
     expect(calls.find((c) => c.endpoint === 'fortune.answer')!.payload).toMatchObject({ visitId: 3, questionId: 'q_cards', choice: 2 });
   });
 
-  it('deception: requires exactly the liar count before accusing', async () => {
-    responses['deception.submit'] = { ok: true, data: { submissionNumber: 1, remaining: 1 } };
+  it('hall of deception: the maze HUD follows pushes and the result card shows', () => {
     render(<App />);
-    const m = settings.attractions.deception.mysteries[0];
-    lua('open', { view: 'deception', data: { active: true, roundId: 7, status: 'questioning', maxSubmissions: 2, submissionsUsed: 0, clues: [], mystery: { title: m.title, description: m.description, liarCount: 3, performers: m.performers.map((p: any) => ({ id: p.id, name: p.name, profile: p.profile })) } } });
-    const accuse = screen.getByText('Accuse').closest('button')!;
-    expect(accuse.disabled).toBe(true);
-    for (const name of ['Bruno the Strongman', 'Lady Ash', 'The Great Valentino']) fireEvent.click(screen.getByText(name));
-    expect(accuse.disabled).toBe(false);
-    fireEvent.click(accuse);
-    await waitFor(() => expect(screen.getByText(/Accusation #1 recorded/)).toBeTruthy());
+    lua('maze', { active: true, endsAt: Math.floor(Date.now() / 1000) + 200, doorsUsed: 3, resets: 1 });
+    expect(screen.getByText('Doors 3')).toBeTruthy();
+    expect(screen.getByText('Back to start 1')).toBeTruthy();
+    lua('maze', { active: false });
+    expect(screen.queryByText('Doors 3')).toBeNull();
+    lua('open', { view: 'mazeResult', data: { reason: 'finished', points: 60, doors: 7, resets: 2, seconds: 95 } });
+    expect(screen.getByText('You found the way out!')).toBeTruthy();
   });
 
   it('theatre card and horror HUD render as non-blocking overlays', () => {

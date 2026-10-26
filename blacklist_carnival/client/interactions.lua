@@ -122,7 +122,7 @@ local ATTRACTION_OPTIONS = {
             onSelect = function() Carnival.Theatre.play() end } }
     end,
     deception = function()
-        return { { name = 'carnival_deception', icon = 'fa-solid fa-user-secret', label = 'Use the accusation terminal',
+        return { { name = 'carnival_deception', icon = 'fa-solid fa-door-open', label = 'Enter the Hall of Deception',
             onSelect = function() Carnival.Deception.open() end } }
     end,
     horror = function()

@@ -11,7 +11,7 @@
 | 7 | Distance validation | Server reads ped coordinates for registration, attractions, token collection, horror exit. | `players must be at the ticket booth`, horror/shooting tests |
 | 8 | Event membership / stale IDs | Eligibility checks event id, participant status, colour session, completed attractions; run/heat/round ids must match the current one. | horror `stale run id`, deception `stale` |
 | 9 | Forged / stale tickets | Random serial per ticket stored in DB; tickets valid only if serial + participant + event + item match the single active row; others logged as forged/stale/foreign. | `ticket replacement voids…` |
-| 10 | Secret separation | Deception answer key/briefs/statements and fortune answers never in participant payloads; config redaction by permission. | `secret answer key never reaches participants`, `secret fields are redacted` |
+| 10 | Secret separation | Where each Hall of Deception door leads and fortune answers never reach participant payloads; config redaction by permission. | `the door maze: doors lead where the admin set (never told to players)…`, `secret fields are redacted` |
 | 11 | Rate limits & abuse | Per-player buckets per endpoint group; repeated rejects raise one security alert; **no automatic bans**. | `rate limits reject floods…` |
 | 12 | Duplicate submissions | Unique constraints + per-participant locks (wheel, fortune, deception, horror token, theatre/deception commit guards). | multiple tests |
 | 13 | Idempotent rewards | Reward row with unique key created first; delivery claims the row with a guarded UPDATE; interrupted deliveries become `unknown`, never replayed. | `special prizes…`, `restart…` |

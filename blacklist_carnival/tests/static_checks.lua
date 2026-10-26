@@ -181,7 +181,6 @@ for _, f in ipairs(ls('server')) do
 end
 -- endpoints registered in loops
 for _, a in ipairs({ 'display', 'start', 'pause', 'resume', 'end' }) do registered['theatre.' .. a] = true end
-for _, a in ipairs({ 'start', 'end', 'clue', 'reveal' }) do registered['deception.' .. a] = true end
 for _, a in ipairs({ 'approve', 'retry', 'markDelivered', 'resetPending', 'cancel' }) do registered['rewards.' .. a] = true end
 
 local used = {}
@@ -234,7 +233,6 @@ local function topKeys(src, i)
 end
 local LOCAL_WRITERS = {
     ['server/attractions/puppets.lua'] = { 'persist%(perf, ', 'carnival_theatre_performances' },
-    ['server/attractions/deception.lua'] = { 'persist%(', 'carnival_deception_rounds' },
     ['server/attractions/horror.lua'] = { 'persistRun%(', 'carnival_horror_runs' },
     ['server/rotation_manager.lua'] = { 'setSession%(s, ', 'carnival_attraction_sessions' },
 }

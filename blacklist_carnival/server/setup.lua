@@ -43,7 +43,7 @@ function Setup.checklist()
         if a.enabled and samePlace(a.location, D.attractions[id].location) then places[#places + 1] = a.label end
     end
     entry(items, 'locations', #places == 0, 'Ticket booth, prize counter and attractions are placed',
-        #places > 0 and ('Still at the placeholder pier position: ' .. table.concat(places, ', ') .. '. Stand where each should be and press "Use my position".') or nil,
+        #places > 0 and ('Still at the placeholder pier position: ' .. table.concat(places, ', ') .. '. Type /carnivallayout and move each one where it belongs.') or nil,
         'Settings -> Carnival / Attractions / Scoring & prizes -> Prize counter')
 
     local h, dh = cfg.attractions.horror, D.attractions.horror
@@ -61,6 +61,22 @@ function Setup.checklist()
         if defaultTokens > 0 then maze[#maze + 1] = ('%d coin position(s)'):format(defaultTokens) end
         entry(items, 'horror', #maze == 0, 'House of Horrors maze is set up',
             #maze > 0 and ('Still at the placeholder: ' .. table.concat(maze, ', ') .. '.') or nil, 'Settings -> Attractions -> House of Horrors')
+    end
+
+    local hd, dd = cfg.attractions.deception, D.attractions.deception
+    if hd.enabled then
+        local left = {}
+        if samePlace(hd.start, dd.start) then left[#left + 1] = 'start' end
+        if samePlace(hd.finish, dd.finish) then left[#left + 1] = 'way out' end
+        local defaultDoors = 0
+        for _, d in ipairs(hd.doors or {}) do
+            for _, dflt in ipairs(dd.doors or {}) do
+                if samePlace(d.coords, dflt.coords) then defaultDoors = defaultDoors + 1 break end
+            end
+        end
+        if defaultDoors > 0 then left[#left + 1] = ('%d door(s)'):format(defaultDoors) end
+        entry(items, 'deception', #left == 0, 'Hall of Deception doors are set up',
+            #left > 0 and ('Still at the placeholder: ' .. table.concat(left, ', ') .. '. Walk the hall with /carnivallayout.') or nil, 'Settings -> Attractions -> Hall of Deception')
     end
 
     if cfg.ambience.enabled then
