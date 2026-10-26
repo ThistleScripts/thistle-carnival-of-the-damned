@@ -37,7 +37,7 @@ Resolved permissions are cached for `PermissionCacheSeconds` (30 s) and invalida
 | `participants.view` / `participants.manage` | See / register, transfer, remove, reinstate, replace tickets. |
 | `scores.view` / `scores.adjust` | Ledger / manual adjustments, reversals, ledger verification, results from other resources (`registerExternalResult`). |
 | `rewards.manage` | Retry, reconcile and cancel prize deliveries. |
-| `deception.secrets` | See and edit the Hall of Deception answer keys and clues in settings. |
+| `deception.secrets` | No longer used (the Hall of Deception has no secret answers); kept so existing role lists stay valid. |
 | `monitoring.view` / `audit.view` | Monitoring log / audit trail. |
 | `export.history` | Export frozen results (audited). |
 | `staff.manage` | Grant/revoke in-game roles. |

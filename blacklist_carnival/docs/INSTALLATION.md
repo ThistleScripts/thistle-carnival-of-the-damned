@@ -101,7 +101,7 @@ Webhook URLs live only in convars; they are never written to the database or sen
 
 ## 9. Backgrounds (optional artwork)
 
-Put `admin`, `hub`, `ticket`, `leaderboard`, `wheel`, `fortune`, `deception` or `results` (`.png` or `.jpg`) in `web/public/backgrounds/`, then rebuild the NUI. See `web/public/backgrounds/README.md`. Missing files fall back to the built-in gradient.
+Put `admin`, `hub`, `ticket`, `leaderboard`, `wheel`, `fortune` or `results` (`.png` or `.jpg`) in `web/public/backgrounds/`, then rebuild the NUI. See `web/public/backgrounds/README.md`. Missing files fall back to the built-in gradient.
 
 ## Troubleshooting: a command shows the mouse cursor but no panel
 

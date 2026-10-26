@@ -362,23 +362,24 @@ local function crossValidate(cfg, errors)
             end
         end
     end
-    if a.deception and a.deception.mysteries then
-        local found = false
-        for i, m in ipairs(a.deception.mysteries) do
-            if m.id == a.deception.defaultMystery then found = true end
-            local liars = 0
-            for _, p in ipairs(m.performers or {}) do if p.isLiar then liars = liars + 1 end end
-            -- isLiar is redacted for users without deception.secrets; the server
-            -- restores it before validation, so this check always sees real data.
-            if liars ~= m.liarCount then
-                err(('attractions.deception.mysteries.%d'):format(i), ('mystery "%s" marks %d liars but liarCount is %d'):format(m.id or '?', liars, m.liarCount or 0))
-            end
-            if (m.liarCount or 0) >= #(m.performers or {}) then
-                err(('attractions.deception.mysteries.%d'):format(i), 'there must be at least one truthful performer')
+    if a.deception and a.deception.doors then
+        local ids = {}
+        for i, d in ipairs(a.deception.doors) do
+            if d.id == 'start' then err(('attractions.deception.doors.%d.id'):format(i), '"start" is reserved') end
+            if ids[d.id] then err(('attractions.deception.doors.%d.id'):format(i), 'duplicate door id ' .. tostring(d.id)) end
+            ids[d.id] = true
+        end
+        for i, d in ipairs(a.deception.doors) do
+            if d.to ~= 'start' and not ids[d.to] then
+                err(('attractions.deception.doors.%d.to'):format(i), ('leads to "%s", which is not a door (use a door ID or "start")'):format(tostring(d.to)))
+            elseif d.to == d.id then
+                err(('attractions.deception.doors.%d.to'):format(i), 'a door cannot lead to itself')
             end
         end
-        if not found and #a.deception.mysteries > 0 then
-            err('attractions.deception.defaultMystery', 'default mystery id does not match any mystery')
+        local tids = {}
+        for i, t in ipairs(a.deception.traps or {}) do
+            if tids[t.id] then err(('attractions.deception.traps.%d.id'):format(i), 'duplicate trap id ' .. tostring(t.id)) end
+            tids[t.id] = true
         end
     end
     if a.horror then

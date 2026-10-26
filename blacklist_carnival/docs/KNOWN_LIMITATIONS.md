@@ -27,7 +27,7 @@ The server logic was executed for real (integration tests run the actual server 
 ## Design limitations
 
 * **Shooting Gallery (NUI aim game).** The server generates every target's spawn time, lane and kind, and accepts a hit only if that target was on screen at that moment by the server clock (±latency allowance), had not been hit, and the click rate is plausible. The bullseye ring is judged by the client (worth a small bonus). A modified client could still auto-click every target perfectly — like any aimbot for a 2D game — but cannot exceed the schedule; rejected shots are logged in the monitoring log.
-* **Walk-up group games.** The theatre, Hall of Deception and House of Horrors gather only players for whom it is the next game and who arrive during the short lobby. On a quiet server these are often solo: a solo show earns the configured solo points, and a solo mystery or maze run works as normal. Anyone arriving mid-run waits for the next one.
+* **Walk-up group games.** The theatre and House of Horrors gather only players for whom it is the next game and who arrive during the short lobby. On a quiet server these are often solo: a solo show earns the configured solo points, and a solo maze run works as normal. Anyone arriving mid-run waits for the next one.
 * **Walk-up idle visits** close after *idle seconds* without credit; the player can start that game again.
 * **Theatre audience vote.** Shows are judged by the audience's vote; players can collude. There is no judge.
 * **Token positions** are sent to runners so props can be rendered; a cheating client could reveal them. Collection still requires being physically within range inside the boundary.

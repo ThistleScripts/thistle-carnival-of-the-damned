@@ -29,9 +29,9 @@ local function points(cfg)
     if cfg.shop.enabled then add('shop.location', cfg.shop.label, 'ped', cfg.shop.location, { model = cfg.shop.npcModel }) end
     local h = cfg.attractions.horror
     if h.enabled then
-        add('attractions.horror.entry', 'Maze entry', 'entry', h.entry, { radius = Carnival.C.HORROR_DOOR_RADIUS })
-        add('attractions.horror.exit', 'Maze exit', 'exit', h.exit, { radius = h.exitRadius })
-        add('attractions.horror.boundaryCentre', 'Maze boundary', 'boundary', h.boundaryCentre, { radius = h.boundaryRadius })
+        add('attractions.horror.entry', 'Horrors entry', 'entry', h.entry, { radius = Carnival.C.HORROR_DOOR_RADIUS })
+        add('attractions.horror.exit', 'Horrors exit', 'exit', h.exit, { radius = h.exitRadius })
+        add('attractions.horror.boundaryCentre', 'Horrors boundary', 'boundary', h.boundaryCentre, { radius = h.boundaryRadius })
         local eh = h.escapeHatches
         add('attractions.horror.escapeHatches.returnTo', 'Escape hatch drop-off', 'return', eh.returnTo)
         for _, hp in ipairs(eh.points) do
@@ -40,6 +40,21 @@ local function points(cfg)
         for _, t in ipairs(h.tokens) do
             add('token:' .. t.id, ('%s coin %s'):format(t.type:gsub('^%l', string.upper), t.id), 'token', t.coords,
                 { id = t.id, type = t.type, model = h.tokenTypes[t.type] and h.tokenTypes[t.type].model })
+        end
+    end
+    local d = cfg.attractions.deception
+    if d.enabled then
+        add('attractions.deception.start', 'Hall of Deception start', 'mazeStart', d.start)
+        add('attractions.deception.finish', 'Hall of Deception way out', 'mazeFinish', d.finish, { radius = d.finishRadius })
+        add('attractions.deception.exitTo', 'Hall of Deception drop-off', 'return', d.exitTo)
+        local labels = {}
+        for _, door in ipairs(d.doors) do labels[door.id] = door.label end
+        for _, door in ipairs(d.doors) do
+            add('door:' .. door.id, ('%s (%s)'):format(door.label, door.id), 'door', door.coords,
+                { id = door.id, to = door.to, toLabel = door.to == 'start' and 'the start' or labels[door.to] })
+        end
+        for _, t in ipairs(d.traps) do
+            add('trap:' .. t.id, 'Trap ' .. t.id, 'trap', t.coords, { id = t.id, radius = d.trapRadius })
         end
     end
     return out
@@ -53,8 +68,10 @@ local function movable(path)
     local id = path:match('^attractions%.([%w_]+)%.location$')
     if id and Cfg.get().attractions[id] then return { heading = true } end
     if path == 'attractions.horror.entry' or path == 'attractions.horror.escapeHatches.returnTo' then return { heading = true } end
-    if path == 'attractions.horror.exit' then return { heading = true, radius = 'exitRadius' } end
-    if path == 'attractions.horror.boundaryCentre' then return { radius = 'boundaryRadius' } end
+    if path == 'attractions.horror.exit' then return { heading = true, radius = 'attractions.horror.exitRadius' } end
+    if path == 'attractions.horror.boundaryCentre' then return { radius = 'attractions.horror.boundaryRadius' } end
+    if path == 'attractions.deception.start' or path == 'attractions.deception.exitTo' then return { heading = true } end
+    if path == 'attractions.deception.finish' then return { heading = true, radius = 'attractions.deception.finishRadius' } end
     return nil
 end
 
@@ -110,7 +127,7 @@ Api.register('layout.set', {
         local radius = payload.radius ~= nil and V.number(payload.radius, 0.5, 500) or nil
         return save(ctx.source, 'Layout: moved ' .. path, function(doc)
             setPath(doc, path, coords)
-            if m.radius and radius then doc.attractions.horror[m.radius] = U.round(radius, 1) end
+            if m.radius and radius then setPath(doc, m.radius, U.round(radius, 1)) end
             return true
         end)
     end,
@@ -178,6 +195,79 @@ Api.register('layout.hatch', {
                 end
             end
             return nil, 'not_found', 'That escape hatch no longer exists.'
+        end)
+    end,
+})
+
+-- Hall of Deception doors: add, move, remove, and choose where one leads.
+Api.register('layout.door', {
+    perm = PERM, rate = 'admin',
+    handler = function(ctx, payload)
+        local op = V.oneOf(payload.op, { 'add', 'move', 'remove', 'link' })
+        if not op then return nil, 'invalid', 'op must be add, move, remove or link' end
+        local coords, err
+        if op == 'add' or op == 'move' then
+            coords, err = V.vec4(payload.coords)
+            if not coords then return nil, 'invalid', 'coords ' .. err end
+        end
+        local id = type(payload.id) == 'string' and payload.id:sub(1, 32) or nil
+        local to = type(payload.to) == 'string' and payload.to:sub(1, 32) or nil
+        local newId
+        return save(ctx.source, 'Layout: door ' .. op, function(doc)
+            local doors = doc.attractions.deception.doors
+            if op == 'add' then
+                if #doors >= 60 then return nil, 'invalid', 'The hall already has 60 doors.' end
+                newId = newId or nextTokenId(doors, 'door')
+                doors[#doors + 1] = { id = newId, label = 'Door ' .. newId:sub(2), coords = coords, to = 'start' }
+                return true
+            end
+            for i, d in ipairs(doors) do
+                if d.id == id then
+                    if op == 'remove' then
+                        table.remove(doors, i)
+                        -- anything that led here now leads back to the start
+                        for _, other in ipairs(doors) do if other.to == id then other.to = 'start' end end
+                    elseif op == 'move' then
+                        d.coords = coords
+                    else
+                        if not to then return nil, 'invalid', 'Choose a door or "start".' end
+                        d.to = to
+                    end
+                    return true
+                end
+            end
+            return nil, 'not_found', 'That door no longer exists.'
+        end)
+    end,
+})
+
+Api.register('layout.trap', {
+    perm = PERM, rate = 'admin',
+    handler = function(ctx, payload)
+        local op = V.oneOf(payload.op, { 'add', 'move', 'remove' })
+        if not op then return nil, 'invalid', 'op must be add, move or remove' end
+        local coords, err
+        if op ~= 'remove' then
+            coords, err = V.vec3(payload.coords)
+            if not coords then return nil, 'invalid', 'coords ' .. err end
+        end
+        local id = type(payload.id) == 'string' and payload.id:sub(1, 32) or nil
+        local newId
+        return save(ctx.source, 'Layout: trap ' .. op, function(doc)
+            local traps = doc.attractions.deception.traps
+            if op == 'add' then
+                if #traps >= 60 then return nil, 'invalid', 'The hall already has 60 traps.' end
+                newId = newId or nextTokenId(traps, 'trap')
+                traps[#traps + 1] = { id = newId, coords = coords }
+                return true
+            end
+            for i, t in ipairs(traps) do
+                if t.id == id then
+                    if op == 'remove' then table.remove(traps, i) else t.coords = coords end
+                    return true
+                end
+            end
+            return nil, 'not_found', 'That trap no longer exists.'
         end)
     end,
 })

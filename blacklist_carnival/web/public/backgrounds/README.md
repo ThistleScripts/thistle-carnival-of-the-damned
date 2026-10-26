@@ -12,7 +12,6 @@ Recommended: 1920x1080, dark, low-contrast so text stays readable. **No clown im
 | `leaderboard` | Leaderboard |
 | `wheel` | Wheel of Misfortune |
 | `fortune` | Fortune Teller |
-| `deception` | Hall of Deception terminal |
 | `results` | Final results banner |
 | `shooting` | Shooting Gallery game frame |
 | `shooting_range` | Shooting Gallery play area (behind the targets) |

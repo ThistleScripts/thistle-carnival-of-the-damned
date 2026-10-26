@@ -17,7 +17,7 @@ Players buy a ticket at the booth and receive one of six coloured tickets; the c
 | The Wheel of Misfortune | solo | Marquee wheel with weighted server-side outcomes, points ±, prize boxes, a candy floss *Treat!* and a spooky *Trick!*. |
 | The Fortune Teller's Curse | solo | A reading with riddles and multiple choice marked on the server, and a fortune. |
 | The Puppet Master's Theatre | group | A solo showcase: each player has the stage alone for 60 seconds with their own random prompt, one after another, then the group votes for the best performance. |
-| The Hall of Deception | group | Starts when players arrive; suspects' testimony on the terminal, clues unlock over time, accusations auto-marked. |
+| The Hall of Deception | individual | A maze of doors: each door teleports you to another door or back to the start, hidden traps reset you; reach the golden way out before time runs out. |
 | The House of Horrors | group | A player opens the doors, the group gathers, server timer with warnings, floating glowing bronze/silver/gold coins, escape bonuses. |
 
 ## Documentation

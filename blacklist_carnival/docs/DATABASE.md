@@ -31,7 +31,8 @@
 | `carnival_wheel_spins` | Each spin with server roll, total weight, outcome, reward link. Unique (event, participant, spin_number). |
 | `carnival_fortune_visits` / `carnival_fortune_answers` | Readings (question list, fortune) and answers with question snapshot. Answers unique (event, participant, question). |
 | `carnival_theatre_performances` / `carnival_theatre_performers` | Scenario snapshot, status, timings, judging note (how the vote went); performers with role, winner flag, points, bonus. |
-| `carnival_deception_rounds` | Mystery snapshot, **answer key**, status, timings, judging note. |
+| `carnival_deception_runs` | Hall of Deception maze runs: player, session, start/end, end reason, doors used, resets, points (migration 008). |
+| `carnival_deception_rounds` | Old mystery rounds (no longer written; kept for history). |
 | `carnival_deception_clues` | Released clues. Unique (round, clue). |
 | `carnival_deception_submissions` | Structured selections + free-text reasoning; auto/judge points after commit. Unique (round, participant, number). |
 | `carnival_horror_runs` / `carnival_horror_runners` / `carnival_horror_tokens` / `carnival_horror_collections` | Runs with settings snapshot and timer; runners (inside/escaped/trapped); token instances per run; collections unique (run, token, participant). |
@@ -46,7 +47,7 @@
 
 ## Where content lives
 
-Attraction content (wheel outcomes, fortune questions, theatre scenarios, deception mysteries incl. answer keys, horror token positions) is part of the **versioned configuration** so it gets validation, preview, history and rollback. Whenever content is used it is snapshotted into the per-use tables above (`mystery_snapshot` + `answer_key`, `scenario_snapshot`, `question_snapshot`, horror `settings_snapshot` + token rows), so history remains interpretable after the configuration changes.
+Attraction content (wheel outcomes, fortune questions, theatre scenarios, Hall of Deception doors and traps, horror token positions) is part of the **versioned configuration** so it gets validation, preview, history and rollback. Whenever content is used it is snapshotted into the per-use tables above (`scenario_snapshot`, `question_snapshot`, horror `settings_snapshot` + token rows), so history remains interpretable after the configuration changes.
 
 ## Integrity check
 

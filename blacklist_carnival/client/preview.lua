@@ -36,25 +36,13 @@ SCREENS.fortune = function(s)
     })
 end
 
-SCREENS.deception = function()
-    Carnival.openView('deception', {
-        preview = true, active = true, roundId = 0, status = 'questioning', maxSubmissions = 2, submissionsUsed = 0,
-        endsAt = now() + 900, serverTime = now(),
-        clues = { { id = 'p1', text = 'PREVIEW clue: muddy boot prints lead to the caravans.', releasedAt = now() } },
-        mystery = {
-            title = 'PREVIEW: The Vanishing Ringmaster',
-            description = 'Six performers were backstage. Three of them are lying. Pick the liars.',
-            rules = 'Question each performer in character.', liarCount = 3,
-            performers = {
-                { id = 'a', name = 'Bruno the Strongman', profile = 'Lifts anvils, cries at sad songs.', statements = { 'I was lifting the anvil in the weights tent all evening.' } },
-                { id = 'b', name = 'Madame Twist', profile = 'Contortionist. Speaks only in whispers.' },
-                { id = 'c', name = 'Lady Ash', profile = 'The fire-eater. Never seen without her veil.' },
-                { id = 'd', name = 'Old Zelda', profile = 'Fortune teller.' },
-                { id = 'e', name = 'The Great Valentino', profile = 'Knife thrower. Never misses.' },
-                { id = 'f', name = 'Silent Pete', profile = 'Plays the calliope.' },
-            },
-        },
-    })
+SCREENS.deception = function(s)
+    Carnival.nui('maze', { active = true, endsAt = now() + (s.attractions.deception.durationSeconds or 300), serverTime = now(), doorsUsed = 4, resets = 1 })
+    SetTimeout(15000, function()
+        Carnival.nui('maze', { active = false })
+        Carnival.openView('mazeResult', { reason = 'finished', points = 60, doors = 9, resets = 2, seconds = 143 }, { focus = false })
+        SetTimeout(8000, function() Carnival.closeView('mazeResult') end)
+    end)
 end
 
 SCREENS.puppets = function()

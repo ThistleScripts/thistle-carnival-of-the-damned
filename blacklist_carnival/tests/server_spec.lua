@@ -97,7 +97,7 @@ setupPlayers()
 test('schema installs from a clean database and migrations are recorded', function()
     H.start({ configure = configure })
     C = Carnival.C
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'migrations applied')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 8, 'migrations applied')
     eq(count('SELECT COUNT(*) AS n FROM carnival_attractions'), 6, 'attractions seeded')
     truthy(count("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'carnival_%'") >= 30, 'all tables created')
 end)
@@ -105,7 +105,7 @@ end)
 test('migrations are idempotent (re-run on restart)', function()
     local ok = H.call(Carnival.Db.migrate)
     truthy(ok, 'migrate')
-    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 7, 'no duplicates')
+    eq(count("SELECT COUNT(*) AS n FROM carnival_schema_migrations"), 8, 'no duplicates')
 end)
 
 test('factory configuration is seeded as global version 1 and validates', function()
@@ -138,7 +138,7 @@ end)
 
 test('there are no staff controls for any game', function()
     for _, name in ipairs({ 'staff.checkIn', 'staff.dashboard', 'wheel.staff.approve', 'fortune.staff.present', 'fortune.staff.award',
-        'shooting.allowReplay', 'theatre.create', 'theatre.commit', 'deception.setup', 'deception.commit', 'horror.start', 'horror.scare' }) do
+        'shooting.allowReplay', 'theatre.create', 'theatre.commit', 'horror.start', 'horror.scare' }) do
         errRes(H.api(OWNER, name, {}), 'unknown_endpoint', name)
     end
     for name, def in pairs(Carnival.Api.endpoints()) do
@@ -180,14 +180,14 @@ end)
 test('secret fields are redacted for users without the permission and preserved on save', function()
     -- observer cannot open config at all
     errRes(H.api(OBSERVER, 'config.get', { scope = 'global' }), 'forbidden')
-    -- admin sees secrets (has deception.secrets)
+    -- admin sees secrets (wheel odds need config.edit)
     local doc = okRes(H.api(ADMIN, 'config.get', { scope = 'global' })).data
-    truthy(doc.attractions.deception.mysteries[1].performers[1].isLiar ~= nil, 'admin sees answer key')
-    -- simulate an editor without secrets: redact then restore
-    local red = Carnival.Validate.redact(settings(), function(p) return p ~= 'deception.secrets' end)
-    eq(red.attractions.deception.mysteries[1].performers[1].isLiar, nil, 'redacted')
-    local restored = Carnival.Validate.restoreSecrets(red, settings(), function(p) return p ~= 'deception.secrets' end)
-    eq(restored.attractions.deception.mysteries[1].performers[1].isLiar, true, 'restored')
+    truthy(doc.attractions.wheel.outcomes[1].weight ~= nil, 'admin sees the wheel odds')
+    -- simulate an editor without the permission: redact then restore
+    local red = Carnival.Validate.redact(settings(), function(p) return p ~= 'config.edit' end)
+    eq(red.attractions.wheel.outcomes[1].weight, nil, 'redacted')
+    local restored = Carnival.Validate.restoreSecrets(red, settings(), function(p) return p ~= 'config.edit' end)
+    eq(restored.attractions.wheel.outcomes[1].weight, settings().attractions.wheel.outcomes[1].weight, 'restored')
 end)
 
 test('valid change creates a new version, can be previewed and rolled back', function()
@@ -226,6 +226,7 @@ test('apply test configuration (short timers, everyone ready)', function()
     doc.groups.colours.red.capacity = 2
     doc.attractions.wheel.cooldownSeconds = 0
     doc.attractions.horror.durationSeconds = 60
+    doc.attractions.deception.durationSeconds = 30
     doc.attractions.horror.warnings = { 30, 10 }
     doc.attractions.horror.tokenTypes.gold.quantity = 0
     doc.attractions.fortune.questionsPerVisit = 2
@@ -595,41 +596,58 @@ end)
 ---------------------------------------------------------------------------
 section('Attraction: Hall of Deception')
 ---------------------------------------------------------------------------
-test('secret answer key never reaches participants; submissions are limited; scoring committed once', function()
+test('the door maze: doors lead where the admin set (never told to players), traps reset, the way out pays once', function()
     local dc = colourAt('deception')
     local inv = membersOf(dc)
-    local hall = settings().attractions.deception.location
-    for _, s in ipairs(inv) do at(s, hall) end
-    -- the mystery started by itself when the group arrived at the hall
-    local pub = okRes(H.api(inv[1], 'deception.public'))
-    eq(pub.status, 'questioning')
-    local blob = H.json.encode(pub)
-    truthy(not blob:find('isLiar'), 'no isLiar in public state')
-    truthy(not blob:find('brief'), 'no briefs in public state')
-    truthy(blob:find('statements'), 'testimony is public (whether it is a lie is not)')
-    eq(pub.solution, nil)
-    for _, p in ipairs(H.pushesFor(inv[1], 'deception')) do
-        truthy(not H.json.encode(p):find('isLiar'), 'no secrets pushed')
-    end
-    errRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'nobody' } }), 'invalid')
-    errRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater' } }), 'invalid')
-    okRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'organ' }, explanation = 'Muddy boots.' }))
-    okRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'knife' }, explanation = 'Changed my mind.' }))
-    errRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'knife' } }), 'limit')
-    okRes(H.api(inv[2], 'deception.submit', { roundId = pub.roundId, selections = { 'contortionist', 'fortune', 'organ' } }))
-    -- everyone has accused: marked and revealed automatically, exactly once
-    H.advance(6)
-    eq(H.sql('SELECT status FROM carnival_deception_rounds WHERE id = ?', { pub.roundId })[1].status, 'committed')
-    errRes(H.api(inv[2], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'knife' } }), 'session_not_active')
-    local m = settings().attractions.deception.mysteries[1]
-    local function points(src)
-        return tonumber(H.sql('SELECT COALESCE(SUM(requested_delta), 0) AS n FROM carnival_score_transactions WHERE idempotency_key = ?',
-            { ('deception:%d:%d:auto'):format(pub.roundId, Carnival.Participants.idOfSource(src)) })[1].n)
-    end
-    eq(points(inv[1]), 3 * m.pointsPerCorrect + m.perfectBonus + m.tieBreakBonus, 'perfect accusation')
-    eq(points(inv[2]), -3 * m.penaltyPerIncorrect, 'all wrong')
-    eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key LIKE ?', { ('deception:%d:%%'):format(pub.roundId) }), 2, 'scored once')
-    eq(Carnival.Rotation.sessionForColour(dc).status, 'completed', 'group moves on')
+    local d = settings().attractions.deception
+    local byId = {}
+    for _, door in ipairs(d.doors) do byId[door.id] = door end
+    at(inv[1], d.location)
+    local run = okRes(H.api(inv[1], 'deception.enter'))
+    eq(run.start.x, d.start.x, 'sent to the start')
+    truthy(#run.doors == #d.doors and #run.traps == #d.traps, 'every door and trap position')
+    truthy(not H.json.encode(run):find('"to"'), 'where doors lead is never sent to players')
+    eq(okRes(H.api(inv[1], 'deception.enter')).runId, run.runId, 'entering again resumes the same run')
+    -- a door that is too far away
+    errRes(H.api(inv[1], 'deception.door', { runId = run.runId, doorId = 'b' }), 'too_far')
+    -- door b leads to door d
+    at(inv[1], byId.b.coords)
+    local r1 = okRes(H.api(inv[1], 'deception.door', { runId = run.runId, doorId = 'b' }))
+    eq(r1.back, false)
+    truthy(math.abs(r1.to.x - byId.d.coords.x) < 2 and math.abs(r1.to.y - byId.d.coords.y) < 2, 'came out at the mirror door')
+    eq(r1.door, byId.d.label)
+    -- door e is a lie: back to the start
+    at(inv[1], byId.e.coords)
+    local r2 = okRes(H.api(inv[1], 'deception.door', { runId = run.runId, doorId = 'e' }))
+    eq(r2.back, true) eq(r2.to.x, d.start.x) eq(r2.resets, 1)
+    -- a trap sends you back too
+    at(inv[1], d.start)
+    errRes(H.api(inv[1], 'deception.trap', { runId = run.runId, trapId = d.traps[1].id }), 'too_far')
+    at(inv[1], d.traps[1].coords)
+    eq(okRes(H.api(inv[1], 'deception.trap', { runId = run.runId, trapId = d.traps[1].id })).resets, 2)
+    errRes(H.api(inv[1], 'deception.door', { runId = run.runId, doorId = 'nope' }), 'invalid')
+    errRes(H.api(inv[1], 'deception.door', { runId = run.runId + 999, doorId = 'b' }), 'stale')
+    -- only the finish circle ends the run
+    errRes(H.api(inv[1], 'deception.finish', { runId = run.runId }), 'too_far')
+    at(inv[1], d.finish)
+    local fin = okRes(H.api(inv[1], 'deception.finish', { runId = run.runId }))
+    eq(fin.reason, 'finished') eq(fin.points, d.finishPoints) eq(fin.resets, 2) eq(fin.doors, 2)
+    eq(fin.exitTo.x, d.exitTo.x, 'taken back out')
+    errRes(H.api(inv[1], 'deception.finish', { runId = run.runId }), 'stale')
+    at(inv[1], d.location)
+    errRes(H.api(inv[1], 'deception.enter'), 'already_played')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?', { ('deception:run:%d'):format(run.runId) }), 1, 'paid once')
+    -- the second investigator runs out of time: no points, put back outside
+    at(inv[2], d.location)
+    local run2 = okRes(H.api(inv[2], 'deception.enter'))
+    H.pushes = {}
+    H.advance(d.durationSeconds + 2)
+    local ended
+    for _, p in ipairs(H.pushesFor(inv[2], 'deception')) do if p.action == 'end' then ended = p end end
+    truthy(ended and ended.reason == 'time' and ended.points == 0, 'told the time is up')
+    eq(H.sql('SELECT end_reason FROM carnival_deception_runs WHERE id = ?', { run2.runId })[1].end_reason, 'time')
+    eq(count('SELECT COUNT(*) AS n FROM carnival_score_transactions WHERE idempotency_key = ?', { ('deception:run:%d'):format(run2.runId) }), 0, 'no points for running out of time')
+    eq(Carnival.Rotation.sessionForColour(dc).status, 'completed', 'group moves on once everyone has been through')
 end)
 
 ---------------------------------------------------------------------------
@@ -888,7 +906,6 @@ test('second event in self-service mode starts with players registered', functio
     doc.rotation.roundDurationSeconds = 900
     doc.attractions.puppets.lobbySeconds = 5
     doc.attractions.puppets.voteSeconds = 15
-    doc.attractions.deception.clueIntervalSeconds = 30
     doc.attractions.deception.durationSeconds = 900
     doc.attractions.horror.lobbySeconds = 5
     okRes(H.api(OWNER, 'config.save', { scope = 'global', data = doc, confirm = true }))
@@ -970,24 +987,18 @@ test('theatre: each player has the stage alone in turn, then the group votes for
     errRes(H.api(cast[1], 'theatre.play'), 'done')
 end)
 
-test('deception: mystery starts on arrival, clues unlock over time, accusations are marked automatically', function()
+test('deception: players walk straight into the maze and the group moves on when everyone is out', function()
     local dc = colourAt('deception')
     local inv = membersOf(dc)
-    for _, s in ipairs(inv) do at(s, settings().attractions.deception.location) end
-    local pub = okRes(H.api(inv[1], 'deception.public'))
-    eq(pub.active, true)
-    eq(pub.status, 'questioning', 'started without staff')
-    truthy(pub.mystery.performers[1].statements and #pub.mystery.performers[1].statements > 0, 'testimony visible')
-    truthy(not H.json.encode(pub):find('isLiar'), 'answer key hidden')
-    H.advance(31)
-    truthy(#okRes(H.api(inv[1], 'deception.public')).clues >= 1, 'clue unlocked automatically')
-    okRes(H.api(inv[1], 'deception.submit', { roundId = pub.roundId, selections = { 'strongman', 'fireeater', 'knife' } }))
-    okRes(H.api(inv[2], 'deception.submit', { roundId = pub.roundId, selections = { 'contortionist', 'fortune', 'organ' } }))
-    H.advance(6)
-    eq(H.sql('SELECT status FROM carnival_deception_rounds WHERE id = ?', { pub.roundId })[1].status, 'committed', 'scored automatically')
+    local d = settings().attractions.deception
+    for _, s in ipairs(inv) do
+        at(s, d.location)
+        local run = okRes(H.api(s, 'deception.enter'))
+        at(s, d.finish)
+        eq(okRes(H.api(s, 'deception.finish', { runId = run.runId })).points, d.finishPoints)
+    end
+    H.advance(2)
     eq(Carnival.Rotation.sessionForColour(dc).status, 'completed', 'group moves on')
-    local best = H.sql([[SELECT SUM(delta) AS n FROM carnival_score_transactions WHERE idempotency_key = ?]], { ('deception:%d:%d:auto'):format(pub.roundId, Carnival.Participants.idOfSource(inv[1])) })[1].n
-    truthy(tonumber(best) > 0, 'correct accusations scored')
 end)
 
 test('horror: a player opens the doors, the group gathers and the run starts by itself', function()
@@ -1106,16 +1117,14 @@ test('theatre: a lone player performs a solo show and is scored', function()
     truthy(Carnival.Scoring.attractionPoints(pidOf(s), 'puppets') >= settings().attractions.puppets.soloPoints, 'solo points')
 end)
 
-test('hall of deception: the mystery starts on arrival and an accusation ends the visit', function()
+test('hall of deception: a player walks into the maze and finding the way out ends the visit', function()
     local s = byFirst.deception
-    at(s, settings().attractions.deception.location)
-    local pub = okRes(H.api(s, 'deception.public'))
-    eq(pub.status, 'questioning')
-    local sel = {}
-    for i = 1, pub.mystery.liarCount do sel[i] = pub.mystery.performers[i].id end
-    okRes(H.api(s, 'deception.submit', { roundId = pub.roundId, selections = sel }))
-    H.advance(7)
-    eq(H.sql('SELECT status FROM carnival_deception_rounds WHERE id = ?', { pub.roundId })[1].status, 'committed')
+    local d = settings().attractions.deception
+    at(s, d.location)
+    local run = okRes(H.api(s, 'deception.enter'))
+    at(s, d.finish)
+    okRes(H.api(s, 'deception.finish', { runId = run.runId }))
+    H.advance(1)
     truthy(Carnival.Rotation.hasCompleted(pidOf(s), 'deception'), 'completed')
 end)
 
@@ -1168,7 +1177,7 @@ test('an abandoned visit closes after being idle without counting as played', fu
     end
     eq(nextOf(s).attraction, 'fortune')
     at(s, settings().attractions.deception.location)
-    errRes(H.api(s, 'deception.public'), 'wrong_attraction')
+    errRes(H.api(s, 'deception.enter'), 'wrong_attraction')
     at(s, settings().attractions.fortune.location)
     local v = okRes(H.api(s, 'fortune.begin'))
     local sess = Carnival.Rotation.sessionFor('fortune')
@@ -1321,6 +1330,8 @@ test('the setup checklist lists what still needs a human, and clears as it is do
     eq(by.locations.ok, false, 'placeholder positions spotted')
     truthy(by.locations.detail:find('ticket booth'), by.locations.detail)
     eq(by.schedule.ok, true, 'nights end by themselves (daily)')
+    eq(by.deception.ok, false, 'placeholder Hall of Deception doors spotted')
+    truthy(by.deception.detail:find('door') and by.deception.detail:find('carnivallayout'), by.deception.detail)
     -- place everything somewhere real
     local doc = okRes(H.api(OWNER, 'config.get', { scope = 'global' })).data
     local function moved(v) local c = Carnival.U.deepCopy(v); c.x = c.x + 500; return c end
@@ -1457,6 +1468,42 @@ test('coins can be added, recoloured, moved and removed in the world', function(
     eq(#settings().attractions.horror.escapeHatches.points, hn)
     okRes(H.api(OWNER, 'layout.set', { path = 'attractions.horror.escapeHatches.returnTo', coords = { x = -1615, y = -1110, z = 13.1, w = 10 } }))
     eq(settings().attractions.horror.escapeHatches.returnTo.x, -1615)
+end)
+
+test('hall of deception doors and traps are laid out in the world; links are checked', function()
+    local function door(id)
+        for _, d in ipairs(settings().attractions.deception.doors) do if d.id == id then return d end end
+    end
+    local n = #settings().attractions.deception.doors
+    okRes(H.api(OWNER, 'layout.door', { op = 'add', coords = { x = -1630, y = -1090, z = 13.1, w = 45 } }))
+    local doors = settings().attractions.deception.doors
+    eq(#doors, n + 1)
+    local new = doors[#doors]
+    eq(new.to, 'start', 'a new door leads to the start until linked')
+    okRes(H.api(OWNER, 'layout.door', { op = 'link', id = new.id, to = 'k' }))
+    eq(door(new.id).to, 'k')
+    errRes(H.api(OWNER, 'layout.door', { op = 'link', id = new.id, to = 'nowhere' }), 'invalid')
+    errRes(H.api(OWNER, 'layout.door', { op = 'link', id = new.id, to = new.id }), 'invalid')
+    okRes(H.api(OWNER, 'layout.door', { op = 'link', id = 'a', to = new.id }))
+    okRes(H.api(OWNER, 'layout.door', { op = 'move', id = new.id, coords = { x = -1631, y = -1090, z = 13.1, w = 90 } }))
+    eq(door(new.id).coords.w, 90)
+    -- removing a door sends anything that led to it back to the start
+    okRes(H.api(OWNER, 'layout.door', { op = 'remove', id = new.id }))
+    eq(door('a').to, 'start')
+    eq(#settings().attractions.deception.doors, n)
+    local pts = okRes(H.api(OWNER, 'layout.get')).points
+    local seen = {}
+    for _, p in ipairs(pts) do seen[p.kind] = (seen[p.kind] or 0) + 1 end
+    eq(seen.door, n) eq(seen.trap, #settings().attractions.deception.traps)
+    truthy(seen.mazeStart == 1 and seen.mazeFinish == 1, 'start and way out listed')
+    local tn = #settings().attractions.deception.traps
+    okRes(H.api(OWNER, 'layout.trap', { op = 'add', coords = { x = -1640, y = -1100, z = 13.1 } }))
+    local traps = settings().attractions.deception.traps
+    eq(#traps, tn + 1)
+    okRes(H.api(OWNER, 'layout.trap', { op = 'remove', id = traps[#traps].id }))
+    eq(#settings().attractions.deception.traps, tn)
+    okRes(H.api(OWNER, 'layout.set', { path = 'attractions.deception.finish', coords = { x = -1650, y = -1111, z = 13.1, w = 0 }, radius = 2.5 }))
+    eq(settings().attractions.deception.finishRadius, 2.5)
 end)
 
 ---------------------------------------------------------------------------
@@ -1777,7 +1824,7 @@ end)
 
 test('audit log is append-only from the application and covers key actions', function()
     for _, action in ipairs({ 'event_state_changed', 'ticket_issued', 'ticket_replaced', 'score_adjusted', 'score_corrected',
-        'theatre_results_committed', 'deception_results_committed', 'horror_run_started', 'staff_role_granted', 'results_exported' }) do
+        'theatre_results_committed', 'horror_run_started', 'staff_role_granted', 'results_exported' }) do
         truthy(count('SELECT COUNT(*) AS n FROM carnival_audit_log WHERE action = ?', { action }) >= 1, 'audited: ' .. action)
     end
     -- no UPDATE/DELETE statements against the audit table anywhere in the server code

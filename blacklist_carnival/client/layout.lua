@@ -1,6 +1,6 @@
 -- Layout mode (/carnivallayout): admins walk the carnival and see every NPC
--- spot, the maze entry, exit and boundary, and every coin spot as markers in the
--- world. Aim at one and press E to pick it up, put it down where you look, add
+-- spot, the House of Horrors entry, exit, boundary, coins and hatches, and the
+-- Hall of Deception doors and traps as markers in the world. Aim at one and press E to pick it up, put it down where you look, add
 -- or remove coins - each change is saved by the server straight away (a normal
 -- config version, so it can be rolled back from the panel).
 
@@ -10,17 +10,20 @@ Carnival.Layout = Layout
 local active = false
 local points = {}
 local carrying = nil   -- { point, ghost, heading, radius }
+local linkFrom = nil   -- a Hall of Deception door waiting for its destination
+local doorsById = {}
 local busy = false
 
 local DRAW_DISTANCE = 150.0
-local TYPE_KEYS = { { key = 157, type = 'bronze' }, { key = 158, type = 'silver' }, { key = 160, type = 'gold' }, { key = 164, type = 'hatch' } }
+local TYPE_KEYS = { { key = 157, type = 'bronze' }, { key = 158, type = 'silver' }, { key = 160, type = 'gold' }, { key = 164, type = 'hatch' }, { key = 165, type = 'door' }, { key = 159, type = 'trap' } }
 local TYPES = { 'bronze', 'silver', 'gold' }
 local COLOURS = {
     ped = { 170, 90, 255 }, entry = { 150, 60, 220 }, exit = { 60, 220, 110 }, boundary = { 255, 120, 40 },
     hatch = { 255, 140, 30 }, ['return'] = { 255, 140, 30 },
+    door = { 110, 160, 255 }, mazeStart = { 110, 160, 255 }, mazeFinish = { 255, 200, 60 }, trap = { 220, 40, 40 },
     bronze = { 205, 127, 50 }, silver = { 200, 210, 230 }, gold = { 255, 200, 60 },
 }
-local BLOCKED = { 24, 25, 37, 44, 45, 47, 73, 140, 141, 142, 157, 158, 160, 164, 257, 263 }
+local BLOCKED = { 24, 25, 37, 44, 45, 47, 73, 140, 141, 142, 157, 158, 159, 160, 164, 165, 182, 257, 263, 311 }
 local BLOCKED_CARRY = { 14, 15, 16, 17, 172, 173, 191, 194, 199, 200, 177 }
 
 local HELP = table.concat({
@@ -28,7 +31,9 @@ local HELP = table.concat({
     'Aim at a marker · E: pick it up',
     '1 / 2 / 3: add a bronze / silver / gold coin',
     '4: add an escape hatch',
-    'G: change coin colour · X: remove coin or hatch',
+    '5: add a Hall of Deception door (facing you) · 6: add a trap',
+    'L on a door, then L on another: link them · K: door leads to the start',
+    'G: change coin colour · X: remove coin, hatch, door or trap',
     'Backspace: leave layout mode',
 }, '  \n')
 
@@ -68,7 +73,7 @@ local function drawPoint(p, highlight, at, heading, radius)
     local c = at or vec(p.coords)
     local r, g, b = table.unpack(colourOf(p))
     local a = highlight and 230 or 150
-    if p.kind == 'ped' or p.kind == 'return' then
+    if p.kind == 'ped' or p.kind == 'return' or p.kind == 'door' or p.kind == 'mazeStart' then
         DrawMarker(1, c.x, c.y, c.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.9, 0.9, 1.9, r, g, b, highlight and 120 or 60, false, false, 2, false, nil, nil, false)
         -- facing arrow
         DrawMarker(2, c.x, c.y, c.z + 2.2, 0.0, 0.0, 0.0, 90.0, 0.0, (heading or p.coords.w or 0.0) + 90.0, 0.4, 0.4, 0.4, r, g, b, a, false, false, 2, false, nil, nil, false)
@@ -86,20 +91,37 @@ local function drawPoint(p, highlight, at, heading, radius)
         end
     end
     local label = p.label
+    if p.kind == 'door' then
+        label = ('%s~n~-> %s'):format(label, p.toLabel or p.to or '?')
+        local target = doorsById[p.to]
+        if target and not at then
+            DrawLine(c.x, c.y, c.z + 1.0, target.coords.x, target.coords.y, target.coords.z + 1.0, r, g, b, highlight and 255 or 90)
+        end
+        if linkFrom == p then label = label .. '~n~~y~Now press L on the door it should lead to' end
+    end
     if highlight and not carrying then
-        label = label .. (p.kind == 'token' and '~n~E: move · G: colour · X: remove' or p.kind == 'hatch' and '~n~E: move · X: remove' or '~n~E: move')
+        label = label .. ((p.kind == 'token' and '~n~E: move · G: colour · X: remove')
+            or ((p.kind == 'hatch' or p.kind == 'trap') and '~n~E: move · X: remove')
+            or (p.kind == 'door' and '~n~E: move · L: link · K: to start · X: remove')
+            or '~n~E: move')
     end
     text3d(c.x, c.y, c.z + (p.kind == 'token' and 1.4 or 2.6), label, highlight and 0.36 or 0.3)
 end
 
 local function refresh(list)
-    if list then points = list return end
-    local res, code, msg = Carnival.api('layout.get', {})
-    if not res then
-        lib.notify({ title = 'Layout', description = msg or code, type = 'error' })
-        return false
+    if list then
+        points = list
+    else
+        local res, code, msg = Carnival.api('layout.get', {})
+        if not res then
+            lib.notify({ title = 'Layout', description = msg or code, type = 'error' })
+            return false
+        end
+        points = res.points or {}
     end
-    points = res.points or {}
+    doorsById = {}
+    for _, p in ipairs(points) do if p.kind == 'door' then doorsById[p.id] = p end end
+    linkFrom = linkFrom and doorsById[linkFrom.id] or nil
     return true
 end
 
@@ -163,6 +185,10 @@ local function putDown(ok, at)
         send('layout.token', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z } }, p.label .. ' moved.')
     elseif p.kind == 'hatch' then
         send('layout.hatch', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z } }, p.label .. ' moved.')
+    elseif p.kind == 'trap' then
+        send('layout.trap', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z } }, p.label .. ' moved.')
+    elseif p.kind == 'door' then
+        send('layout.door', { op = 'move', id = p.id, coords = { x = at.x, y = at.y, z = at.z, w = c.heading } }, p.label .. ' moved.')
     else
         send('layout.set', { path = p.path, coords = { x = at.x, y = at.y, z = at.z, w = c.heading }, radius = c.radius },
             p.label .. ' moved. Everyone sees it now.')
@@ -228,8 +254,24 @@ function Layout.start()
                 end
                 if IsControlJustPressed(0, 38) and t then
                     pickUp(t)
-                elseif IsDisabledControlJustPressed(0, 73) and t and (t.kind == 'token' or t.kind == 'hatch') then
-                    send(t.kind == 'hatch' and 'layout.hatch' or 'layout.token', { op = 'remove', id = t.id }, t.label .. ' removed.')
+                elseif IsDisabledControlJustPressed(0, 73) and t and (t.kind == 'token' or t.kind == 'hatch' or t.kind == 'door' or t.kind == 'trap') then
+                    local api = ({ token = 'layout.token', hatch = 'layout.hatch', door = 'layout.door', trap = 'layout.trap' })[t.kind]
+                    send(api, { op = 'remove', id = t.id }, t.label .. ' removed.')
+                elseif IsDisabledControlJustPressed(0, 182) and t and t.kind == 'door' then
+                    if not linkFrom then
+                        linkFrom = t
+                        lib.notify({ title = 'Layout', description = ('Now aim at the door "%s" should lead to and press L.'):format(t.label), type = 'inform' })
+                    elseif linkFrom == t then
+                        linkFrom = nil
+                        lib.notify({ title = 'Layout', description = 'Linking cancelled.', type = 'inform' })
+                    else
+                        local from = linkFrom
+                        linkFrom = nil
+                        send('layout.door', { op = 'link', id = from.id, to = t.id }, ('%s now leads to %s.'):format(from.label, t.label))
+                    end
+                elseif IsDisabledControlJustPressed(0, 311) and t and t.kind == 'door' then
+                    linkFrom = nil
+                    send('layout.door', { op = 'link', id = t.id, to = 'start' }, ('%s now leads back to the start.'):format(t.label))
                 elseif IsDisabledControlJustPressed(0, 47) and t and t.kind == 'token' then
                     local nextType = TYPES[1]
                     for i, ty in ipairs(TYPES) do if ty == t.type then nextType = TYPES[i % #TYPES + 1] end end
@@ -243,10 +285,16 @@ function Layout.start()
                             local at = aim()
                             if at and k.type == 'hatch' then
                                 send('layout.hatch', { op = 'add', coords = { x = at.x, y = at.y, z = at.z } }, 'Escape hatch added.')
+                            elseif at and k.type == 'door' then
+                                -- players coming out of this door face away from it (towards you)
+                                local w = (GetEntityHeading(PlayerPedId()) + 180.0) % 360.0
+                                send('layout.door', { op = 'add', coords = { x = at.x, y = at.y, z = at.z, w = w } }, 'Door added. It leads to the start until you link it (L).')
+                            elseif at and k.type == 'trap' then
+                                send('layout.trap', { op = 'add', coords = { x = at.x, y = at.y, z = at.z } }, 'Trap added.')
                             elseif at then
                                 send('layout.token', { op = 'add', type = k.type, coords = { x = at.x, y = at.y, z = at.z } }, ('%s coin added.'):format(k.type:gsub('^%l', string.upper)))
                             else
-                                lib.notify({ title = 'Layout', description = 'Look at the ground where the coin should go.', type = 'error' })
+                                lib.notify({ title = 'Layout', description = 'Look at the ground where it should go.', type = 'error' })
                             end
                         end
                     end

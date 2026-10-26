@@ -21,6 +21,7 @@ Db.MIGRATIONS = {
     { version = 5, name = 'world_props', file = 'sql/migrations/005_world_props.sql' },
     { version = 6, name = 'prize_counter', file = 'sql/migrations/006_prize_counter.sql' },
     { version = 7, name = 'prize_tickets', file = 'sql/migrations/007_prize_tickets.sql' },
+    { version = 8, name = 'deception_doors', file = 'sql/migrations/008_deception_doors.sql' },
 }
 
 local function shorten(sql)

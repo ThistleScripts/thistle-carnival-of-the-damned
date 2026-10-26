@@ -443,7 +443,7 @@ function Cfg.publicSettings()
     attractions.fortune.mode = e.attractions.fortune.mode
     attractions.fortune.greeting = e.attractions.fortune.greeting
     attractions.fortune.farewell = e.attractions.fortune.farewell
-    attractions.deception.maxSubmissions = e.attractions.deception.maxSubmissions
+    attractions.deception.durationSeconds = e.attractions.deception.durationSeconds
     local h = e.attractions.horror
     for _, k in ipairs({ 'entry', 'exit', 'exitRadius', 'boundaryCentre', 'boundaryRadius', 'durationSeconds', 'ambientSound',
         'warningSound', 'finalWarningSound', 'endSound', 'volume', 'visibility', 'visibilityDistance' }) do
